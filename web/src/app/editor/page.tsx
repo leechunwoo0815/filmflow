@@ -2,8 +2,10 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { useLang, LangToggle } from "@/lib/i18n";
 
 function EditorInner() {
+  const { t } = useLang();
   const params = useSearchParams();
   const projectId = Number(params.get("project"));
   const [task, setTask] = useState<any>(null);
@@ -48,19 +50,19 @@ function EditorInner() {
   return (
     <main className="max-w-6xl mx-auto p-6">
       <header className="flex items-center gap-2 mb-4">
-        <a className="btn" href={`/canvas?project=${projectId}`}>← 画布</a>
-        <h1 className="text-xl font-bold">任务卡编辑器</h1>
-        <span className="text-dim text-sm">四表三面板 · 本应用不生成剧本/场景，只校验与编排</span>
+        <a className="btn" href={`/canvas?project=${projectId}`}>← Canvas</a><LangToggle />
+        <h1 className="text-xl font-bold">{t("ed.title")}</h1>
+        <span className="text-dim text-sm">{t("ed.disclaimer")}</span>
         <div className="ml-auto flex gap-2">
-          <button className="btn" onClick={addScene}>＋ 场景</button>
-          <button className="btn" onClick={save}>保存</button>
-          <button className="btn-primary" onClick={validate}>校验（B07 同一验证器）</button>
+          <button className="btn" onClick={addScene}>{t("ed.addScene")}</button>
+          <button className="btn" onClick={save}>{t("ed.save")}</button>
+          <button className="btn-primary" onClick={validate}>{t("ed.validate")}</button>
         </div>
       </header>
       {msg && <div className="card border-green/40 p-2 mb-3 text-green text-sm">{msg}</div>}
 
       <section className="card p-3 mb-4">
-        <h2 className="font-semibold mb-2">基本信息</h2>
+        <h2 className="font-semibold mb-2">{t("ed.basic")}</h2>
         <div className="grid grid-cols-4 gap-3 text-sm">
           <label className="block"><span className="text-dim text-xs">task_id</span>
             <input className="w-full mt-1" value={task.task_id || ""} onChange={(e) => setTask({ ...task, task_id: e.target.value })} /></label>
@@ -76,7 +78,7 @@ function EditorInner() {
       </section>
 
       <section className="card p-3 mb-4">
-        <h2 className="font-semibold mb-2">① 场景表（{task.scenes.length}）</h2>
+        <h2 className="font-semibold mb-2">{t("ed.scenes")}{task.scenes.length}）</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="text-dim"><tr>
@@ -101,7 +103,7 @@ function EditorInner() {
       </section>
 
       <section className="card p-3 mb-4">
-        <h2 className="font-semibold mb-2">② 事件表（{task.events.length}）</h2>
+        <h2 className="font-semibold mb-2">{t("ed.events")}{task.events.length}）</h2>
         <div className="overflow-x-auto max-h-48 overflow-y-auto">
           <table className="w-full text-xs">
             <thead className="text-dim"><tr>{["id", "scene_id", "at", "role", "allow_snap", "tolerance"].map((h) => <th key={h} className="text-left p-1">{h}</th>)}</tr></thead>
@@ -123,7 +125,7 @@ function EditorInner() {
 
       {report && (
         <section className={`card p-3 ${report.passed ? "border-green/40" : "border-red/40"}`}>
-          <h2 className="font-semibold mb-1">校验报告：{report.passed ? "✓ 通过" : "✗ 未通过"}</h2>
+          <h2 className="font-semibold mb-1">{report.passed ? t("ed.reportPass") : t("ed.reportFail")}</h2>
           {report.errors?.length > 0 && (
             <ul className="text-red text-sm list-disc ml-4">{report.errors.map((e: string, i: number) => <li key={i}>{e}</li>)}</ul>
           )}

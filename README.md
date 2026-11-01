@@ -1,6 +1,6 @@
 # FilmFlow
 
-本地代码动画全生命周期 Web 工作台。**46 节点 / 7 阶段 / 341 条风格库 / 2 个渲染引擎。**
+本地代码动画全生命周期 Web 工作台。**46 节点 / 7 阶段 / 341 条风格库 / 3 个渲染引擎（riso · code-video · ink）/ 中英双语。**
 
 ## 当前状态：全链已贯通 ✅
 
@@ -12,7 +12,7 @@
  → 响度QA(−16LUFS±1) → 交付门 → master.mp4 (39.500s, AAC 音轨)
 ```
 
-实测（rumor-39s 导入全链，Run #1）：46/46 节点 succeeded · 49 产物 · 9 条审批记录（含驳回→重批历史）· master.mp4 = 69.9MB。
+实测（rumor-39s 导入全链，Run #1）：46/46 节点 succeeded · 49 产物 · 9 条审批记录（含驳回→重批历史）· master.mp4 = 69.9MB · 三引擎可生产 61 条。
 
 ## 快速开始
 
@@ -41,16 +41,16 @@ uv run --project server python scripts/drive_run.py <run> <project>   # 全链�
 | `../filmflow-prd.md` | PRD（FR-1~14 / US-01~10 / 风险） |
 | `docs/tech-plan.md` | §18 九项技术方案 |
 | `docs/process/` | SDLC / Feature 拆分 / 测试策略 |
-| `bdd/features/` | 16 个中文 Gherkin 特性文件 |
+| `bdd/features/` | 16 个中文 Gherkin 特性文件（自动化 3 场景 + 手动验收拆分） |
 | `docs/adr/` | ADR-0001 技术栈 · ADR-0002 实测矩阵 · ADR-0003 embed 上限 |
 
 ## 已知边界（诚实清单）
 
-- **ink 引擎未交付**（M2 计划项）：ink 族现仅 1 条 tokens 完整，优先级让位于全链贯通；按 Engine Contract 登记即可用。
 - **Playwright UI E2E 未接**：E2E 证据 = 真实 HTTP 驱动的全链冒烟 + 驱动器（scripts/）+ 25+ 单元/集成/BDD 测试；UI 层以人工验收脚本（tech-plan §10）覆盖。
-- **英文 i18n 未铺**：默认中文已全量；i18n 管线（Next locale）待接。
 - **补标队列 123 条**：标注 UI 已交付（/labeling），标注本身需人工完成（约 4 小时）。
 - **whisper 对齐**：模型未下载时走手动打点回退（规格允许）；下载 ggml-medium 后自动启用词级对齐。
+- ~~ink 引擎~~ → 已交付（M2 项提前关闭：`engines/ink/` 含基准 fixture，producible 61）。
+- ~~英文 i18n~~ → 已交付（`web/src/lib/i18n.tsx`：zh/en 双词典 + 语言切换，全页面接入）。
 
 ## 实现期裁决（已录规格 §19）
 

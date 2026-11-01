@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ink previs</title>
+<style>
+  html, body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<!-- ink 引擎预演样片：宣纸底 + 墨晕 + 大字「风」（毛笔质感）+ 运动轨迹 + 淡彩三版。
+     与规格 §3.2 同一 16:9 样片语法；渲染层 2D canvas（水墨扩散为权威实现，M2 起供 film 模式复用）。 -->
+<canvas id="cv" width="512" height="288"></canvas>
+<script>
+const q = new URLSearchParams(location.search);
+let payload = { tokens: {}, title: '风' };
+try { payload = JSON.parse(decodeURIComponent(escape(atob(q.get('payload') || '')))); } catch (e) {}
+const T = payload.tokens || {};
+const pal = (T.palette && T.palette.length >= 3) ? T.palette : ['#F5F1E6', '#2B2B2B', '#5A6E5A', '#8C4A3C'];
+const PAPER = pal[0], INK = pal[1], INK2 = pal[2], TINT = pal[3];
+const W = q.get('variant') === 'detail' ? 1024 : 512;
+const H = W * 288 / 512;
+const cv = document.getElementById('cv');
+cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+const CN = '"Noto Sans SC", "PingFang SC", "Kaiti SC", serif';
+
+// 确定性伪随机（预演不引入 Date.now）
+function rnd(seed) { const v = Math.sin(seed * 12.9898) * 43758.5453; return v - Math.floor(v); }
+
+// 宣纸底：暖白 + 纤维丝
+function paper() {
+  ctx.fillStyle = PAPER; ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 0.06;
+  for (let i = 0; i < 90; i++) {
+    const x = rnd(i * 3.1) * W, y = rnd(i * 7.7) * H, l = 6 + rnd(i * 1.3) * 26;
+    ctx.strokeStyle = rnd(i) > 0.5 ? '#C9BCA4' : '#B7AA8F';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + l, y + (rnd(i * 2.2) - 0.5) * 8); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// 墨晕：多层径向渐变 + 边缘毛刺（笔触落纸的扩散）
+function inkBloom(x, y, r, alpha, color) {
+  for (let layer = 0; layer < 4; layer++) {
+    const rr = r * (1 + layer * 0.22);
+    const g = ctx.createRadialGradient(x, y, rr * 0.12, x, y, rr);
+    g.addColorStop(0, color);
+    g.addColorStop(0.72, color);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = alpha * (1 - layer * 0.21);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.fill();
+  }
+  // 毛刺飞白
+  ctx.globalAlpha = alpha * 0.5;
+  ctx.strokeStyle = color;
+  for (let i = 0; i < 7; i++) {
+    const a = rnd(i * 13.7 + x) * Math.PI * 2, len = r * (0.25 + rnd(i * 5.3) * 0.4);
+    ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r * 0.8, y + Math.sin(a) * r * 0.8);
+    ctx.lineTo(x + Math.cos(a) * (r * 0.8 + len), y + Math.sin(a) * (r * 0.8 + len));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function boot() {
+  paper();
+  // 淡彩三版：左上/右上/下方三块淡彩晕染（对应三版色）
+  inkBloom(W * 0.10, H * 0.16, W * 0.055, 0.34, INK2);
+  inkBloom(W * 0.90, H * 0.14, W * 0.05, 0.30, TINT);
+  inkBloom(W * 0.50, H * 0.93, W * 0.09, 0.22, INK2);
+  // 运动轨迹：一笔淡墨弧线 + 飞白
+  ctx.strokeStyle = INK;
+  ctx.globalAlpha = 0.55; ctx.lineWidth = Math.max(1.4, H * 0.008); ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(W * 0.06, H * 0.84);
+  ctx.bezierCurveTo(W * 0.3, H * 0.62, W * 0.56, H * 0.94, W * 0.9, H * 0.72);
+  ctx.stroke();
+  for (let i = 0; i <= 6; i++) {
+    const t = i / 6;
+    const x = W * (0.06 + 0.84 * t), y = H * (0.84 - 0.22 * Math.sin(Math.PI * t) + (t > 0.5 ? 0.07 * t : 0));
+    ctx.globalAlpha = 0.8 - t * 0.55;
+    ctx.beginPath(); ctx.arc(x, y, Math.max(1.6, H * 0.011) * (1 - t * 0.4), 0, Math.PI * 2);
+    ctx.fillStyle = INK; ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // 大字「风」：先墨晕衬底，再毛笔字（粗笔画 + 轻微抖动模拟提按）
+  inkBloom(W * 0.34, H * 0.52, W * 0.16, 0.16, INK);
+  ctx.fillStyle = INK;
+  ctx.font = `900 ${Math.round(H * 0.66)}px ${CN}`;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(payload.title || '风', W * 0.16, H * 0.54);
+  // 淡墨重影（第二版叠印感）
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = INK2;
+  ctx.fillText(payload.title || '风', W * 0.16 + W * 0.008, H * 0.545);
+  ctx.globalAlpha = 1;
+  // 人形剪影：一笔式墨人（头 + 两笔身姿）
+  const hx = W * 0.72, hy = H * 0.40;
+  inkBloom(hx, hy, H * 0.05, 0.5, INK);
+  ctx.strokeStyle = INK; ctx.lineCap = 'round';
+  ctx.lineWidth = H * 0.030; ctx.globalAlpha = 0.88;
+  ctx.beginPath(); ctx.moveTo(hx, hy + H * 0.055); ctx.lineTo(hx - W * 0.006, hy + H * 0.22); ctx.stroke();
+  ctx.lineWidth = H * 0.020;
+  ctx.beginPath(); ctx.moveTo(hx, hy + H * 0.21); ctx.lineTo(hx - W * 0.028, H * 0.86); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(hx, hy + H * 0.21); ctx.lineTo(hx + W * 0.026, H * 0.845); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // 印章
+  ctx.fillStyle = TINT;
+  ctx.fillRect(W * 0.90, H * 0.80, W * 0.045, W * 0.045);
+  ctx.fillStyle = PAPER;
+  ctx.font = `${Math.round(W * 0.022)}px ${CN}`;
+  ctx.fillText('印', W * 0.908, H * 0.875);
+
+  window.__PREVIS_PNG__ = cv.toDataURL('image/png');
+  window.__PREVIS_DONE__ = true;
+}
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(boot); setTimeout(() => { if (!window.__PREVIS_DONE__) boot(); }, 1500);
+} else boot();
+</script>
+</body>
+</html>

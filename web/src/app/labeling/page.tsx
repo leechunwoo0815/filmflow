@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api, FAMILY_LABELS, StyleDTO } from "@/lib/api";
+import { useLang, LangToggle } from "@/lib/i18n";
 
 export default function Labeling() {
+  const { t } = useLang();
   const [items, setItems] = useState<StyleDTO[]>([]);
   const [current, setCurrent] = useState<StyleDTO | null>(null);
   const [form, setForm] = useState<any>({});
@@ -53,8 +55,8 @@ export default function Labeling() {
 
   return (
     <main className="max-w-5xl mx-auto p-6">
-      <h1 className="text-xl font-bold mb-1">补标队列 <span className="text-dim text-sm">{items.length} 条待补</span></h1>
-      <p className="text-dim text-sm mb-4">每条补 6 字段 + 语义族；完成后解锁为主选候选（解析失败全集，含 A-G 17 条）。</p>
+      <div className="flex items-center justify-between"><h1 className="text-xl font-bold mb-1">{t("lb.title")} <span className="text-dim text-sm">{items.length} {t("lb.pending")}</span></h1><LangToggle /></div>
+      <p className="text-dim text-sm mb-4">{t("lb.hint")}</p>
       {msg && <div className="card border-green/40 p-2 mb-3 text-green text-sm">{msg}</div>}
       <div className="grid grid-cols-[220px_1fr] gap-3">
         <aside className="card p-2 h-[560px] overflow-y-auto text-sm">
@@ -91,9 +93,9 @@ export default function Labeling() {
                 <F label="网角（可选）" v={form.screen_angle} onChange={(v) => setForm({ ...form, screen_angle: v })} ph="15" />
                 <F label="网周期（可选）" v={form.screen_period} onChange={(v) => setForm({ ...form, screen_period: v })} ph="7" />
               </div>
-              <button className="btn-amber mt-4" onClick={submit}>提交补标并解锁</button>
+              <button className="btn-amber mt-4" onClick={submit}>{t("lb.submit")}</button>
             </>
-          ) : <p className="text-dim">队列空——全部 341 条都齐了。</p>}
+          ) : <p className="text-dim">{t("lb.queueEmpty")}</p>}
         </section>
       </div>
     </main>

@@ -2,8 +2,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { useLang, LangToggle } from "@/lib/i18n";
 
 export default function Home() {
+  const { t } = useLang();
   const [projects, setProjects] = useState<any[]>([]);
   const [lib, setLib] = useState<any>(null);
   const [env, setEnv] = useState<any>(null);
@@ -29,35 +31,36 @@ export default function Home() {
     <main className="max-w-6xl mx-auto p-8">
       <header className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold">FilmFlow <span className="text-dim text-base font-normal">· 印厂控制台</span></h1>
-          <p className="text-dim text-sm mt-1">代码动画全生命周期工作台 · 46 节点 / 7 阶段 / 341 条风格库</p>
+          <h1 className="text-2xl font-bold">{t("app.title")}<span className="text-dim text-base font-normal">{t("app.subtitle")}</span></h1>
+          <p className="text-dim text-sm mt-1">{t("app.tagline")}</p>
         </div>
-        <div className="flex gap-2">
-          <a className="btn" href="/labeling">补标队列{lib ? ` (${lib.matrix?.label_queue ?? 0})` : ""}</a>
-          <a className="btn-primary" href="/wizard">＋ 新建项目向导</a>
+        <div className="flex gap-2 items-center">
+          <a className="btn" href="/labeling">{t("nav.labeling")}{lib ? ` (${lib.matrix?.label_queue ?? 0})` : ""}</a>
+          <a className="btn-primary" href="/wizard">{t("nav.newProject")}</a>
+          <LangToggle />
         </div>
       </header>
 
       {msg && <div className="card border-red/40 p-3 mb-4 text-red text-sm">{msg}</div>}
 
       <div className="grid grid-cols-3 gap-3 mb-8">
-        <Stat title="风格库" value={lib ? `${lib.total_styles} 条` : "…"} sub={lib ? `10 来源集 · 可生产 ${lib.matrix?.producible}` : ""} />
-        <Stat title="补标队列" value={lib ? `${lib.matrix?.label_queue}` : "…"} sub="tokens 残缺 · 不可主选" />
-        <Stat title="环境" value={env?.ok ? "就绪" : "缺失"} sub={env?.ok ? `Chrome · ffmpeg ✓` : "点击查看 /api/environment"} />
+        <Stat title={t("home.stat.styles")} value={lib ? `${lib.total_styles}` : "…"} sub={lib ? `${t("home.stat.stylesSub")} ${lib.matrix?.producible}` : ""} />
+        <Stat title={t("home.stat.labelQueue")} value={lib ? `${lib.matrix?.label_queue}` : "…"} sub={t("home.stat.labelSub")} />
+        <Stat title={t("home.stat.env")} value={env?.ok ? t("home.stat.envReady") : "—"} sub={env?.ok ? "Chrome · ffmpeg ✓" : "/api/environment"} />
       </div>
 
       <section className="card p-4 mb-6">
-        <h2 className="font-semibold mb-3">导入项目（含 task.json）</h2>
+        <h2 className="font-semibold mb-3">{t("home.import")}</h2>
         <div className="flex gap-2">
           <input className="flex-1 font-mono text-xs" value={importRoot} onChange={(e) => setImportRoot(e.target.value)} />
-          <button className="btn-primary" onClick={doImport}>导入 rumor-39s</button>
+          <button className="btn-primary" onClick={doImport}>{t("home.importBtn")}</button>
         </div>
-        <p className="text-dim text-xs mt-2">导入后画布为 46 节点只读视图，状态来自真实文件。</p>
+        <p className="text-dim text-xs mt-2">{t("home.importHint")}</p>
       </section>
 
       <section>
-        <h2 className="font-semibold mb-3">项目</h2>
-        {projects.length === 0 && <p className="text-dim text-sm">暂无项目——先导入参考项目，或走新建向导。</p>}
+        <h2 className="font-semibold mb-3">{t("home.projects")}</h2>
+        {projects.length === 0 && <p className="text-dim text-sm">{t("home.noProjects")}</p>}
         <div className="grid grid-cols-2 gap-3">
           {projects.map((p) => (
             <a key={p.id} href={`/canvas?project=${p.id}`} className="card p-3 hover:border-blue/50">

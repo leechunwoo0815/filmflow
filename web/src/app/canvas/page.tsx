@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { ReactFlow, Background, Controls, MarkerType } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { api } from "@/lib/api";
+import { useLang, LangToggle } from "@/lib/i18n";
 
 const STAGE_COLORS: Record<string, string> = {
   A: "#4C8DFF", B: "#39C5CF", C: "#3FB950", D: "#E3B341", E: "#F5A623", F: "#F47067", G: "#A371F7",
@@ -15,6 +16,7 @@ const STATUS_CLS: Record<string, string> = {
 };
 
 function CanvasInner() {
+  const { t } = useLang();
   const params = useSearchParams();
   const projectId = Number(params.get("project"));
   const runId = Number(params.get("run"));
@@ -67,8 +69,8 @@ function CanvasInner() {
             {n.status}{n.status === "running" ? ` ${(n.progress * 100).toFixed(0)}%` : ""}
             {n.message ? ` · ${n.message.slice(0, 40)}` : ""}
           </div>
-          {n.gate === "human" && <span className="text-purple">🔒 人工门</span>}
-          {n.gate === "auto" && <span className="text-cyan">⚙ 自动门</span>}
+          {n.gate === "human" && <span className="text-purple">🔒 {t("cv.humanGate")}</span>}
+          {n.gate === "auto" && <span className="text-cyan">⚙ {t("cv.autoGate")}</span>}
         </div>
       ),
     },
@@ -91,17 +93,17 @@ function CanvasInner() {
   return (
     <main className="h-screen flex flex-col">
       <header className="flex items-center gap-2 p-3 border-b border-line">
-        <a className="btn" href="/">← 项目</a>
-        <span className="font-semibold">Run {runId}</span>
+        <a className="btn" href="/">{t("nav.back")}</a>
+        <span className="font-semibold">Run {runId}</span><LangToggle />
         {graph && <span className={`text-sm ${STATUS_CLS[graph.run.status]}`}>{graph.run.status}</span>}
         {graph && <span className="text-dim text-xs">caps: {graph.caps.join("/")}</span>}
         <div className="ml-auto flex gap-2">
-          <a className="btn" href={`/editor?project=${projectId}`}>任务卡编辑器</a>
-          <button className="btn" data-testid="step-btn" onClick={() => act(`/runs/${runId}/step`)}>Step</button>
-          <button className="btn-amber" data-testid="run-btn" onClick={() => act(`/runs/${runId}/start`)}>▶ Run</button>
-          <button className="btn" onClick={() => act(`/runs/${runId}/cancel`)}>取消</button>
-          <button className="btn" onClick={() => act(`/runs/${runId}/resume`)}>Resume</button>
-          <button className="btn" onClick={() => act(`/runs/${runId}/retry`)}>Retry failed</button>
+          <a className="btn" href={`/editor?project=${projectId}`}>{t("nav.editor")}</a>
+          <button className="btn" data-testid="step-btn" onClick={() => act(`/runs/${runId}/step`)}>{t("cv.step")}</button>
+          <button className="btn-amber" data-testid="run-btn" onClick={() => act(`/runs/${runId}/start`)}>{t("cv.run")}</button>
+          <button className="btn" onClick={() => act(`/runs/${runId}/cancel`)}>{t("cv.cancel")}</button>
+          <button className="btn" onClick={() => act(`/runs/${runId}/resume`)}>{t("cv.resume")}</button>
+          <button className="btn" onClick={() => act(`/runs/${runId}/retry`)}>{t("cv.retry")}</button>
         </div>
       </header>
       {msg && <div className="bg-panel border-b border-red/40 text-red text-sm px-3 py-1.5">{msg}</div>}
@@ -115,7 +117,7 @@ function CanvasInner() {
         </div>
         <aside className="w-80 border-l border-line p-3 overflow-y-auto text-sm">
           {/* 待批准门 */}
-          <h3 className="font-semibold mb-2">等待批准的门（{pendingGates.length}）</h3>
+          <h3 className="font-semibold mb-2">{t("cv.pendingGates")}{pendingGates.length}）</h3>
           {pendingGates.map((g) => (
             <div key={g.gate} className="card p-2 mb-2 border-purple/40" data-testid={`gate-${g.gate}`}>
               <div className="font-medium">🔒 {g.gate} {g.title}{g.stale && <span className="text-gold"> · stale</span>}</div>
@@ -123,13 +125,13 @@ function CanvasInner() {
                 {g.checklist.slice(0, 5).map((c: string, i: number) => <li key={i}>{c}</li>)}
               </ul>
               <div className="flex gap-2 mt-2">
-                <button className="btn-primary" onClick={async () => { await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: runId, decision: "approved", author: "local", note: "", checklist: [] }) }); load(); }}>批准</button>
+                <button className="btn-primary" onClick={async () => { await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: runId, decision: "approved", author: "local", note: "", checklist: [] }) }); load(); }}>{t("cv.approve")}</button>
                 <button className="btn" onClick={async () => {
-                  const note = prompt("驳回必须填写意见：");
+                  const note = prompt(t("cv.rejectPrompt"));
                   if (note === null) return;
                   await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: runId, decision: "rejected", author: "local", note }) });
                   load();
-                }}>驳回</button>
+                }}>{t("cv.reject")}</button>
               </div>
             </div>
           ))}
@@ -142,7 +144,7 @@ function CanvasInner() {
               {selected.message && <p className="text-xs text-red mt-1 break-all">{selected.message}</p>}
               {selected.artifacts?.length > 0 && (
                 <div className="mt-2">
-                  <p className="text-dim text-xs mb-1">产物</p>
+                  <p className="text-dim text-xs mb-1">{t("cv.artifacts")}</p>
                   {selected.artifacts.map((a: any) => (
                     <div key={a.id} className="text-xs font-mono flex justify-between gap-1 border-b border-line py-1">
                       <span>{a.type}</span><a className="text-blue" href={`/api/artifacts/${a.id}/file`} target="_blank">{a.sha}</a>
@@ -151,7 +153,7 @@ function CanvasInner() {
                 </div>
               )}
             </>
-          ) : <p className="text-dim mt-6">点击节点查看状态/日志/产物</p>}
+          ) : <p className="text-dim mt-6">{t("cv.clickNode")}</p>}
         </aside>
       </div>
     </main>

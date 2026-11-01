@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { LangProvider } from "@/lib/i18n";
 
 export const metadata: Metadata = { title: "FilmFlow · 印厂控制台", description: "代码动画全生命周期工作台" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen"><LangProvider>{children}</LangProvider></body>
     </html>
   );
 }

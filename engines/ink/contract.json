@@ -1,0 +1,26 @@
+{
+  "engine_id": "ink",
+  "families": ["ink"],
+  "version": "1.0.0",
+  "api_version": "1.0",
+  "entry": {
+    "still": "entry/previs.html",
+    "film": "entry/previs.html",
+    "previs": "entry/previs.html",
+    "proxy": "entry/previs.html"
+  },
+  "tokens_schema": {
+    "palette": 5,
+    "screen": ["diffusion"],
+    "texture": ["xuan_paper", "fiber"],
+    "motion": ["pacing"],
+    "type": ["family", "weights"]
+  },
+  "capabilities": ["ink_wash", "brush_stroke", "paper_fiber", "overprint_tint", "cn_type"],
+  "fixtures": ["fixture/ink-baseline.png"],
+  "fixture_meta": {
+    "source": "M0 交付时预演渲染基准（SSIM 回归阈值 0.95，C01 渲染级校验 M2 起启用）",
+    "check": "structure"
+  },
+  "notes": "水墨引擎 M2 交付项：预演与参数化静帧走 entry/previs.html（同一墨晕实现）；逐帧 film 模式按 Engine Contract 在 M2+ 扩展 entry/film.html。字集/叠印语法与 riso 一致。"
+}
