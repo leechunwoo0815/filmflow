@@ -1,0 +1,37 @@
+[project]
+name = "filmflow-server"
+version = "0.1.0"
+description = "FilmFlow - 代码动画全生命周期工作台（API + 执行引擎）"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlmodel>=0.0.22",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sse-starlette>=2.1",
+    "jieba>=0.42",
+    "pillow>=11",
+    "numpy>=2",
+    "fonttools>=4.55",
+    "brotli>=1.1",
+    "playwright>=1.49",
+    "python-multipart>=0.0.17",
+    "httpx>=0.28",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-bdd>=7.2",
+    "ruff>=0.8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"

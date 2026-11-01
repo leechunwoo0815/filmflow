@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+
+# Node
+node_modules/
+.next/
+out/
+.turbo/
+
+# FilmFlow runtime
+*.db
+*.db-journal
+runtime/
+
+# OS
+.DS_Store
