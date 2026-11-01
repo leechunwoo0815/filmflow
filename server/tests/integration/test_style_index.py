@@ -45,14 +45,14 @@ def test_matrix_and_fts(isolated_db):
 
 
 def test_matrix_measured_consistency(isolated_db):
-    """解析器 v1.0 实测矩阵（ADR-0002）：196 complete / 145 incomplete。"""
+    """解析器 v1.0 实测矩阵（ADR-0002 终版：词典扩展后）：218 complete / 123 补标。"""
     from app.services.style_index import scan_library, library_status
     scan_library()
     m = library_status()["matrix"]
-    assert m["cover_complete"] + m["nocover_complete"] == 196
-    assert m["label_queue"] == 145
-    assert m["cover_complete"] == 156 and m["cover_incomplete"] == 37
-    assert m["nocover_complete"] == 40 and m["nocover_incomplete"] == 108
+    assert m["cover_complete"] + m["nocover_complete"] == 218
+    assert m["label_queue"] == 123
+    assert m["cover_complete"] == 173 and m["cover_incomplete"] == 20
+    assert m["nocover_complete"] == 45 and m["nocover_incomplete"] == 103
 
 
 def test_k_collection_incomplete(isolated_db):
