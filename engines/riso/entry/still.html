@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Riso still</title>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var e = q.get('embed');
+  var l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = e || '../fonts/noto-sans-sc/embed.css';
+  document.head.appendChild(l);
+})();
+</script>
+<style>
+  html, body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="gl" width="1920" height="1080"></canvas>
+<script>
+const W = 1920, H = 1080;
+const FONT = '"Noto Sans SC"';
+
+const q = new URLSearchParams(location.search);
+const SCENE = q.get('scene') || 'S01';
+const T = parseFloat(q.get('t') || '0');
+
+// ---------- 版面常量（与任务卡第 5 节一致）----------
+const CROSS = { x: 1768, y: 128 };
+
+// ---------- 画版工具 ----------
+function makePlate() {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  return c;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function ink(ctx, a) { ctx.fillStyle = `rgba(255,255,255,${a})`; }
+
+function fillRect(ctx, x, y, w, h, a) {
+  ink(ctx, a);
+  ctx.fillRect(x, y, w, h);
+}
+
+function punch(ctx, x, y, w, h, r) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = '#fff';
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.restore();
+}
+
+// 浅网块：边缘带手作抖动，避免读成数码硬矩形
+function raggedRect(ctx, x, y, w, h, a, seed = 1, j = 4, steps = 6) {
+  const rnd = (i) => {
+    const v = Math.sin((i + seed) * 12.9898) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  const pts = [];
+  for (let i = 0; i <= steps; i++) pts.push([x + w * i / steps, y + (rnd(i * 4) - 0.5) * j]);
+  for (let i = 1; i <= steps; i++) pts.push([x + w + (rnd(i * 4 + 1) - 0.5) * j, y + h * i / steps]);
+  for (let i = steps - 1; i >= 0; i--) pts.push([x + w * i / steps, y + h + (rnd(i * 4 + 2) - 0.5) * j]);
+  for (let i = steps - 1; i >= 1; i--) pts.push([x + (rnd(i * 4 + 3) - 0.5) * j, y + h * i / steps]);
+  ctx.fillStyle = `rgba(255,255,255,${a})`;
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+  ctx.closePath();
+  ctx.fill();
+}
+
+// 纸白镂空光晕：先挖掉周围油墨，再铺一层近纸色的极浅密度
+function sheetHalo(ctx, x, y, w, h, grow) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = '#fff';
+  roundRect(ctx, x - grow, y - grow, w + grow * 2, h + grow * 2, grow);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawCross(ctx, density = 1) {
+  const { x, y } = CROSS;
+  ink(ctx, density);
+  ctx.strokeStyle = `rgba(255,255,255,${density})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x - 26, y); ctx.lineTo(x + 26, y);
+  ctx.moveTo(x, y - 26); ctx.lineTo(x, y + 26);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 13, 0, Math.PI * 2);
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function text(ctx, str, x, y, size, weight, density = 1) {
+  ctx.save();
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  ctx.textBaseline = 'alphabetic';
+  ctx.letterSpacing = '0.01em';
+  ctx.fillStyle = `rgba(255,255,255,${density})`;
+  ctx.fillText(str, x, y);
+  ctx.restore();
+}
+
+function measure(ctx, str, size, weight) {
+  ctx.save();
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  ctx.letterSpacing = '0.01em';
+  const w = ctx.measureText(str).width;
+  ctx.restore();
+  return w;
+}
+
+// ---------- 三个场景的版密度 ----------
+function drawS01() {
+  const blue = makePlate(), orange = makePlate(), yellow = makePlate();
+  const b = blue.getContext('2d'), o = orange.getContext('2d');
+
+  // 蓝版：8% 浅网铺纸
+  fillRect(b, -40, -40, W + 80, H + 80, 0.08);
+
+  // 左侧一叠空白纸：每张都有纸白边，读作一叠而不是色块
+  for (let i = 0; i < 4; i++) {
+    const x = 64 + i * 15, y = 540 - i * 15;
+    sheetHalo(b, x, y, 150, 240, 5);
+    ink(b, 0.07);
+    roundRect(b, x, y, 150, 240, 6);
+    b.fill();
+  }
+
+  // 左下一张印张，压出画外，补住下半幅的空白
+  b.save();
+  b.translate(330, 1040);
+  b.rotate(4 * Math.PI / 180);
+  b.translate(-330, -1040);
+  sheetHalo(b, 60, 860, 560, 300, 7);
+  ink(b, 0.06);
+  roundRect(b, 60, 860, 560, 300, 6);
+  b.fill();
+  b.restore();
+
+  // 右侧消息纸：轻微倾斜，内容全部印在蓝版上
+  b.save();
+  b.translate(680, 615);
+  b.rotate(-1.2 * Math.PI / 180);
+  b.translate(-680, -615);
+
+  sheetHalo(b, 170, 300, 1040, 640, 8);
+  ink(b, 0.03);
+  roundRect(b, 170, 300, 1040, 640, 8);
+  b.fill();
+
+  text(b, '它为什么被转发？', 214, 452, 100, 900);
+  text(b, '一条消息被转发，', 214, 562, 46, 500);
+  text(b, '往往不是因为它真实，', 214, 628, 46, 500);
+  text(b, '而是因为它让人想立刻告诉别人。', 214, 694, 46, 500);
+  b.restore();
+
+  drawCross(b, 1);
+  drawCross(o, 1);
+
+  // 橙版：手 + 箭头。手掌从套准十字外侧（左下方）绕过，不压住十字。
+  o.fillStyle = 'rgba(255,255,255,1)';
+  o.strokeStyle = 'rgba(255,255,255,1)';
+
+  // 手臂：从画面右下伸入，向外弯，不与十字相交
+  o.lineCap = 'round';
+  o.lineWidth = 54;
+  o.beginPath();
+  o.moveTo(1990, 1000);
+  o.quadraticCurveTo(1852, 700, 1535, 456);
+  o.stroke();
+
+  // 手掌与四指：在同一个旋转坐标系里画，保证指根接住掌缘
+  o.save();
+  o.translate(1520, 432);
+  o.rotate(-0.45);
+  // 掌：圆角方掌，指根排满掌的上缘
+  roundRect(o, -78, -78, 156, 156, 54);
+  o.fill();
+  // 四指：厚度接近、长度略不等，指缝 2px，指端留 10px 平顶
+  const FINGERS = [[-58, 96, -0.09, 34], [-19, 112, -0.03, 34], [20, 118, 0.03, 34], [58, 100, 0.10, 32]];
+  for (const [fx, len, rot, fw] of FINGERS) {
+    o.save();
+    o.translate(fx, -50);
+    o.rotate(rot);
+    roundRect(o, -fw / 2, -len, fw, len + 14, 12);
+    o.fill();
+    o.restore();
+  }
+  // 拇指：从掌的右缘斜出
+  o.save();
+  o.translate(64, 6);
+  o.rotate(0.42);
+  roundRect(o, 0, -17, 34, 104, 13);
+  o.fill();
+  o.restore();
+  o.restore();
+
+  // 橙色箭头：6.4s 完整到达右边缘
+  const arrowP = Math.min(1, Math.max(0, (T - 5.6) / 0.8));
+  if (arrowP > 0) {
+    const p0 = [1592, 352], p1 = [1786, 186], p2 = [1900, 420];
+    const e = arrowP;
+    const pt = (t) => [
+      (1 - t) * (1 - t) * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0],
+      (1 - t) * (1 - t) * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1],
+    ];
+    o.strokeStyle = 'rgba(255,255,255,1)';
+    o.lineWidth = 13;
+    o.lineCap = 'butt';
+    o.beginPath();
+    for (let s = 0; s <= 40; s++) {
+      const p = pt(e * s / 40);
+      if (s === 0) o.moveTo(p[0], p[1]); else o.lineTo(p[0], p[1]);
+    }
+    o.stroke();
+    if (e > 0.9) {
+      const tip = p2;
+      const dir = [p2[0] - p1[0], p2[1] - p1[1]];
+      const len = Math.hypot(dir[0], dir[1]);
+      const d = [dir[0] / len, dir[1] / len];
+      const n = [-d[1], d[0]];
+      o.beginPath();
+      o.moveTo(tip[0], tip[1]);
+      o.lineTo(tip[0] - d[0] * 34 + n[0] * 19, tip[1] - d[1] * 34 + n[1] * 19);
+      o.lineTo(tip[0] - d[0] * 34 - n[0] * 19, tip[1] - d[1] * 34 - n[1] * 19);
+      o.closePath();
+      o.fill();
+    }
+  }
+
+  return { blue, orange, yellow, offB: [0, 0], offO: [2, 0], offY: [0, 0] };
+}
+
+function drawS03() {
+  const blue = makePlate(), orange = makePlate(), yellow = makePlate();
+  const b = blue.getContext('2d');
+
+  fillRect(b, -40, -40, W + 80, H + 80, 0.10);
+
+  // 滚筒：斜看圆柱，筒身 + 右端面 + 轴，避免读成靶心
+  ink(b, 1);
+  b.beginPath();
+  b.ellipse(1010, 530, 44, 132, 0, 0, Math.PI * 2);
+  b.fill();
+  fillRect(b, 1010, 398, 350, 264, 1);
+  b.beginPath();
+  b.ellipse(1360, 530, 74, 132, 0, 0, Math.PI * 2);
+  b.fill();
+  // 轴与端盖（端面实印，不开孔，避免读成“眼睛”）
+  fillRect(b, 1428, 522, 160, 16, 1);
+  b.beginPath(); b.arc(1588, 530, 24, 0, Math.PI * 2); b.fill();
+
+  // 停止状态的导纸轨与进纸口，加两根机脚，让它读作机器而不是电池
+  fillRect(b, 1084, 660, 26, 84, 1);
+  fillRect(b, 1300, 660, 26, 84, 1);
+  fillRect(b, 1010, 742, 460, 20, 1);
+  punch(b, 1060, 770, 320, 44, 8);
+
+  // 停在进纸口的一张纸：压两度，印几条行线，读作待印的纸而不是浅色面板
+  b.save();
+  b.translate(1245, 917);
+  b.rotate(-2.2 * Math.PI / 180);
+  b.translate(-1245, -917);
+  sheetHalo(b, 1052, 792, 386, 250, 6);
+  ink(b, 0.04);
+  roundRect(b, 1052, 792, 386, 250, 6);
+  b.fill();
+  for (let i = 0; i < 5; i++) {
+    fillRect(b, 1092, 860 + i * 36, i === 4 ? 190 : 300 - i * 12, 11, 0.10);
+  }
+  b.restore();
+
+  // 左下角压出画外的待印纸叠：三面被画框裁掉，补住下半幅空白
+  b.save();
+  b.translate(200, 1120);
+  b.rotate(5 * Math.PI / 180);
+  b.translate(-200, -1120);
+  for (let i = 0; i < 2; i++) {
+    const x = -80 + i * 16, y = 880 - i * 16;
+    sheetHalo(b, x, y, 560, 340, 7);
+    ink(b, 0.06);
+    roundRect(b, x, y, 560, 340, 6);
+    b.fill();
+  }
+  b.restore();
+
+  // 本段第一句的主句，先立“辟谣更难”
+  text(b, '辟谣要做的事更难：', 150, 268, 76, 900);
+  text(b, '它得先让人停下来，', 154, 360, 44, 500, 1);
+
+  drawCross(b, 1);
+  return { blue, orange, yellow, offB: [0, 0], offO: [0, 0], offY: [0, 0] };
+}
+
+function drawS05() {
+  const blue = makePlate(), orange = makePlate(), yellow = makePlate();
+  const b = blue.getContext('2d'), o = orange.getContext('2d'), y = yellow.getContext('2d');
+
+  // 31.8–33.2 推近到 1.18；锚点右移，让套准十字的横臂与竖臂都留出画框边距
+  const z = 1.18, ax = 1260, ay = 540;
+  const setCam = (ctx) => ctx.setTransform(z, 0, 0, z, ax * (1 - z), ay * (1 - z));
+
+  setCam(b);
+  fillRect(b, -260, -260, W + 520, H + 520, 0.12);
+
+  // 同一张消息纸回到画面，四边都压出画外（满画幅），不留长直纸边
+  sheetHalo(b, -80, -80, 2080, 1240, 8);
+  ink(b, 0.03);
+  roundRect(b, -80, -80, 2080, 1240, 8);
+  b.fill();
+
+  const LINE_A = '但真相有一样谣言没有的东西——';
+  const PREFIX = '它经得起';
+  const OVER = '第二次查看。';
+
+  text(b, LINE_A, 430, 560, 56, 500);
+  text(b, PREFIX, 430, 740, 112, 900, 1);
+
+  const px = 430 + measure(b, PREFIX, 112, 900);
+  const overW = measure(b, OVER, 112, 900);
+
+  // 黄版：只做浅网，铺在结论后半句下面
+  // 块体略斜 + 两遍不规则叠印，边缘读作手撕印版而不是数码矩形
+  setCam(y);
+  y.save();
+  const bx = px - 18, by = 626, bw = overW + 36, bh = 166;
+  y.translate(bx + bw / 2, by + bh / 2);
+  y.rotate(-0.9 * Math.PI / 180);
+  y.translate(-(bx + bw / 2), -(by + bh / 2));
+  raggedRect(y, bx, by, bw, bh, 0.20, 3, 14, 34);
+  raggedRect(y, bx + 6, by + 5, bw - 10, bh - 8, 0.10, 9, 22, 26);
+  // 沿上下边缘啃出油墨缺口：把长直边打断，读作撕开的印版
+  y.globalCompositeOperation = 'destination-out';
+  y.fillStyle = '#fff';
+  for (let i = 0; i < 9; i++) {
+    const t = (i + 0.55) / 9;
+    const ex = bx + bw * t;
+    const er = 5 + ((i * 4 + 1) % 5) * 2.5;
+    y.beginPath(); y.arc(ex, by + ((i * 7) % 5 - 2), er, 0, Math.PI * 2); y.fill();
+    y.beginPath(); y.arc(ex + 22, by + bh + ((i * 3) % 5 - 2), er - 1.5, 0, Math.PI * 2); y.fill();
+  }
+  y.globalCompositeOperation = 'source-over';
+  y.restore();
+
+  // 蓝橙双版双印：橙版按任务卡保留 2px 偏移，叠出第三色并带一道错版边
+  text(b, OVER, px, 740, 112, 900, 1);
+  setCam(o);
+  text(o, OVER, px + 2, 740, 112, 900, 1);
+
+  setCam(b);
+  drawCross(b, 1);
+  setCam(o);
+  drawCross(o, 1);
+
+  // 套准偏移：33.2s 的“咔”之后回正；此处已回正
+  const reg = T >= 33.2 ? 0 : 12;
+  return { blue, orange, yellow, offB: [reg, 0], offO: [reg > 0 ? -reg : 0, 0], offY: [0, 0], paperScale: z };
+}
+
+// ---------- 打印 shader ----------
+const VS = `#version 300 es
+in vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+const FS = `#version 300 es
+precision highp float;
+uniform sampler2D uBlue, uOrange, uYellow;
+uniform vec2 uRes, uOffB, uOffO, uOffY;
+uniform float uPaper;
+out vec4 outColor;
+
+const vec3 PAPER  = vec3(0.957, 0.933, 0.886); // #F4EEE2
+const vec3 INK_B  = vec3(0.239, 0.333, 0.533); // #3D5588
+const vec3 INK_O  = vec3(1.000, 0.400, 0.369); // #FF665E
+const vec3 INK_Y  = vec3(1.000, 0.710, 0.067); // #FFB511
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float dotCoverage(float d, vec2 p, float deg, float period) {
+  float a = radians(deg);
+  float c = cos(a), s = sin(a);
+  vec2 q = vec2(c * p.x + s * p.y, -s * p.x + c * p.y);
+  vec2 f = fract(q / period) - 0.5;
+  float r = length(f) * 2.0;
+  float rad = sqrt(clamp(d, 0.0, 1.0)) * 0.74;
+  float aa = 1.25 / period;
+  return 1.0 - smoothstep(rad - aa, rad + aa, r);
+}
+
+// 实色矢量（字、剪影）按实地印，不打网；浅网才进半调
+float plateCov(float d, vec2 p, float deg, float period) {
+  if (d <= 0.004) return 0.0;
+  if (d >= 0.92) return 1.0;
+  return dotCoverage(d, p, deg, period);
+}
+
+vec3 applyInk(vec3 col, vec3 ink, float cov) {
+  vec3 k = ink / PAPER;
+  return col * mix(vec3(1.0), k, cov);
+}
+
+void main() {
+  vec2 p = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec2 uvB = (p - uOffB) / uRes;
+  vec2 uvO = (p - uOffO) / uRes;
+  vec2 uvY = (p - uOffY) / uRes;
+
+  float dB = texture(uBlue, uvB).a;
+  float dO = texture(uOrange, uvO).a;
+  float dY = texture(uYellow, uvY).a;
+
+  // 纸纤维与轻微浓淡
+  float fib = hash21(floor(p * vec2(1.0, 2.0)) + 17.0);
+  float mot = hash21(floor(p / 90.0) + 3.0);
+  vec3 paper = PAPER * (1.0 + (fib - 0.5) * 0.020 + (mot - 0.5) * 0.012);
+
+  // 尘点（固定纸面坐标，只作材质，不参与叙事）
+  float dust = 0.0;
+  dust += step(length(p - vec2(268, 946)), 2.4);
+  dust += step(length(p - vec2(1332, 171)), 1.8);
+  dust += step(length(p - vec2(612, 1030)), 1.4);
+
+  vec3 col = paper;
+
+  float covB = plateCov(dB, p / uPaper, 15.0, 7.0);
+  float covO = plateCov(dO, p / uPaper, 75.0, 7.0);
+  float covY = plateCov(dY, p / uPaper, 0.0, 6.5);
+
+  // 油墨颗粒与针孔：让实色也有手印感
+  float grain = 0.945 + 0.055 * hash21(floor(p * 1.3) + 9.0);
+  covB *= grain; covO *= grain; covY *= grain;
+  if (dB > 0.92 && hash21(floor(p * 2.2) + 31.0) < 0.010) covB = 0.22;
+  if (dO > 0.92 && hash21(floor(p * 2.2) + 71.0) < 0.008) covO = 0.22;
+
+  col = applyInk(col, INK_B, covB);
+  col = applyInk(col, INK_O, covO);
+  col = applyInk(col, INK_Y, covY);
+
+  col *= 1.0 - dust * 0.35;
+  outColor = vec4(col, 1.0);
+}`;
+
+const gl = document.getElementById('gl').getContext('webgl2', {
+  antialias: false, preserveDrawingBuffer: true, premultipliedAlpha: false,
+});
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    throw new Error('shader: ' + gl.getShaderInfoLog(s));
+  }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  throw new Error('link: ' + gl.getProgramInfoLog(prog));
+}
+gl.useProgram(prog);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  -1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1,
+]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const U = {
+  blue: gl.getUniformLocation(prog, 'uBlue'),
+  orange: gl.getUniformLocation(prog, 'uOrange'),
+  yellow: gl.getUniformLocation(prog, 'uYellow'),
+  res: gl.getUniformLocation(prog, 'uRes'),
+  offB: gl.getUniformLocation(prog, 'uOffB'),
+  offO: gl.getUniformLocation(prog, 'uOffO'),
+  offY: gl.getUniformLocation(prog, 'uOffY'),
+  paper: gl.getUniformLocation(prog, 'uPaper'),
+};
+
+function upload(canvas, unit) {
+  const t = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+
+function render() {
+  const p = SCENE === 'S01' ? drawS01() : SCENE === 'S03' ? drawS03() : drawS05();
+  gl.uniform1i(U.blue, 0);
+  gl.uniform1i(U.orange, 1);
+  gl.uniform1i(U.yellow, 2);
+  upload(p.blue, 0); upload(p.orange, 1); upload(p.yellow, 2);
+  gl.uniform2f(U.res, W, H);
+  gl.uniform2f(U.offB, p.offB[0], p.offB[1]);
+  gl.uniform2f(U.offO, p.offO[0], p.offO[1]);
+  gl.uniform2f(U.offY, p.offY[0], p.offY[1]);
+  // 网屏锚在纸面：推近 z 倍时，网点在屏幕上同比放大
+  gl.uniform1f(U.paper, p.paperScale || 1.0);
+  gl.viewport(0, 0, W, H);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.finish();
+  document.title = 'READY ' + SCENE + '@' + T;
+}
+
+const ALL_TEXT = '它为什么被转发一条消息被转发往往不是因为它真实而是因为它让人想立刻告诉别人辟谣要做的事更难它得先让人停下来再把证据一件件摆出来但真相有一样谣言没有的东西经得起第二次查看？：，。——';
+
+Promise.all([
+  document.fonts.load(`900 100px ${FONT}`, ALL_TEXT),
+  document.fonts.load(`500 100px ${FONT}`, ALL_TEXT),
+]).then(() => document.fonts.ready).then(() => {
+  render();
+}).catch((e) => { document.title = 'FONT_ERROR ' + e.message; });
+</script>
+</body>
+</html>

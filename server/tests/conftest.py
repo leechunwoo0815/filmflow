@@ -1,4 +1,4 @@
-"""测试基座：隔离 FILMFLOW_HOME，保证测试不污染真实 ~/.filmflow。"""
+"""测试基座：导入前设置隔离的 FILMFLOW_HOME（测试共享一个临时库；A03 扫描幂等 upsert）。"""
 import os
 import sys
 import tempfile
@@ -15,15 +15,8 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture()
-def isolated_db(tmp_path, monkeypatch):
-    """每个用例独立的 SQLite。"""
-    monkeypatch.setenv("FILMFLOW_HOME", str(tmp_path))
-    import importlib
-    from app import config as cfg
-    importlib.reload(cfg)
-    from app import db as dbm
-    importlib.reload(dbm)
-    from app import events as ev
-    importlib.reload(ev)
-    dbm.init_db()
-    yield dbm
+def isolated_db():
+    """兼容签名：环境已在导入前隔离；保证建表。"""
+    from app.db import init_db
+    init_db()
+    yield

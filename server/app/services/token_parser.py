@@ -10,14 +10,21 @@ import re
 HEX_RE = re.compile(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b")
 
 TEXTURE_WORDS = ["纸纹", "颗粒", "网点", "噪点", "纹理", "磨砂", "做旧", "斑驳", "针孔", "漏印",
-                 "grain", "texture", "noise", "paper", "halftone", "risograph", "riso", "印刷", "丝网"]
+                 "grain", "texture", "noise", "paper", "halftone", "risograph", "riso", "印刷", "丝网",
+                 "投影", "描边", "底纹", "雾", "倒影", "湿", "雨", "波纹", "颗粒感",
+                 "shadow", "flat", "gradient", "pattern", "outline", "fog", "reflection", "wet"]
 MOTION_WORDS = {"slow": ["慢", "缓慢", "静止", "停顿", "晕染", "slow", "still", "calm", "淡入"],
-                "fast": ["快", "急速", "闪烁", "跳切", "抖动", "glitch", "fast", "rapid", "snap", "闪"],
-                "medium": ["滚动", "缩放", "推近", "平移", "滑动", "生长", "展开", "pan", "zoom", "wipe"]}
+                "fast": ["快", "急速", "闪烁", "跳切", "抖动", "glitch", "fast", "rapid", "snap", "闪",
+                         "爆", "冲刺"],
+                "medium": ["滚动", "缩放", "推近", "平移", "滑动", "生长", "展开", "pan", "zoom", "wipe",
+                           "拉长", "流动", "漂", "波纹", "蔓延", "侵蚀", "滚动字幕"]}
 TYPE_WORDS = ["等宽", "mono", "monospace", "衬线", "serif", "黑体", "宋体", "手写", "圆体", "像素字",
-              "font", "typeface", "字形", "900", "700", "大字号", "标题字"]
+              "font", "typeface", "字形", "900", "700", "大字号", "标题字",
+              "bold", "display", "headline", "粗黑", "粗壮"]
 COMPOSITION_WORDS = ["网格", "三栏", "两栏", "居中", "对角", "满版", "留白", "边框", "分栏", "叠加",
-                     "grid", "layout", "构图", "版式", "symmetry", "asymmetric", "海报"]
+                     "grid", "layout", "构图", "版式", "symmetry", "asymmetric", "海报",
+                     "透视", "前景", "背景", "画框", "粗野", "满铺",
+                     "brutalism", "brutalist", "frame", "border", "columns", "poster", "billboard"]
 SCREEN_RE = re.compile(r"(?:网角|angle)[^\d]{0,6}(\d{1,2})\s*°?", re.I)
 PERIOD_RE = re.compile(r"(?:周期|period|间距)[^\d]{0,6}(\d(?:\.\d)?)\s*(?:px|像素)?", re.I)
 
@@ -106,7 +113,7 @@ def parse(md_text: str, collection_prefix: str = "") -> dict:
     elif collection_prefix == "L":
         _adapter_L(text, tokens, evidence)
 
-    fields = [k for k, v in tokens.items() if v]  # 非空字段
+    fields = [k for k, v in tokens.items() if v and k != "screen"]  # spike 口径：5 主字段（screen 为附加信息）
     status = "complete" if len(fields) >= 3 else "incomplete"
     return {"tokens": tokens, "fields": fields, "status": status, "evidence": evidence}
 

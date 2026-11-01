@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Riso film</title>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var e = q.get('embed');
+  var l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = e || '../fonts/noto-sans-sc/embed.css';
+  document.head.appendChild(l);
+})();
+</script>
+<style>
+  html, body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="gl" width="1920" height="1080"></canvas>
+<script>
+const W = 1920, H = 1080, FPS = 24, FRAMES = 948;
+const FONT = '"Noto Sans SC"';
+const CROSS = { x: 1768, y: 128 };
+
+const qs = new URLSearchParams(location.search);
+const MODE = qs.get('mode') || '';
+const T0 = parseFloat(qs.get('t') || '0');
+
+// ---------- 基础 ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const easeOut = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const easeInOut = (x) => { x = clamp(x); return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; };
+const lerp = (a, b, p) => a + (b - a) * p;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+
+function makePlate() {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  return c;
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function ink(ctx, a) { ctx.fillStyle = `rgba(255,255,255,${a})`; }
+function fillRect(ctx, x, y, w, h, a) { ink(ctx, a); ctx.fillRect(x, y, w, h); }
+function punch(ctx, x, y, w, h, r) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = '#fff';
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.restore();
+}
+function punchRect(ctx, x, y, w, h, r = 0) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = '#fff';
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.restore();
+}
+function sheetHalo(ctx, x, y, w, h, grow) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = '#fff';
+  roundRect(ctx, x - grow, y - grow, w + grow * 2, h + grow * 2, grow);
+  ctx.fill();
+  ctx.restore();
+}
+function raggedRect(ctx, x, y, w, h, a, seed = 1, j = 4, steps = 6) {
+  const rnd = (i) => {
+    const v = Math.sin((i + seed) * 12.9898) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  const pts = [];
+  for (let i = 0; i <= steps; i++) pts.push([x + w * i / steps, y + (rnd(i * 4) - 0.5) * j]);
+  for (let i = 1; i <= steps; i++) pts.push([x + w + (rnd(i * 4 + 1) - 0.5) * j, y + h * i / steps]);
+  for (let i = steps - 1; i >= 0; i--) pts.push([x + w * i / steps, y + h + (rnd(i * 4 + 2) - 0.5) * j]);
+  for (let i = steps - 1; i >= 1; i--) pts.push([x + (rnd(i * 4 + 3) - 0.5) * j, y + h * i / steps]);
+  ctx.fillStyle = `rgba(255,255,255,${a})`;
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+  ctx.closePath();
+  ctx.fill();
+}
+function drawCross(ctx, density = 1) {
+  const { x, y } = CROSS;
+  ink(ctx, density);
+  ctx.strokeStyle = `rgba(255,255,255,${density})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x - 26, y); ctx.lineTo(x + 26, y);
+  ctx.moveTo(x, y - 26); ctx.lineTo(x, y + 26);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 13, 0, Math.PI * 2);
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function text(ctx, str, x, y, size, weight, density = 1) {
+  ctx.save();
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  ctx.textBaseline = 'alphabetic';
+  ctx.letterSpacing = '0.01em';
+  ctx.fillStyle = `rgba(255,255,255,${density})`;
+  ctx.fillText(str, x, y);
+  ctx.restore();
+}
+function measure(ctx, str, size, weight) {
+  ctx.save();
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  ctx.letterSpacing = '0.01em';
+  const w = ctx.measureText(str).width;
+  ctx.restore();
+  return w;
+}
+// 版上逐段显现：从字顶向下“印”出来
+function reveal(ctx, str, x, y, size, weight, p, density = 1) {
+  if (p <= 0) return;
+  const w = measure(ctx, str, size, weight);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x - 12, y - size * 1.08, w + 24, size * 1.1 * clamp(p));
+  ctx.clip();
+  text(ctx, str, x, y, size, weight, density);
+  ctx.restore();
+}
+// 标题逐字落版
+function stamp(ctx, str, x, y, size, weight, p) {
+  if (p <= 0) return;
+  ctx.save();
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  ctx.textBaseline = 'alphabetic';
+  ctx.letterSpacing = '0.01em';
+  ctx.fillStyle = 'rgba(255,255,255,1)';
+  const chars = [...str];
+  let cx = x;
+  for (let i = 0; i < chars.length; i++) {
+    const k = clamp((p * chars.length - i) / 1.3);
+    if (k > 0) {
+      const dy = (1 - easeOut(k)) * size * 0.34;
+      ctx.fillText(chars[i], cx, y + dy);
+    }
+    cx += ctx.measureText(chars[i]).width;
+  }
+  ctx.restore();
+}
+
+// ---------- 手 ----------
+// 局部坐标：掌在原点、指朝上、臂向右下出画
+function handShape(ctx, x, y, rot, s, arm = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(255,255,255,1)';
+  ctx.strokeStyle = 'rgba(255,255,255,1)';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 54;
+  ctx.beginPath();
+  ctx.moveTo(260 * arm, 900 * arm);
+  ctx.quadraticCurveTo(170 * arm, 430 * arm, 10, 24);
+  ctx.stroke();
+  roundRect(ctx, -78, -78, 156, 156, 54);
+  ctx.fill();
+  const FINGERS = [[-58, 96, -0.09, 34], [-19, 112, -0.03, 34], [20, 118, 0.03, 34], [58, 100, 0.10, 32]];
+  for (const [fx, len, r, fw] of FINGERS) {
+    ctx.save();
+    ctx.translate(fx, -50);
+    ctx.rotate(r);
+    roundRect(ctx, -fw / 2, -len, fw, len + 14, 12);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.translate(64, 6);
+  ctx.rotate(0.42);
+  roundRect(ctx, 0, -17, 34, 104, 13);
+  ctx.fill();
+  ctx.restore();
+  ctx.restore();
+}
+
+// ---------- 镜头 ----------
+function setCam(ctx, cam) { ctx.setTransform(cam.z, 0, 0, cam.z, cam.tx, cam.ty); }
+
+// ---------- S01 ----------
+function s01(T) {
+  const blue = makePlate(), orange = makePlate(), yellow = makePlate();
+  const b = blue.getContext('2d'), o = orange.getContext('2d');
+  let z = 1, tx = 0, ty = 0;
+  if (T > 6.6) {
+    z = 1 + 0.03 * easeInOut(seg(T, 6.6, 9.0));
+    tx = CROSS.x * (1 - z); ty = CROSS.y * (1 - z);
+  }
+  const cam = { z, tx, ty };
+  setCam(b, cam); setCam(o, cam);
+
+  // 0–1.2s 蓝版由左向右滚过：先把蓝版内容裁在推进的版口内
+  const roll = easeOut(seg(T, 0.0, 1.2));
+  b.save();
+  b.beginPath();
+  b.rect(-120, -120, (W + 240) * roll, H + 240);
+  b.clip();
+
+  fillRect(b, -80, -80, W + 160, H + 160, 0.08);
+
+  for (let i = 0; i < 4; i++) {
+    const x = 64 + i * 15, yy = 540 - i * 15;
+    sheetHalo(b, x, yy, 150, 240, 5);
+    ink(b, 0.07);
+    roundRect(b, x, yy, 150, 240, 6);
+    b.fill();
+  }
+  b.save();
+  b.translate(330, 1040); b.rotate(4 * Math.PI / 180); b.translate(-330, -1040);
+  sheetHalo(b, 60, 860, 560, 300, 7);
+  ink(b, 0.06);
+  roundRect(b, 60, 860, 560, 300, 6);
+  b.fill();
+  b.restore();
+
+  // 消息纸
+  b.save();
+  b.translate(680, 615); b.rotate(-1.2 * Math.PI / 180); b.translate(-680, -615);
+  sheetHalo(b, 170, 300, 1040, 640, 8);
+  ink(b, 0.03);
+  roundRect(b, 170, 300, 1040, 640, 8);
+  b.fill();
+
+  stamp(b, '它为什么被转发？', 214, 452, 100, 900, seg(T, 1.2, 2.4));
+  const BODY = [
+    ['一条消息被转发，', 562, 2.60],
+    ['往往不是因为它真实，', 628, 3.07],
+    ['而是因为它让人想立刻告诉别人。', 694, 3.54],
+  ];
+  for (const [str, yy, st] of BODY) reveal(b, str, 214, yy, 46, 500, seg(T, st, st + 0.35));
+  b.restore();
+
+  drawCross(b, 1);
+  b.restore();
+  // 滚入时的墨带口
+  if (T < 1.25) {
+    const x = -120 + (W + 240) * roll;
+    fillRect(b, x - 26, -120, 52, H + 240, 1);
+  }
+
+  // 橙版：3.3s 从右滚入，只覆盖手与箭头区域
+  const wipe = easeOut(seg(T, 3.3, 4.0));
+  const wipeX = lerp(1960, 1080, wipe);
+  o.save();
+  o.beginPath();
+  o.rect(wipeX, -60, W - wipeX + 100, H + 120);
+  o.clip();
+  drawCross(o, 1);
+
+  const handIn = easeOut(seg(T, 4.4, 5.6));
+  handShape(o, 1520 + (1 - handIn) * 260, 432 + (1 - handIn) * 380, -0.45, 1);
+
+  const ap = seg(T, 5.6, 6.4);
+  if (ap > 0) {
+    const p0 = [1592, 352], p1 = [1786, 186], p2 = [1900, 420];
+    const u = ap * ap;
+    const pt = (t) => [
+      (1 - t) * (1 - t) * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0],
+      (1 - t) * (1 - t) * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1],
+    ];
+    o.lineWidth = 13; o.lineCap = 'butt';
+    o.beginPath();
+    for (let s = 0; s <= 40; s++) {
+      const p = pt(u * s / 40);
+      if (s === 0) o.moveTo(p[0], p[1]); else o.lineTo(p[0], p[1]);
+    }
+    o.stroke();
+    if (ap > 0.85) {
+      const tip = p2, base = pt(0.92);
+      const dir = [tip[0] - base[0], tip[1] - base[1]];
+      const len = Math.hypot(dir[0], dir[1]) || 1;
+      const dx = dir[0] / len, dy = dir[1] / len;
+      const nx = -dy, ny = dx;
+      const kb = easeOut(seg(ap, 0.85, 1));
+      const w = 20 * kb, l = 38 * kb;
+      o.beginPath();
+      o.moveTo(tip[0], tip[1]);
+      o.lineTo(tip[0] - dx * l + nx * w, tip[1] - dy * l + ny * w);
+      o.lineTo(tip[0] - dx * l - nx * w, tip[1] - dy * l - ny * w);
+      o.closePath();
+      o.fill();
+    }
+    // 8.6–9.0 箭头尖端扩成橙色爆发，给 S02 的形状匹配用
+    const bp = easeOut(seg(T, 8.6, 9.0));
+    if (bp > 0) {
+      o.beginPath();
+      o.arc(1900, 420, 8 + bp * 150, 0, Math.PI * 2);
+      o.fill();
+    }
+  }
+  o.restore();
+
+  return { blue, orange, yellow, cam, offB: [0, 0], offO: [2, 0], offY: [0, 0] };
+}
+
+// ---------- S02 ----------
+function s02(T) {
+  const blue = makePlate(), orange = makePlate(), yellow = makePlate();
+  const b = blue.getContext('2d'), o = orange.getContext('2d');
+  const pull = easeInOut(seg(T, 11.8, 13.0));
+  const z = 1 - 0.06 * pull;
+  const cam = { z, tx: 960 * (1 - z), ty: 540 * (1 - z) };
+  setCam(b, cam); setCam(o, cam);
+
+  fillRect(b, -80, -80, W + 160, H + 160, 0.04);
+  const cnt = seg(T, 10.6, 13.0);
+  fillRect(o, -80, -80, W + 160, H + 160, 0.18 + 0.20 * cnt);
+
+  // 9.0 从 S01 箭头尖端的爆发继续长开（形状匹配点）
+  const burst = seg(T, 9.0, 9.9);
+  if (burst > 0 && T < 10.4) {
+    const r = 150 + easeOut(burst) * 520;
+    ink(o, 0.5);
+    o.beginPath(); o.arc(1900, 420, r, 0, Math.PI * 2); o.fill();
+  }
+
+  // 复制件扇：0–7 逐张出现，每张都带同一句标题 + 套偏
+  const pivot = { x: 880, y: 900 };
+  const gather = 1 - easeInOut(seg(T, 15.5, 15.95));
+  for (let i = 0; i < 8; i++) {
+    const st = 10.6 + i * 0.34;
+    if (T < st) continue;
+    const appear = easeOut(seg(T, st, st + 0.3));
+    const ang = (-36 + i * 10.3) * Math.PI / 180 * gather;
+    const w = 560, h = 300;
+    const applyCopy = (ctx) => {
+      ctx.save();
+      ctx.translate(pivot.x + i * 2 * gather, pivot.y);
+      ctx.rotate(ang);
+      ctx.translate(-w / 2 + i * 34 * gather, -h + i * 14 * gather - (1 - appear) * 30);
+    };
+    applyCopy(b);
+    sheetHalo(b, 0, 0, w, h, 5);
+    ink(b, 0.03);
+    roundRect(b, 0, 0, w, h, 6);
+    b.fill();
+    if (i === 7) text(b, '它为什么被转发？', 44, 58, 30, 900, 1);
+    for (let k = 0; k < 3; k++) fillRect(b, 44, (i === 7 ? 96 : 70) + k * 48, k === 2 ? 300 : 400, 11, 0.14);
+    b.restore();
+    // 橙版同位置挖出纸白缝，复制件才不会被橙网盖住
+    applyCopy(o);
+    punchRect(o, -5, -5, w + 10, h + 10, 6);
+    o.restore();
+  }
+
+  // 三个情绪词：右侧爆发，词压在爆发上
+  const WORDS = [['惊讶', 1420, 250, 9.00, -0.04], ['愤怒', 1680, 390, 9.65, 0.05], ['害怕', 1470, 540, 10.30, -0.03]];
+  for (const [str, x, yy, at, rot] of WORDS) {
+    const p = easeOut(seg(T, at, at + 0.35));
+    if (p <= 0) continue;
+    const kick = p < 1 ? Math.sin(p * Math.PI) * 12 : 0;
+    ink(o, 0.18);
+    o.beginPath();
+    o.arc(x + 84, yy - 34, 30 + 110 * p, 0, Math.PI * 2);
+    o.fill();
+    o.save();
+    o.translate(x, yy + kick);
+    o.rotate(rot);
+    const sc = 0.9 + 0.1 * p;
+    o.scale(sc, sc);
+    text(o, str, 0, 0, 84, 900);
+    o.restore();
+  }
+
+  // 手按下：手掌落在复制件上
+  const press = easeOut(seg(T, 9.9, 10.6));
+  if (press > 0) {
+    const bump = T > 10.6 ? Math.sin(clamp((T - 10.6) / 0.3) * Math.PI) * 8 : 0;
+    handShape(o, 1140, 720 - (1 - press) * 300 + bump, -1.9, 0.85, 0.02);
+  }
+
+  // 判断晚 0.4s 落版（橙色手 10.6 接触）
+  const land = easeOut(seg(T, 10.6, 11.0));
+  if (T >= 10.6) {
+    const dy = (1 - land) * -34;
+    text(b, '判断', 220, 300 + dy, 104, 900);
+  }
+
+  // 正文
+  reveal(b, '都会让手指先于判断。', 250, 990, 52, 500, seg(T, 13.4, 14.0));
+
+  drawCross(b, 1);
+  drawCross(o, 1);
+  return { blue, orange, yellow, cam, offB: [0, 0], offO: [0, 0], offY: [0, 0] };
+}
+
+// ---------- S03 ----------
+function s03(T) {
+  const blue = makePlate(), orange = makePlate(), yellow = makePlate();
+  const b = blue.getContext('2d'), o = orange.getContext('2d');
+  const pan = easeInOut(seg(T, 18.6, 21.8));
+  const cam = { z: 1, tx: -154 * pan, ty: 0 };
+  setCam(b, cam); setCam(o, cam);
+
+  // 16.0 橙版满幅交接，16.0–16.6 从左向右擦开露出蓝版（接 S02 的橙扇）
+  const wipeOut = easeInOut(seg(T, 16.0, 16.6));
+  if (wipeOut < 1) {
+    const wx = -220 + (W + 440) * wipeOut;
+    o.save();
+    o.beginPath(); o.rect(wx, -100, W - wx + 400, H + 200); o.clip();
+    fillRect(o, -100, -100, W + 200, H + 200, 0.5);
+    o.restore();
+  }
+
+  fillRect(b, -80, -80, W + 160, H + 160, 0.10);
+
+  // 滚筒：16.0–16.8 减速停下的余摆
+  const settle = T < 16.8 ? Math.sin(seg(T, 16.0, 16.8) * Math.PI * 3) * 7 * (1 - seg(T, 16.0, 16.8)) : 0;
+  const my = settle;
+  ink(b, 1);
+  b.beginPath(); b.ellipse(1010, 530 + my, 44, 132, 0, 0, Math.PI * 2); b.fill();
+  fillRect(b, 1010, 398 + my, 350, 264, 1);
+  b.beginPath(); b.ellipse(1360, 530 + my, 74, 132, 0, 0, Math.PI * 2); b.fill();
+  fillRect(b, 1428, 522 + my, 160, 16, 1);
+  b.beginPath(); b.arc(1588, 530 + my, 24, 0, Math.PI * 2); b.fill();
+
+  fillRect(b, 1084, 660 + my, 26, 84, 1);
+  fillRect(b, 1300, 660 + my, 26, 84, 1);
+  fillRect(b, 1010, 742 + my, 460, 20, 1);
+  punch(b, 1060, 770 + my, 320, 44, 8);
+
+  sheetHalo(b, 1052, 792, 386, 250, 6);
+  ink(b, 0.04);
+  roundRect(b, 1052, 792, 386, 250, 6);
+  b.fill();
+  for (let i = 0; i < 5; i++) fillRect(b, 1092, 860 + i * 36, i === 4 ? 190 : 300 - i * 12, 11, 0.10);
+
+  b.save();
+  b.translate(200, 1120); b.rotate(5 * Math.PI / 180); b.translate(-200, -1120);
+  for (let i = 0; i < 2; i++) {
+    const x = -80 + i * 16, yy = 880 - i * 16;
+    sheetHalo(b, x, yy, 560, 340, 7);
+    ink(b, 0.06);
+    roundRect(b, x, yy, 560, 340, 6);
+    b.fill();
+  }
+  b.restore();
+
+  text(b, '辟谣要做的事更难：', 150, 268, 76, 900);
+  // 副行在镂空落地前被“抽走”，避免与“停下来”重复
+  const l2p = 1 - easeInOut(seg(T, 17.6, 17.9));
+  if (l2p > 0) {
+    b.save();
+    b.beginPath(); b.rect(150, 300, 430 * l2p, 100); b.clip();
+    text(b, '它得先让人停下来，', 154, 360, 44, 500, 1);
+    b.restore();
+  }
+
+  // 17.8s 纸白镂空“停下来”：先落撕裂边墨块，再从左向右把字挖出来
+  const ko = seg(T, 17.8, 18.0);
+  if (ko > 0) {
+    const ph = 230 * easeOut(ko);
+    b.save();
+    b.beginPath(); b.rect(150, 430, 620, ph); b.clip();
+    raggedRect(b, 150, 430, 620, 230, 1, 7, 16, 26);
+    b.restore();
+  }
+  const kw = seg(T, 18.0, 18.3);
+  if (kw > 0) {
+    b.save();
+    b.globalCompositeOperation = 'destination-out';
+    b.beginPath(); b.rect(150, 430, 620 * kw, 230); b.clip();
+    b.fillStyle = '#fff';
+    b.font = `900 150px ${FONT}`;
+    b.textBaseline = 'alphabetic';
+    b.letterSpacing = '0.01em';
+    b.fillText('停下来', 190, 600);
+    b.restore();
+  }
+
+  // 五张证据卡：每张一张“照片位” + 不同的图像记号 + 三条说明
+  for (let i = 0; i < 5; i++) {
+    if (i === 4 && T >= 23.6) continue;
+    const at = 18.6 + i * 0.55;
+    if (T < at) continue;
+    const p = easeOut(seg(T, at, at + 0.22));
+    const x = 120 + i * 186, yy = 820 + (1 - p) * -26;
+    sheetHalo(b, x, yy, 168, 120, 5);
+    ink(b, 0.35);
+    roundRect(b, x, yy, 168, 120, 6);
+    b.fill();
+    fillRect(b, x, yy, 168, 16, 0.95);
+    punchRect(b, x + 10, yy + 28, 60, 48, 4);
+    b.save();
+    b.beginPath(); b.rect(x + 10, yy + 28, 60, 48); b.clip();
+    ink(b, 0.5);
+    if (i === 0) {
+      for (let k = 0; k < 3; k++) b.fillRect(x + 20 + k * 14, yy + 66 - k * 10, 8, 30 + k * 10);
+    } else if (i === 1) {
+      for (let k = 0; k < 5; k++) { b.beginPath(); b.arc(x + 20 + k * 10, yy + 52, 4, 0, Math.PI * 2); b.fill(); }
+    } else if (i === 2) {
+      for (let k = 0; k < 4; k++) { b.save(); b.translate(x + 22, yy + 42 + k * 10); b.rotate(-0.5); b.fillRect(0, 0, 40, 5); b.restore(); }
+    } else if (i === 3) {
+      b.lineWidth = 7; b.strokeStyle = 'rgba(255,255,255,1)';
+      b.beginPath(); b.arc(x + 40, yy + 52, 16, 0, Math.PI * 2); b.stroke();
+    } else {
+      b.lineWidth = 6; b.strokeStyle = 'rgba(255,255,255,1)';
+      b.beginPath(); b.moveTo(x + 24, yy + 52); b.lineTo(x + 56, yy + 52); b.moveTo(x + 40, yy + 36); b.lineTo(x + 40, yy + 68); b.stroke();
+    }
+    b.restore();
+    fillRect(b, x + 80, yy + 36, 60, 7, 0.85);
+    fillRect(b, x + 80, yy + 56, 46, 7, 0.85);
+    fillRect(b, x + 80, yy + 76, 66, 7, 0.85);
+  }
+
+  // 24.0 前最后一张卡拉成 S04 的地平线
+  if (T >= 23.6) {
+    const fp = easeInOut(seg(T, 23.6, 24.0));
+    const x = lerp(864, 150, fp), y = lerp(820, 774, fp);
+    const w = lerp(168, 1620, fp), h = lerp(120, 12, fp);
+    ink(b, 1);
+    roundRect(b, x, y, w, h, 4);
+    b.fill();
+  }
+
+  reveal(b, '再把证据一件件摆出来。', 150, 716, 54, 500, seg(T, 21.8, 22.4));
+
+  drawCross(b, 1);
+  return { blue, orange, yellow, cam, offB: [0, 0], offO: [0, 0], offY: [0, 0] };
+}
+
+// ---------- S04 ----------
+function s04(T) {
+  const blue = makePlate(), orange = makePlate(), yellow = makePlate();
+  const b = blue.getContext('2d'), o = orange.getContext('2d');
+  let tx = 0;
+  if (T < 26.2) tx = -320 * easeInOut(seg(T, 24.0, 26.2));
+  else if (T < 27.4) tx = -320 * (1 - easeInOut(seg(T, 26.2, 27.4)));
+  const cam = { z: 1, tx, ty: 0 };
+  setCam(b, cam); setCam(o, cam);
+
+  fillRect(b, -80, -80, W + 160, H + 160, 0.06);
+  // 街道：一排低对比楼房剪影 + 纸白窗洞
+  const BL = [[110, 556, 250], [390, 516, 210], [640, 596, 190], [980, 536, 270], [1290, 578, 230], [1560, 616, 190]];
+  for (const [bx, by, bw] of BL) {
+    fillRect(b, bx, by, bw, 774 - by, 0.75);
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 2; c++) {
+        punchRect(b, bx + bw / 2 - 34 + c * 44, by + 30 + r * 44, 18, 24, 0);
+      }
+    }
+  }
+
+  // 鞋边一张待捡起的纸（S05 的满幅纸从这里放大）
+  const ground = easeInOut(seg(T, 30.3, 30.55));
+  if (T < 30.6) {
+    const gx = lerp(1520, 1690, ground), gy = lerp(800, 736, ground);
+    b.save();
+    b.translate(gx, gy);
+    b.rotate((-8 + ground * 7) * Math.PI / 180);
+    sheetHalo(b, -110, -60, 220, 120, 5);
+    ink(b, 0.05);
+    roundRect(b, -110, -60, 220, 120, 5);
+    b.fill();
+    for (let k = 0; k < 3; k++) fillRect(b, -84, -30 + k * 22, k === 2 ? 110 : 160, 7, 0.12);
+    b.restore();
+  }
+
+  // 地平线压在纸片之上，避免被纸白晕挖断
+  fillRect(b, -80, 774, W + 160, 12, 1);
+
+  // 五张橙纸：速度各不相同 + 加速，保证同一帧里是散开的五张
+  for (let i = 0; i < 5; i++) {
+    const dt = Math.max(0, T - 24.0);
+    const x = -300 + (450 + i * 100) * dt + 120 * dt * dt;
+    if (x < -360) continue;
+    const u = clamp((x + 300) / 2480);
+    const yy = 716 - Math.sin(Math.PI * u) * 74;
+    const rot = 0.05 + i * 0.02;
+    o.save();
+    o.translate(x, yy);
+    o.rotate(rot);
+    sheetHalo(o, -100, -55, 200, 110, 5);
+    ink(o, 1);
+    roundRect(o, -100, -55, 200, 110, 5);
+    o.fill();
+    punchRect(o, -64, -18, 128, 8, 0);
+    punchRect(o, -64, 2, 92, 8, 0);
+    punchRect(o, -64, 22, 110, 8, 0);
+    o.restore();
+  }
+
+  // 核查者：蹲着系鞋带
+  const stand = easeInOut(seg(T, 30.2, 30.6));
+  const look = T >= 27.8 && T < 27.9 ? 1 : 0;
+  ink(b, 1);
+  b.lineCap = 'round';
+  const dy = -stand * 28, dl = look * 6;
+  // 头与脖子
+  b.beginPath(); b.arc(1470 + look * 12, 566 - dy - dl, 40, 0, Math.PI * 2); b.fill();
+  b.lineWidth = 24;
+  b.beginPath(); b.moveTo(1484, 602 - dy - dl); b.lineTo(1498, 626 - dy); b.stroke();
+  // 前倾躯干（肩 → 髋）
+  b.lineWidth = 58;
+  b.beginPath(); b.moveTo(1508, 630 - dy); b.lineTo(1558, 708 - dy); b.stroke();
+  // 大腿（髋 → 膝，膝抬起）
+  b.lineWidth = 46;
+  b.beginPath(); b.moveTo(1558, 710 - dy); b.lineTo(1640, 696 - dy); b.stroke();
+  // 小腿（膝 → 踝）
+  b.lineWidth = 36;
+  b.beginPath(); b.moveTo(1640, 700 - dy); b.lineTo(1652, 764 - dy); b.stroke();
+  // 鞋
+  b.save();
+  b.translate(1638, 760 - dy);
+  b.rotate(-0.04);
+  roundRect(b, 0, -16, 100, 32, 14);
+  b.fill();
+  b.restore();
+  // 手臂伸向鞋
+  b.lineWidth = 26;
+  b.beginPath();
+  b.moveTo(1512, 644 - dy);
+  b.lineTo(1652, 748 - dy);
+  b.stroke();
+  // 鞋带
+  b.lineWidth = 7;
+  b.strokeStyle = 'rgba(255,255,255,1)';
+  b.beginPath();
+  b.moveTo(1674, 736 - dy);
+  b.quadraticCurveTo(1696, 720 - dy, 1706, 744 - dy);
+  b.stroke();
+  b.beginPath();
+  b.moveTo(1674, 746 - dy);
+  b.quadraticCurveTo(1690, 758 - dy, 1708, 738 - dy);
+  b.stroke();
+
+  // 收束句进字幕条：纸白条 + 蓝字，从左向右擦出
+  const sub = seg(T, 28.4, 28.9);
+  if (sub > 0) {
+    const sw = 1720 * sub;
+    punchRect(b, 100, 900, sw, 130, 0);
+    b.save();
+    b.beginPath(); b.rect(100, 900, sw, 130); b.clip();
+    text(b, '谣言跑出一条街，真相还在系鞋带。', 150, 980, 46, 500, 1);
+    b.restore();
+  }
+
+  // 30.6–31.0 纸面从左向右撕着盖过全幅（31.0 起 S05 就是这张纸）
+  const zoom = easeInOut(seg(T, 30.6, 31.0));
+  if (zoom > 0) {
+    const wx = lerp(-140, W + 140, zoom);
+    b.save();
+    b.beginPath();
+    b.moveTo(-140, -140);
+    for (let i = 0; i <= 8; i++) {
+      const yy = -140 + (H + 280) * i / 8;
+      const jx = wx + ((i * 13) % 7 - 3) * 18;
+      b.lineTo(jx, yy);
+    }
+    b.lineTo(-140, H + 140);
+    b.closePath();
+    b.clip();
+    b.globalCompositeOperation = 'destination-out';
+    b.fillStyle = '#fff';
+    b.fillRect(-140, -140, W + 280, H + 280);
+    b.globalCompositeOperation = 'source-over';
+    ink(b, 0.03);
+    b.fillRect(-140, -140, W + 280, H + 280);
+    b.restore();
+  }
+
+  drawCross(b, 1);
+  return { blue, orange, yellow, cam, offB: [0, 0], offO: [0, 0], offY: [0, 0] };
+}
+
+// ---------- S05 ----------
+function s05(T) {
+  const blue = makePlate(), orange = makePlate(), yellow = makePlate();
+  const b = blue.getContext('2d'), o = orange.getContext('2d'), yc = yellow.getContext('2d');
+
+  const zoomIn = easeInOut(seg(T, 31.8, 33.2));
+  const zoomOut = easeInOut(seg(T, 37.9, 38.9));
+  const z = lerp(1 + 0.18 * zoomIn, 1, zoomOut);
+  const ax = lerp(lerp(960, 1260, zoomIn), 960, zoomOut);
+  const ay = lerp(540, 540, zoomOut);
+  const cam = { z, tx: ax * (1 - z), ty: ay * (1 - z) };
+  setCam(b, cam); setCam(o, cam); setCam(yc, cam);
+
+  fillRect(b, -300, -300, W + 600, H + 600, 0.12);
+
+  // 纸页：35.4 前满幅；37.9 后收回到 S01 消息纸的尺寸
+  const shrink = easeInOut(seg(T, 37.9, 38.9));
+  const sx = lerp(-80, 250, shrink), sy = lerp(-80, 120, shrink);
+  const sw = lerp(2080, 1500, shrink), sh = lerp(1240, 860, shrink);
+  sheetHalo(b, sx, sy, sw, sh, 8);
+  ink(b, 0.03);
+  roundRect(b, sx, sy, sw, sh, 8);
+  b.fill();
+
+  const LINE_A = '但真相有一样谣言没有的东西——';
+  const PREFIX = '它经得起';
+  const OVER = '第二次查看。';
+
+  // 31.0–33.4 纸面上仍是 S01 那一版的标题与首行，回正时被擦掉
+  const old = 1 - easeInOut(seg(T, 33.1, 33.4));
+  if (T < 33.5 && old > 0) {
+    b.save();
+    b.beginPath(); b.rect(300, 150, 780 * old, 390); b.clip();
+    text(b, '它为什么被转发？', 300, 340, 100, 900);
+    text(b, '一条消息被转发，', 300, 402, 46, 500, 1);
+    text(b, '往往不是因为它真实，', 300, 462, 46, 500, 1);
+    text(b, '而是因为它让人想立刻告诉别人。', 300, 522, 46, 500, 1);
+    b.restore();
+  }
+
+  reveal(b, LINE_A, 430, 560, 56, 500, seg(T, 33.6, 34.2));
+  reveal(b, PREFIX, 430, 740, 112, 900, seg(T, 34.6, 35.1), 1);
+  const px = 430 + measure(b, PREFIX, 112, 900);
+  const overW = measure(b, OVER, 112, 900);
+
+  // 黄版浅网：随后半句一起印上
+  const yp = easeOut(seg(T, 34.9, 35.3));
+  if (yp > 0) {
+    const bx = px - 18, by = 626, bw = overW + 36, bh = 166;
+    yc.save();
+    yc.translate(bx + bw / 2, by + bh / 2);
+    yc.rotate(-0.9 * Math.PI / 180);
+    yc.translate(-(bx + bw / 2), -(by + bh / 2));
+    yc.beginPath();
+    yc.rect(bx - 40, by - 40, (bw + 80) * yp, bh + 80);
+    yc.clip();
+    raggedRect(yc, bx, by, bw, bh, 0.20, 3, 14, 34);
+    raggedRect(yc, bx + 6, by + 5, bw - 10, bh - 8, 0.10, 9, 22, 26);
+    yc.globalCompositeOperation = 'destination-out';
+    yc.fillStyle = '#fff';
+    for (let i = 0; i < 9; i++) {
+      const t = (i + 0.55) / 9;
+      const ex = bx + bw * t;
+      const er = 5 + ((i * 4 + 1) % 5) * 2.5;
+      yc.beginPath(); yc.arc(ex, by + ((i * 7) % 5 - 2), er, 0, Math.PI * 2); yc.fill();
+      yc.beginPath(); yc.arc(ex + 22, by + bh + ((i * 3) % 5 - 2), er - 1.5, 0, Math.PI * 2); yc.fill();
+    }
+    yc.restore();
+  }
+
+  reveal(b, OVER, px, 740, 112, 900, seg(T, 34.9, 35.4), 1);
+  setCam(o, cam);
+  if (T >= 34.9) {
+    const op = seg(T, 34.9, 35.4);
+    o.save();
+    o.beginPath();
+    o.rect(px + 2 - 12, 740 - 112 * 1.08, overW + 34, 112 * 1.1 * clamp(op));
+    o.clip();
+    o.fillStyle = 'rgba(255,255,255,1)';
+    o.font = `900 112px ${FONT}`;
+    o.textBaseline = 'alphabetic';
+    o.letterSpacing = '0.01em';
+    o.fillText(OVER, px + 2, 740);
+    o.restore();
+  }
+
+  // 31.0 起橙版从右压印全幅（20% 浅网），33.2 的“咔”后抬版
+  const oIn = easeOut(seg(T, 31.0, 31.8));
+  let oA = 0;
+  if (T >= 31.0 && T < 31.8) oA = 0.22 * oIn;
+  else if (T >= 31.8 && T < 33.2) oA = 0.22;
+  else if (T >= 33.2 && T < 33.6) oA = 0.22 * (1 - easeInOut(seg(T, 33.2, 33.6)));
+  if (oA > 0) {
+    if (T < 31.8) {
+      const wx = lerp(2200, -200, oIn);
+      o.save();
+      o.beginPath(); o.rect(wx, -100, W - wx + 300, H + 200); o.clip();
+      fillRect(o, -100, -100, W + 200, H + 200, oA);
+      o.restore();
+    } else {
+      fillRect(o, -100, -100, W + 200, H + 200, oA);
+    }
+  }
+
+  setCam(b, cam);
+  drawCross(b, 1);
+  setCam(o, cam);
+  drawCross(o, 1);
+
+  // 套准：33.2 的“咔”回正，12→0 带回弹
+  let reg = 0;
+  if (T < 33.2) reg = 12;
+  else if (T < 33.6) {
+    const p = seg(T, 33.2, 33.6);
+    reg = 12 * Math.exp(-5 * p) * Math.cos(12 * p);
+  }
+  return { blue, orange, yellow, cam, offB: [reg, 0], offO: [reg > 0 ? -reg : 0, 0], offY: [0, 0] };
+}
+
+function drawAt(T) {
+  const p = T < 9 ? s01(T) : T < 16 ? s02(T) : T < 24 ? s03(T) : T < 31 ? s04(T) : s05(T);
+  gl.uniform1i(U.blue, 0);
+  gl.uniform1i(U.orange, 1);
+  gl.uniform1i(U.yellow, 2);
+  upload(p.blue, 0); upload(p.orange, 1); upload(p.yellow, 2);
+  gl.uniform2f(U.res, W, H);
+  gl.uniform2f(U.offB, p.offB[0], p.offB[1]);
+  gl.uniform2f(U.offO, p.offO[0], p.offO[1]);
+  gl.uniform2f(U.offY, p.offY[0], p.offY[1]);
+  gl.uniform3f(U.cam, p.cam.z, p.cam.tx, p.cam.ty);
+  gl.viewport(0, 0, W, H);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.finish();
+  return p;
+}
+
+// ---------- shader ----------
+const VS = `#version 300 es
+in vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+const FS = `#version 300 es
+precision highp float;
+uniform sampler2D uBlue, uOrange, uYellow;
+uniform vec2 uRes, uOffB, uOffO, uOffY;
+uniform vec3 uCam;
+out vec4 outColor;
+
+const vec3 PAPER  = vec3(0.957, 0.933, 0.886);
+const vec3 INK_B  = vec3(0.239, 0.333, 0.533);
+const vec3 INK_O  = vec3(1.000, 0.400, 0.369);
+const vec3 INK_Y  = vec3(1.000, 0.710, 0.067);
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float dotCoverage(float d, vec2 p, float deg, float period) {
+  float a = radians(deg);
+  float c = cos(a), s = sin(a);
+  vec2 q = vec2(c * p.x + s * p.y, -s * p.x + c * p.y);
+  vec2 f = fract(q / period) - 0.5;
+  float r = length(f) * 2.0;
+  float rad = sqrt(clamp(d, 0.0, 1.0)) * 0.74;
+  float aa = 1.25 / period;
+  return 1.0 - smoothstep(rad - aa, rad + aa, r);
+}
+float plateCov(float d, vec2 p, float deg, float period) {
+  if (d <= 0.004) return 0.0;
+  if (d >= 0.92) return 1.0;
+  return dotCoverage(d, p, deg, period);
+}
+vec3 applyInk(vec3 col, vec3 ink, float cov) {
+  vec3 k = ink / PAPER;
+  return col * mix(vec3(1.0), k, cov);
+}
+void main() {
+  vec2 p = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec2 uvB = (p - uOffB) / uRes;
+  vec2 uvO = (p - uOffO) / uRes;
+  vec2 uvY = (p - uOffY) / uRes;
+  float dB = texture(uBlue, uvB).a;
+  float dO = texture(uOrange, uvO).a;
+  float dY = texture(uYellow, uvY).a;
+
+  // 纸面坐标（网点、纸纹、尘点都锚在纸上，不随镜头滑）
+  vec2 q = (p - uCam.yz) / uCam.x;
+
+  float fib = hash21(floor(q * vec2(1.0, 2.0)) + 17.0);
+  float mot = hash21(floor(q / 90.0) + 3.0);
+  vec3 paper = PAPER * (1.0 + (fib - 0.5) * 0.020 + (mot - 0.5) * 0.012);
+
+  float dust = 0.0;
+  dust += step(length(q - vec2(268, 946)), 2.4);
+  dust += step(length(q - vec2(1332, 171)), 1.8);
+  dust += step(length(q - vec2(612, 1030)), 1.4);
+
+  vec3 col = paper;
+  float covB = plateCov(dB, q, 15.0, 7.0);
+  float covO = plateCov(dO, q, 75.0, 7.0);
+  float covY = plateCov(dY, q, 0.0, 6.5);
+
+  float grain = 0.945 + 0.055 * hash21(floor(q * 1.3) + 9.0);
+  covB *= grain; covO *= grain; covY *= grain;
+  if (dB > 0.92 && hash21(floor(q * 2.2) + 31.0) < 0.010) covB = 0.22;
+  if (dO > 0.92 && hash21(floor(q * 2.2) + 71.0) < 0.008) covO = 0.22;
+
+  col = applyInk(col, INK_B, covB);
+  col = applyInk(col, INK_O, covO);
+  col = applyInk(col, INK_Y, covY);
+  col *= 1.0 - dust * 0.35;
+  outColor = vec4(col, 1.0);
+}`;
+
+const gl = document.getElementById('gl').getContext('webgl2', {
+  antialias: false, preserveDrawingBuffer: true, premultipliedAlpha: false,
+});
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('shader: ' + gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('link: ' + gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const U = {
+  blue: gl.getUniformLocation(prog, 'uBlue'),
+  orange: gl.getUniformLocation(prog, 'uOrange'),
+  yellow: gl.getUniformLocation(prog, 'uYellow'),
+  res: gl.getUniformLocation(prog, 'uRes'),
+  offB: gl.getUniformLocation(prog, 'uOffB'),
+  offO: gl.getUniformLocation(prog, 'uOffO'),
+  offY: gl.getUniformLocation(prog, 'uOffY'),
+  cam: gl.getUniformLocation(prog, 'uCam'),
+};
+function upload(canvas, unit) {
+  const t = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+
+const ALL_TEXT = '它为什么被转发一条消息被转发往往不是因为它真实而是因为它让人想立刻告诉别人辟谣要做的事更难停下来再把证据一件件摆出来惊讶愤怒害怕都会让手指先于判断判断谣言跑出一条街真相还在系鞋带但真相有一样谣言没有的东西经得起第二次查看？：，。——';
+
+// ---------- 运行模式 ----------
+function sheetMode() {
+  const times = [1.2, 6.45, 9.0, 10.6, 14.2, 15.9, 16.2, 17.9, 20.8, 22.4, 23.8, 25.0, 28.8, 30.8, 32.0, 35.45];
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const c = out.getContext('2d');
+  c.fillStyle = '#000';
+  c.fillRect(0, 0, W, H);
+  for (let i = 0; i < times.length; i++) {
+    drawAt(times[i]);
+    const col = i % 4, row = Math.floor(i / 4);
+    c.drawImage(gl.canvas, col * 480, row * 270, 480, 270);
+    c.fillStyle = 'rgba(0,0,0,0.72)';
+    c.fillRect(col * 480 + 10, row * 270 + 10, 78, 22);
+    c.fillStyle = '#fff';
+    c.font = '15px monospace';
+    c.fillText(times[i].toFixed(2), col * 480 + 17, row * 270 + 26);
+  }
+  gl.canvas.style.display = 'none';
+  document.body.appendChild(out);
+  out.id = 'sheet';
+}
+
+async function renderMode() {
+  const q = new URLSearchParams(location.search);
+  const start = parseInt(q.get('start') || '0', 10);
+  const end = parseInt(q.get('end') || String(FRAMES), 10);
+  for (let i = start; i < Math.min(end, FRAMES); i++) {
+    drawAt(i / FPS);
+    const data = gl.canvas.toDataURL('image/png');
+    const r = await fetch('/frame?i=' + i, { method: 'POST', body: data });
+    if (!r.ok) { document.title = 'ERR frame ' + i; return; }
+    if (i % 24 === 0) document.title = 'FRAME ' + i + '/' + FRAMES;
+  }
+  if (end >= FRAMES) await fetch('/done', { method: 'POST' });
+  document.title = 'DONE';
+}
+async function proxyMode() {
+  const q = new URLSearchParams(location.search);
+  const total = parseInt(q.get('total') || String(Math.round(FRAMES / FPS * 12)), 10);
+  const step = FPS / 12;
+  const pc = document.createElement('canvas'); pc.width = 480; pc.height = 270;
+  const pcx = pc.getContext('2d');
+  for (let i = 0; i < total; i++) {
+    drawAt((i * step) / FPS);
+    pcx.drawImage(gl.canvas, 0, 0, 480, 270);
+    const data = pc.toDataURL('image/png');
+    const r = await fetch('/pframe?i=' + i, { method: 'POST', body: data });
+    if (!r.ok) { document.title = 'ERR pframe ' + i; return; }
+    if (i % 12 === 0) document.title = 'PROXY ' + i + '/' + total;
+  }
+  await fetch('/done', { method: 'POST' });
+  document.title = 'PROXY_DONE';
+}
+
+Promise.all([
+  document.fonts.load(`900 100px ${FONT}`, ALL_TEXT),
+  document.fonts.load(`500 100px ${FONT}`, ALL_TEXT),
+]).then(() => document.fonts.ready).then(() => {
+  if (MODE === 'render') renderMode();
+  else if (MODE === 'proxy') proxyMode();
+  else if (MODE === 'sheet') sheetMode();
+  else { drawAt(T0); document.title = 'READY ' + T0; }
+}).catch((e) => { document.title = 'FONT_ERROR ' + e.message; });
+</script>
+</body>
+</html>

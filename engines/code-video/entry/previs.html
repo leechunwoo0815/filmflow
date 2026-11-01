@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>code-video previs</title>
+<style>
+  html, body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<!-- code-video 引擎预演样片：终端美学（同一 16:9 样片语法：大字「风」+ 轨迹 + 人形 + 三版色）。
+     渲染层：2D canvas（终端无半调，网格/扫描线/等宽字为权威实现）。 -->
+<canvas id="cv" width="512" height="288"></canvas>
+<script>
+const q = new URLSearchParams(location.search);
+let payload = { tokens: {}, title: '风' };
+try { payload = JSON.parse(decodeURIComponent(escape(atob(q.get('payload') || '')))); } catch (e) {}
+const T = payload.tokens || {};
+const pal = (T.palette && T.palette.length >= 3) ? T.palette : ['#0D1117', '#58A6FF', '#FF7B72', '#FFB511'];
+const BG = pal[0], C1 = pal[1], C2 = pal[2], C3 = pal[3];
+const W = q.get('variant') === 'detail' ? 1024 : 512;
+const H = W * 288 / 512;
+const cv = document.getElementById('cv');
+cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+const MONO = '"SF Mono", Menlo, monospace';
+const CN = '"Noto Sans SC", "PingFang SC", sans-serif';
+
+function boot() {
+  // 终端底
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+  // 网格（点阵）
+  ctx.fillStyle = C1 + '22';
+  const gap = Math.max(14, W / 34);
+  for (let x = gap; x < W; x += gap)
+    for (let y = gap; y < H; y += gap)
+      ctx.fillRect(x, y, 1.5, 1.5);
+  // 终端提示行
+  ctx.fillStyle = C1; ctx.font = `${Math.round(W * 0.022)}px ${MONO}`;
+  ctx.fillText('$ render --style "风" --frames 948', W * 0.04, H * 0.12);
+  ctx.fillStyle = C3;
+  ctx.fillText('> output: stdout [16:9] 24fps', W * 0.04, H * 0.19);
+  // 大字「风」：等宽块阵拼字 + 实字叠加
+  const title = payload.title || '风';
+  ctx.fillStyle = C2;
+  ctx.font = `900 ${Math.round(H * 0.52)}px ${CN}`;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title, W * 0.08, H * 0.55);
+  ctx.fillStyle = C1 + '55';
+  ctx.font = `${Math.round(W * 0.02)}px ${MONO}`;
+  for (let i = 0; i < 6; i++)
+    ctx.fillText('01', W * 0.08 + i * W * 0.028, H * 0.9);
+  // 运动轨迹（进度条式）
+  ctx.fillStyle = C3;
+  ctx.fillRect(W * 0.06, H * 0.78, W * 0.6, H * 0.015);
+  for (let i = 0; i <= 6; i++) {
+    ctx.fillStyle = `rgba(255,255,255,${0.9 - i * 0.12})`;
+    ctx.fillRect(W * 0.06 + W * 0.6 * i / 6 - 2, H * 0.772, 4, H * 0.03);
+  }
+  // 人形：ASCII 风格剪影
+  ctx.fillStyle = C1; ctx.font = `900 ${Math.round(H * 0.3)}px ${MONO}`;
+  ctx.fillText('\u4eba', W * 0.72, H * 0.55);
+  ctx.fillStyle = C2; ctx.font = `${Math.round(W * 0.02)}px ${MONO}`;
+  ctx.fillText('human: silhouette.ok', W * 0.68, H * 0.75);
+  // 扫描线
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+  // 光标闪烁块（静态预演中恒亮）
+  ctx.fillStyle = C2;
+  ctx.fillRect(W * 0.04 + ctx.measureText('$ render --style "风" --frames 948').width + 8, H * 0.105, W * 0.012, H * 0.03);
+
+  window.__PREVIS_PNG__ = cv.toDataURL('image/png');
+  window.__PREVIS_DONE__ = true;
+}
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(boot); setTimeout(() => { if (!window.__PREVIS_DONE__) boot(); }, 1500);
+} else boot();
+</script>
+</body>
+</html>

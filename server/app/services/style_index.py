@@ -67,10 +67,10 @@ def scan_library() -> dict:
             style_id = f"{prefix}{seq}"
             cover = _find_cover(coll_dir, md)
             records.append(_record(style_id, coll_dir.name, md, cover, kind="prompt"))
-    # 示例（kind=example）
+    # 示例（kind=example）：示例/<名字>/提示词.md
     ex_dir = root / EXAMPLES_DIR
     if ex_dir.is_dir():
-        for seq, md in enumerate(sorted(ex_dir.glob("*.md")), start=1):
+        for seq, md in enumerate(sorted(ex_dir.glob("*/提示词.md")), start=1):
             records.append(_record(f"EX{seq}", EXAMPLES_DIR, md, None, kind="example"))
 
     prompts = [r for r in records if r["kind"] == "prompt"]

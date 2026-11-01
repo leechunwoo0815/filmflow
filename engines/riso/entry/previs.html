@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Riso previs</title>
+<style>
+  html, body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<!-- 预演样片（16:9）：大字「风」+ 运动轨迹 + 人形剪影 + 三版色。
+     与生产共用 assets/riso-core.js 的同一份半调 shader（规格 §3.2 保真约束）。 -->
+<canvas id="gl" width="512" height="288"></canvas>
+<script src="../assets/riso-core.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+let payload = { tokens: {}, title: '风', variant: 'thumb' };
+try { payload = JSON.parse(decodeURIComponent(escape(atob(q.get('payload') || '')))); } catch (e) {}
+const T = payload.tokens || {};
+const pal = (T.palette && T.palette.length >= 3) ? T.palette : ['#F4EEE2', '#3D5588', '#FF665E', '#FFB511'];
+const paper = pal[0];
+const inks = [pal[1] || '#3D5588', pal[2] || '#FF665E', pal[3] || '#FFB511'];
+const screen = T.screen || {};
+const angles = [screen.angle || 15, 75, 0];
+const periods = [screen.period || 7, screen.period || 7, Math.max(4, (screen.period || 7) - 0.5)];
+const big = Math.min(512, 288);
+const W = q.get('variant') === 'detail' ? 1024 : 512;
+const H = W * 288 / 512;
+const cv = document.getElementById('gl');
+cv.width = W; cv.height = H;
+
+const FONT = '"Noto Sans SC", "PingFang SC", sans-serif';
+
+function plateScene() {
+  const Wp = W, Hp = H;
+  const blue = RISO.makePlate(Wp, Hp), orange = RISO.makePlate(Wp, Hp), yellow = RISO.makePlate(Wp, Hp);
+  const b = blue.getContext('2d'), o = orange.getContext('2d'), y = yellow.getContext('2d');
+
+  // 蓝版：大字「风」+ 运动轨迹线
+  RISO.ink(b, 0.96);
+  b.font = `900 ${Hp * 0.78}px ${FONT}`;
+  b.textBaseline = 'middle';
+  b.fillText(payload.title || '风', Wp * 0.10, Hp * 0.52);
+  b.strokeStyle = 'rgba(255,255,255,0.75)';
+  b.lineWidth = Math.max(3, Hp * 0.012);
+  b.beginPath();
+  b.moveTo(Wp * 0.06, Hp * 0.86);
+  b.bezierCurveTo(Wp * 0.3, Hp * 0.66, Wp * 0.55, Hp * 0.94, Wp * 0.9, Hp * 0.72);
+  b.stroke();
+  // 轨迹上的运动节点
+  for (let i = 0; i <= 6; i++) {
+    const t = i / 6;
+    const x = Wp * (0.06 + 0.84 * t);
+    const yy = Hp * (0.86 - 0.2 * Math.sin(Math.PI * t) + (t > 0.5 ? 0.06 * t : 0));
+    b.beginPath(); b.arc(x, yy, Math.max(3, Hp * 0.014), 0, Math.PI * 2);
+    b.fillStyle = `rgba(255,255,255,${0.9 - 0.5 * t})`; b.fill();
+  }
+  // 橙版：人形剪影（头 + 躯干 + 步态）
+  RISO.ink(o, 0.92);
+  const hx = Wp * 0.68, hy = Hp * 0.42;
+  o.beginPath(); o.arc(hx, hy, Hp * 0.075, 0, Math.PI * 2); o.fill();
+  o.lineWidth = Hp * 0.055; o.lineCap = 'round';
+  o.beginPath(); o.moveTo(hx, hy + Hp * 0.085); o.lineTo(hx - Wp * 0.004, hy + Hp * 0.26); o.stroke();
+  o.beginPath(); o.moveTo(hx, hy + Hp * 0.26); o.lineTo(hx - Wp * 0.03, Hp * 0.86); o.stroke();
+  o.beginPath(); o.moveTo(hx, hy + Hp * 0.26); o.lineTo(hx + Wp * 0.028, Hp * 0.84); o.stroke();
+  o.beginPath(); o.moveTo(hx, hy + Hp * 0.12); o.lineTo(hx - Wp * 0.045, hy + Hp * 0.22); o.stroke();
+  o.beginPath(); o.moveTo(hx, hy + Hp * 0.12); o.lineTo(hx + Wp * 0.042, hy + Hp * 0.20); o.stroke();
+  // 黄版：浅网三色块（20–40%）
+  [[0.03, 0.06, 0.22, 0.16], [0.74, 0.08, 0.23, 0.15], [0.40, 0.80, 0.2, 0.13]].forEach(([x, yy, w, h], i) => {
+    RISO.ink(y, 0.28 + i * 0.05);
+    RISO.roundRect(y, Wp * x, Hp * yy, Wp * w, Hp * h, 6);
+    y.fill();
+  });
+  // 套准十字
+  RISO.drawCross(b, Wp * 0.92, Hp * 0.10, 1);
+  RISO.drawCross(o, Wp * 0.92, Hp * 0.10, 1);
+  return [blue, orange, yellow].map((c, i) => ({ canvas: c, off: [i === 1 ? 2 : 0, 0] }));
+}
+
+function boot() {
+  try {
+    RISO.composite(plateScene(), { canvas: cv, W: W, H: H, paper: paper, inks: inks,
+                                   angles: angles, periods: periods,
+                                   cam: { z: 1, tx: 0, ty: 0 } });
+    window.__PREVIS_PNG__ = cv.toDataURL('image/png');
+    window.__PREVIS_DONE__ = true;
+  } catch (e) {
+    document.title = 'PREVIS_ERR ' + e.message;
+    window.__PREVIS_DONE__ = true;
+  }
+}
+if (document.fonts && document.fonts.load) {
+  Promise.all([
+    document.fonts.load(`900 120px ${FONT}`, '风'),
+    document.fonts.load(`500 40px ${FONT}`, '风'),
+  ]).then(() => document.fonts.ready).then(boot).catch(boot);
+  setTimeout(() => { if (!window.__PREVIS_DONE__) boot(); }, 2500);
+} else {
+  boot();
+}
+</script>
+</body>
+</html>

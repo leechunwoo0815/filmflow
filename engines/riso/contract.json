@@ -1,0 +1,31 @@
+{
+  "engine_id": "riso",
+  "families": ["print", "collage"],
+  "version": "1.0.0",
+  "api_version": "1.0",
+  "entry": {
+    "still": "entry/still.html",
+    "film": "entry/film.html",
+    "still_spec": "entry/still_spec.html",
+    "previs": "entry/previs.html",
+    "proxy": "entry/film.html?mode=proxy"
+  },
+  "tokens_schema": {
+    "palette": 5,
+    "screen": ["angle", "period"],
+    "texture": ["grain", "pinhole"],
+    "motion": ["pacing"],
+    "type": ["family", "weights"]
+  },
+  "capabilities": ["spot_ink", "halftone", "overprint", "registration", "cn_type"],
+  "fixtures": [
+    "fixture/S01_6.45.png",
+    "fixture/S03_17.2.png",
+    "fixture/S05_35.45.png"
+  ],
+  "fixture_meta": {
+    "source": "rumor-39s（参考项目真帧）",
+    "check": "C01 结构校验 + 预演渲染与基准 SSIM（M1 起启用渲染级校验）"
+  },
+  "notes": "entry/still.html 与 entry/film.html 为 rumor-39s 原版（补字体注入/续渲/proxy 参数）；参数化渲染走 still_spec.html 与 previs.html，共用 assets/riso-core.js 权威 shader。"
+}

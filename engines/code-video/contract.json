@@ -1,0 +1,22 @@
+{
+  "engine_id": "code-video",
+  "families": ["infographic", "pixel"],
+  "version": "1.0.0",
+  "api_version": "1.0",
+  "entry": {
+    "still": "entry/previs.html",
+    "film": "entry/previs.html",
+    "previs": "entry/previs.html",
+    "proxy": "entry/previs.html"
+  },
+  "tokens_schema": {
+    "palette": 5,
+    "screen": ["grid"],
+    "texture": ["scanline"],
+    "motion": ["pacing"],
+    "type": ["family", "weights"]
+  },
+  "capabilities": ["terminal", "monospace_grid", "scanline", "glitch", "cn_type"],
+  "fixtures": [],
+  "notes": "M0 提前交付（tech-plan 原计划 M1）：终端美学参数化渲染；逐帧 film 模式与 proxy 模式在 M1/M2 扩展 entry/film.html。预演走同一 16:9 样片语法。"
+}

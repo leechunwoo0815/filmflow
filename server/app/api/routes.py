@@ -77,20 +77,19 @@ async def styles_list(q: str = "", family: str = "", collection: str = "", chips
                       limit: int = 60, cursor: int = 0, session: Session = Depends(get_session)):
     """搜索（FTS5 trigram 中文子串）+ 筛选 chips（规格 §3.2）。"""
     chips_set = set(c for c in chips.split(",") if c)
-    rows = session.exec(select(Style)).all()
-    items = [r for r in rows if not r.id.startswith("EX")]
-    if collection:
-        items = [r for r in items if r.collection == collection]
-    if family:
-        items = [r for r in items if r.family == family or family in (r.sub_families_json or [])]
+    from ..services.search import search_styles
     if q:
-        hits = _fts_search(q)
-        if hits is not None:
-            rank = {sid: i for i, sid in enumerate(hits)}
-            items = [r for r in items if r.id in rank]
-            items.sort(key=lambda r: rank[r.id])
-        else:
-            items = [r for r in items if q.lower() in r.search_text.lower() or q.lower() in r.name.lower()]
+        items = search_styles(session, q, limit=400)
+        if collection:
+            items = [r for r in items if r.collection == collection]
+        if family:
+            items = [r for r in items if r.family == family or family in (r.sub_families_json or [])]
+    else:
+        items = [r for r in session.exec(select(Style)).all() if not r.id.startswith("EX")]
+        if collection:
+            items = [r for r in items if r.collection == collection]
+        if family:
+            items = [r for r in items if r.family == family or family in (r.sub_families_json or [])]
     if "可生产" in chips_set:
         items = [r for r in items if r.tokens_status == "complete" and r.engine_status == "available"]
     if "中文友好" in chips_set:

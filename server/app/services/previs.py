@@ -77,7 +77,8 @@ async def render_previs(style_id: str, engine_id: str, engine_sha: str,
         {"tokens": tokens, "title": title, "variant": variant}, ensure_ascii=False
     ).encode()).decode()
     from .engines import engines_root, load_contract
-    entry = load_contract(engine_id)["entry"]["film"]          # previs 走引擎 film 入口的 light/previs 模式
+    contract = load_contract(engine_id)
+    entry = contract.get("entry", {}).get("previs") or contract["entry"]["film"]
     base = entry.split("?")[0]
     url = f"file://{engines_root() / engine_id / base}?mode=previs&payload={payload}"
     png = await render_page_screenshot(url, size[0], size[1])
