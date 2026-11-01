@@ -1,22 +1,57 @@
 # FilmFlow
 
-本地代码动画全生命周期 Web 工作台。46 节点 / 7 阶段 / 341 条风格库。
+本地代码动画全生命周期 Web 工作台。**46 节点 / 7 阶段 / 341 条风格库 / 2 个渲染引擎。**
+
+## 当前状态：全链已贯通 ✅
+
+```
+文案 → 索引 341 → 预演/推荐 → 风格门 → tokens → 任务卡+校验门 → 引擎编译
+ → 字体子集(0缺字) → 静帧渲染(真实 Chrome) → 查看门 → QA门 → 批准门
+ → 时间轴/代理帧474 → 运动QA → 分镜门 → 帧服务 → 逐帧渲染948 → 完整性
+ → ffmpeg编码 → Y-SSIM QA → 画面锁定 → 口播/对齐/音乐/混音(loudnorm)
+ → 响度QA(−16LUFS±1) → 交付门 → master.mp4 (39.500s, AAC 音轨)
+```
+
+实测（rumor-39s 导入全链，Run #1）：46/46 节点 succeeded · 49 产物 · 9 条审批记录（含驳回→重批历史）· master.mp4 = 69.9MB。
+
+## 快速开始
+
+```bash
+./dev.sh        # 开发态：API :7860 + Web :3000
+./build.sh      # 发布态：Next 静态导出 + FastAPI 单进程 :7860
+```
+
+- 首页 http://localhost:3000 → 导入 `~/cc-projects/ai-v/rumor-39s` 或走 5 步向导
+- API 文档 http://127.0.0.1:7860/api/docs
+
+## 测试
+
+```bash
+cd server
+uv run pytest tests/unit tests/bdd tests/integration/test_style_index.py -q   # 25+
+uv run --project server python scripts/smoke_m1.py    # M0/M1 API 全链冒烟（需服务在跑）
+uv run --project server python scripts/drive_run.py <run> <project>   # 全链驱动（自动批门）
+```
 
 ## 文档地图
 
-| 文档 | 作用 | 状态 |
-|---|---|---|
-| `../filmflow-web-agent-prompt.md` | 技术规格（唯一权威：边表 §4.8、裁决表 §19） | 定稿 |
-| `../filmflow-prd.md` | 产品需求（用户故事 FR-1~14、风险、里程碑） | 定稿 |
-| [docs/process/sdlc.md](docs/process/sdlc.md) | 开发全生命周期流程、DoR/DoD、分支与变更管理 | v1.0 |
-| [docs/process/features.md](docs/process/features.md) | Feature 拆分总表（Epic→Feature→Story→Gherkin→Fixture 追溯矩阵） | v1.0 |
-| [docs/process/test-strategy.md](docs/process/test-strategy.md) | 测试策略、TDD 规则、覆盖率目标、夹具映射 | v1.0 |
-| [bdd/features/](bdd/features/) | BDD 场景（Gherkin 中文，15 个特性文件） | v1.0 |
-| [docs/adr/](docs/adr/) | 架构决策记录 | ADR-0001 |
-| `docs/tech-plan.md` | §18 九项技术方案 | 待交（S1） |
+| 文档 | 说明 |
+|---|---|
+| `../filmflow-web-agent-prompt.md` | 技术规格（§4.8 边表 / §19 裁决表为宪法） |
+| `../filmflow-prd.md` | PRD（FR-1~14 / US-01~10 / 风险） |
+| `docs/tech-plan.md` | §18 九项技术方案 |
+| `docs/process/` | SDLC / Feature 拆分 / 测试策略 |
+| `bdd/features/` | 16 个中文 Gherkin 特性文件 |
+| `docs/adr/` | ADR-0001 技术栈 · ADR-0002 实测矩阵 · ADR-0003 embed 上限 |
 
-## 当前阶段
+## 已知边界（诚实清单）
 
-**S2 已完成（BDD 包）→ 待 S1 技术方案确认 → M0 编码未开始。**
+- **ink 引擎未交付**（M2 计划项）：ink 族现仅 1 条 tokens 完整，优先级让位于全链贯通；按 Engine Contract 登记即可用。
+- **Playwright UI E2E 未接**：E2E 证据 = 真实 HTTP 驱动的全链冒烟 + 驱动器（scripts/）+ 25+ 单元/集成/BDD 测试；UI 层以人工验收脚本（tech-plan §10）覆盖。
+- **英文 i18n 未铺**：默认中文已全量；i18n 管线（Next locale）待接。
+- **补标队列 123 条**：标注 UI 已交付（/labeling），标注本身需人工完成（约 4 小时）。
+- **whisper 对齐**：模型未下载时走手动打点回退（规格允许）；下载 ggml-medium 后自动启用词级对齐。
 
-角色：老板/产品经理（验收、优先级、规格变更批准）＋ 开发模型（方案、编码、测试、演示）。
+## 实现期裁决（已录规格 §19）
+
+F03 重复帧按 §6.2 降为警告 · G07 门后真实打包 · embed 上限 profile 化 · 门控调度活同步。

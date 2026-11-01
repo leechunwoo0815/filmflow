@@ -427,6 +427,7 @@ async def drafts_materialize(draft_id: int, session: Session = Depends(get_sessi
                                          "duration": payload.get("duration", 39.5)}
     profile.setdefault("frames", round(profile.get("duration", 39.5) * profile.get("fps", 24)))
     (proj_dir / "project.profile.json").write_text(json.dumps(profile, ensure_ascii=False, indent=1), encoding="utf-8")
+    run = session.get(Run, created["run_id"])
     session.add(StylePick(project_id=proj.id, draft_id=d.id, primary_id=primary,
                           alternates_json=pick.get("alternates", []), reason=pick.get("reason", "")))
     # A05 批准由 RunEngine 在 A04 完成后自动携带（哈希与上游一致，避免假 stale）
