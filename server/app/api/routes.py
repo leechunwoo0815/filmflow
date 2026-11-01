@@ -63,7 +63,8 @@ async def engines_validate(engine_id: str):
 @router.post("/library/index")
 async def library_index():
     report = idx_svc.scan_library()
-    audit(Session(engine), "library.index", report["index_path"], after=report)
+    with Session(engine) as s:
+        audit(s, "library.index", report["index_path"], after=report)
     return report
 
 
@@ -445,7 +446,9 @@ def _default_project_root(name: str) -> Path:
     n = 1
     while (base / f"{safe}-{n}").exists():
         n += 1
-    return base / f"{safe}-{n}"
+    d = base / f"{safe}-{n}"
+    d.mkdir(parents=True, exist_ok=True)   # 默认根必须真实创建（projects_create 校验目录存在）
+    return d
 
 
 # ---------- workflow / runs ----------

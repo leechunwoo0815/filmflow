@@ -30,6 +30,7 @@
 cd server
 uv run pytest tests/unit tests/bdd tests/integration/test_style_index.py -q   # 25+
 uv run --project server python scripts/smoke_m1.py    # M0/M1 API 全链冒烟（需服务在跑）
+uv run --project server python scripts/e2e_ui.py      # Playwright UI E2E（8 场景，需 ./dev.sh 在跑）
 uv run --project server python scripts/drive_run.py <run> <project>   # 全链驱动（自动批门）
 ```
 
@@ -46,10 +47,10 @@ uv run --project server python scripts/drive_run.py <run> <project>   # 全链�
 
 ## 已知边界（诚实清单）
 
-- **Playwright UI E2E 未接**：E2E 证据 = 真实 HTTP 驱动的全链冒烟 + 驱动器（scripts/）+ 25+ 单元/集成/BDD 测试；UI 层以人工验收脚本（tech-plan §10）覆盖。
+- ~~Playwright UI E2E~~ → 已交付（`scripts/e2e_ui.py`：8 场景 15s 全绿——首页→向导 5 步→风格选择器搜索/设主风格→生成→46 节点画布→EN 切换→导入）。
 - **补标队列 123 条**：标注 UI 已交付（/labeling），标注本身需人工完成（约 4 小时）。
 - **whisper 对齐**：模型未下载时走手动打点回退（规格允许）；下载 ggml-medium 后自动启用词级对齐。
-- ~~ink 引擎~~ → 已交付（M2 项提前关闭：`engines/ink/` 含基准 fixture，producible 61）。
+- ~~ink 引擎~~ → 已交付（`engines/ink/` 含基准 fixture，producible 61）。
 - ~~英文 i18n~~ → 已交付（`web/src/lib/i18n.tsx`：zh/en 双词典 + 语言切换，全页面接入）。
 
 ## 实现期裁决（已录规格 §19）

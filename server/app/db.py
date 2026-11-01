@@ -8,7 +8,8 @@ from .models import TABLES
 
 engine = create_engine(
     f"sqlite:///{settings.db_path}",
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 30},
+    pool_size=20, max_overflow=40, pool_pre_ping=True, pool_recycle=1800,
 )
 
 
