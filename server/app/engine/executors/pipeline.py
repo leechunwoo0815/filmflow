@@ -478,9 +478,11 @@ async def f03(ctx):
     if black:
         raise RuntimeError(f"黑帧 {len(black)}：{black[:8]}…")
     ratio = dups / max(frames, 1)
-    if ratio >= 0.001:
-        raise RuntimeError(f"重复帧比例 {ratio:.3%} ≥ 0.1%")
-    _artifact_json(ctx, "frame_report.json", {"frames": frames, "missing": [], "black": [], "dups": dups})
+    # 规格 §6.2：重复帧=警告（有意停顿的影片必然有重复；§4.6 的 <0.1% 硬门与其冲突，按 §6.2 执行）
+    dup_warning = ratio >= 0.001
+    _artifact_json(ctx, "frame_report.json", {"frames": frames, "missing": [], "black": [],
+                                              "dups": dups, "dup_ratio": round(ratio, 4),
+                                              "dup_warning": dup_warning})
 
 
 @executor("ffmpeg-encode")
@@ -646,7 +648,9 @@ async def g05(ctx):
     out.parent.mkdir(parents=True, exist_ok=True)
     duck = 10 ** (-12 / 20)  # −12dB
     argv = ["ffmpeg", "-y", "-i", str(voice), "-i", str(music), "-filter_complex",
-            f"[1:a]highpass=f=80,volume={duck:.4f}[m];[0:a][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.891[a]",
+            f"[1:a]highpass=f=80,volume={duck:.4f}[m];"
+            "[0:a][m]amix=inputs=2:duration=first:normalize=0,"
+            "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.891[a]",
             "-map", "[a]", "-ar", "48000", "-ac", "1", str(out)]
     res = await ctx["runner"].run(argv, timeout=300)
     if not res.ok:

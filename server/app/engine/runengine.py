@@ -159,15 +159,19 @@ def _ready_set(session: Session, run: Run, wf: Workflow, states: dict[str, NodeR
         if blocked_reason:
             ready[nid] = blocked_reason
             continue
-        # 门有效性（human gate）：活同步门节点状态——有效→succeeded，失效→blocked+gate.stale
+        # 门有效性（human gate）：活同步门节点状态——有效→succeeded（纯门）/ idle（有真实执行体），失效→blocked
         if node["gate"] == "human":
             params = _node_params(graph, nid)
             ch = gate_content_hash(nid, params, _upstream_hashes(session, run.id, nid, states, project_root))
             ok, stale = _gate_valid(session, run, nid, ch)
             if ok:
-                if st.status != "succeeded":
-                    st.status = "succeeded"
+                target = "idle" if node["executor"] not in ("gate", "still-view") else "succeeded"
+                if st.status != target:
+                    st.status = target
                     session.add(st)
+                if target == "succeeded":
+                    ready[nid] = "busy_or_done"
+                    continue
             else:
                 if st.status in ("succeeded", "cached"):
                     emit("gate.stale", run.id, nid)
@@ -213,15 +217,24 @@ async def execute_node(run_id: int, node_id: str) -> dict:
         st = states[node_id]
 
         if N[node_id]["gate"] == "human":
-            # 人工门：状态由审批有效性活同步（_ready_set 已写 succeeded），此处仅防御
+            # 人工门：审批有效性活同步；有真实执行体的门（如 G07 打包）在批准后照常执行
             ok, _ = _gate_valid(session, run, node_id,
                                 gate_content_hash(node_id, params,
                                                   _upstream_hashes(session, run_id, node_id, states, project_root)))
-            if ok and st.status != "succeeded":
-                st.status = "succeeded"
-                session.add(st)
-                session.commit()
-            return {"status": st.status}
+            if not ok:
+                if st.status not in ("blocked", "idle"):
+                    st.status = "blocked"
+                    session.add(st)
+                    session.commit()
+                return {"status": "blocked", "reason": "等待批准"}
+            if N[node_id]["executor"] in ("gate", "still-view"):
+                if st.status != "succeeded":
+                    st.status = "succeeded"
+                    st.finished_at = _now()
+                    session.add(st)
+                    session.commit()
+                return {"status": "succeeded"}
+            # 落到下方真实执行流程
 
         input_hashes = _upstream_hashes(session, run_id, node_id, states, project_root)
         key = node_cache_key(node_id, EXECUTOR_VERSION, params, input_hashes, run.caps_json or [])
