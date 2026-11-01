@@ -70,7 +70,24 @@ class FrameServer:
                 else:
                     self.send_error(404)
 
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
+        class ReusableServer(ThreadingHTTPServer):
+            allow_reuse_address = True
+
+        try:
+            self.httpd = ReusableServer(("127.0.0.1", self.port), Handler)
+        except OSError:
+            # 规格 §5.2：端口被占且可健康检查 → 复用已有服务
+            import urllib.request
+            try:
+                with urllib.request.urlopen(
+                        f"http://127.0.0.1:{self.port}/engine/riso/entry/film.html", timeout=3) as r:
+                    if r.status != 200:
+                        raise OSError
+                self.httpd = None  # 标记复用
+                return
+            except Exception:
+                from ...errors import ApiError, ErrorCode
+                raise ApiError(ErrorCode.E_PORT_BUSY, f"8787 被占用且不可复用")
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
 
@@ -101,10 +118,10 @@ async def f01(ctx):
 # ---------- 通用 Chrome 截图 ----------
 
 async def _chrome_screenshot(ctx, url: str, out_png: Path, width: int, height: int, timeout: float) -> None:
-    from ..config import detect_chrome
+    from ...config import detect_chrome
     chrome = detect_chrome()
     if not chrome:
-        from ..errors import ApiError, ErrorCode
+        from ...errors import ApiError, ErrorCode
         raise ApiError(ErrorCode.E_ENV_MISSING, "未找到 Chrome")
     out_png.parent.mkdir(parents=True, exist_ok=True)
     profile = f"/tmp/ff-chrome-{ctx['node_id']}"
@@ -120,7 +137,10 @@ def _engine_url(ctx, engine_build: dict, entry: str, query: str) -> str:
     base = entry.split("?")[0]
     q = f"{query}"
     if "embed" not in q:
-        q += f"&embed=http://127.0.0.1:8787/project/fonts/embed.css"
+        root = Path(ctx["project_root"])
+        embed_rel = ("fonts/noto-sans-sc/embed.css" if (root / "fonts/noto-sans-sc/embed.css").exists()
+                     else "fonts/embed.css")
+        q += f"&embed=http://127.0.0.1:8787/project/{embed_rel}"
     return f"http://127.0.0.1:8787/engine/{engine_build['engine_id']}/{base}?{q}"
 
 
@@ -174,7 +194,7 @@ async def d02(ctx):
     spec = u.get("D01") or {}
     build = _engine_build(ctx)
     ensure_frame_server(ctx)
-    from ..services import artifacts as art
+    from ...services import artifacts as art
     stills = []
     for s in spec.get("scenes", []):
         t = s.get("last_text_at", s.get("start", 0))
@@ -203,10 +223,11 @@ async def d04(ctx):
     from io import BytesIO
     import numpy as np
     from PIL import Image
-    from ..models import Artifact
+    from ...models import Artifact
     from sqlmodel import select
     rows = ctx["session"].exec(select(Artifact).where(
         Artifact.run_id == ctx["run_id"], Artifact.node_id == "D02")).all()  # type: ignore[arg-type]
+    rows = [r for r in rows if r.type == "PNG"]   # 只检图像产物（清单 JSON 排除）
     metrics = []
     for r in rows:
         img = Image.open(BytesIO(Path(r.path).read_bytes()))
@@ -255,7 +276,7 @@ async def e02(ctx):
 
 @executor("timeline-binding")
 async def e03(ctx):
-    from ..services.engines import load_contract
+    from ...services.engines import load_contract
     build = _engine_build(ctx)
     contract = load_contract(build["engine_id"])
     u = _upstream_json(ctx, ["E01", "E02"])
@@ -294,7 +315,20 @@ async def e05(ctx):
     (_project_file(ctx, "out/DONE")).unlink(missing_ok=True)
     url = _engine_url(ctx, build, build["entry"]["film"], f"mode=proxy&fps=12&scale=0.25&total={proxy_frames}")
     chrome_argv = await _chrome_render_argv(ctx, url)
-    res = await ctx["runner"].run(chrome_argv, timeout=720)
+    import asyncio as _aio
+    node_cancel = _aio.Event()
+    run_cancel = ctx["cancel_event"]
+
+    async def _watch_done():
+        while not node_cancel.is_set():
+            if run_cancel is not None and run_cancel.is_set():
+                node_cancel.set(); break
+            if (_project_file(ctx, "out/DONE")).exists():
+                node_cancel.set(); break
+            await _aio.sleep(2)
+    watcher = _aio.create_task(_watch_done())
+    res = await ctx["runner"].run(chrome_argv, timeout=720, cancel_event=node_cancel)
+    watcher.cancel()
     done = _project_file(ctx, "out/DONE").exists()
     have = len(list((_project_file(ctx, "out/proxy")).glob("*.png")))
     if have < proxy_frames or (not done and not res.canceled):
@@ -311,17 +345,17 @@ async def e05(ctx):
         d.text(((i % 4) * 480 + 10, (i // 4) * 270 + 10), str(idx), fill="#fff")
     sheet_path = _project_file(ctx, "out/contact_sheet.png")
     sheet.save(sheet_path)
-    from ..services import artifacts as art
+    from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], sheet_path, "PNG")
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "PNG", str(ap), sha, {"contact_sheet": True})
     await ctx["progress"](1.0, f"proxy {have}/{proxy_frames}")
 
 
 async def _chrome_render_argv(ctx, url: str) -> list[str]:
-    from ..config import detect_chrome
+    from ...config import detect_chrome
     chrome = detect_chrome()
     if not chrome:
-        from ..errors import ApiError, ErrorCode
+        from ...errors import ApiError, ErrorCode
         raise ApiError(ErrorCode.E_ENV_MISSING, "未找到 Chrome")
     return [chrome, "--headless=new", "--disable-gpu", "--enable-unsafe-swiftshader",
             f"--user-data-dir=/tmp/ff-{ctx['node_id']}", "--window-size=1920,1080", "--hide-scrollbars", url]
@@ -386,12 +420,25 @@ async def f02(ctx):
     url = _engine_url(ctx, build, build["entry"]["film"],
                       f"mode=render&start={missing[0]}&end={missing[-1] + 1}&total={frames}")
     argv = await _chrome_render_argv(ctx, url)
-    last_pct = [0.0]
+    import asyncio as _aio
+    node_cancel = _aio.Event()
+    run_cancel = ctx["cancel_event"]
 
     async def prog(pct, msg):
         await ctx["progress"](pct, msg)
 
-    res = await ctx["runner"].run(argv, timeout=900, on_progress=prog)
+    async def _watch_done():
+        while not node_cancel.is_set():
+            if run_cancel is not None and run_cancel.is_set():
+                node_cancel.set(); break
+            if (_project_file(ctx, "out/DONE")).exists():
+                node_cancel.set(); break
+            frames_now = len(list(frames_dir.glob("*.png")))
+            await ctx["progress"](min(frames_now / frames, 0.99), f"frame {frames_now}/{frames}")
+            await _aio.sleep(2)
+    watcher = _aio.create_task(_watch_done())
+    res = await ctx["runner"].run(argv, timeout=1800, on_progress=prog, cancel_event=node_cancel)
+    watcher.cancel()
     have = len(list(frames_dir.glob("*.png")))
     still_missing = [i for i in range(frames) if not (frames_dir / f"{i:04d}.png").exists()]
     if still_missing:
@@ -449,7 +496,7 @@ async def f04(ctx):
                                   on_progress=None)
     if not res.ok or not out.exists():
         raise RuntimeError("ffmpeg 编码失败：" + "\n".join(res.stderr_tail[-8:]))
-    from ..services import artifacts as art
+    from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], out, "MP4")
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "MP4", str(ap), sha)
 
@@ -516,21 +563,27 @@ async def g01(ctx):
     res = await ctx["runner"].run(argv, timeout=120)
     if not res.ok:
         raise RuntimeError("口播转码失败")
-    from ..services import artifacts as art
+    from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], dst, "WAV")
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha)
 
 
 @executor("audio-align")
 async def g02(ctx):
-    from ..config import detect_whisper_cli, settings
+    from ...config import detect_whisper_cli, settings
     cli = detect_whisper_cli()
     model = settings.home / "models" / f"{settings.whisper_model}.bin"
     voice = _project_file(ctx, "card/voice.wav")
     if not voice.exists():
         raise RuntimeError("voice.wav 缺失")
+    manual = ctx["params"].get("manual_segments")
+    if (not cli or not model.exists()) and manual:
+        # 规格 §12：whisper 缺失回退手动打点（不静默——来源标记 manual）
+        _artifact_json(ctx, "alignment.json",
+                       {"source": "manual", "model": None, "segments": manual})
+        return
     if not cli or not model.exists():
-        from ..errors import ApiError, ErrorCode
+        from ...errors import ApiError, ErrorCode
         raise ApiError(ErrorCode.E_MODEL_MISSING,
                        f"whisper 模型缺失：{model}（首跑下载或 sources.json.models 指本地文件）")
     outdir = Path(ctx["workdir"]) / "whisper"
@@ -598,7 +651,7 @@ async def g05(ctx):
     res = await ctx["runner"].run(argv, timeout=300)
     if not res.ok:
         raise RuntimeError("混音失败：" + "\n".join(res.stderr_tail[-6:]))
-    from ..services import artifacts as art
+    from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], out, "WAV")
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha)
 
@@ -647,9 +700,9 @@ async def g07(ctx):
     res = await ctx["runner"].run(argv, timeout=600)
     if not res.ok:
         raise RuntimeError("master 封装失败")
-    from ..models import Approval, Artifact
+    from ...models import Approval, Artifact
     from sqlmodel import select
-    from ..services import artifacts as art
+    from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], master, "MP4")
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "MP4", str(ap), sha)
     approvals = ctx["session"].exec(select(Approval).where(Approval.run_id == ctx["run_id"])).all()  # type: ignore[arg-type]

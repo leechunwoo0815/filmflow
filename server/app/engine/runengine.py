@@ -159,13 +159,22 @@ def _ready_set(session: Session, run: Run, wf: Workflow, states: dict[str, NodeR
         if blocked_reason:
             ready[nid] = blocked_reason
             continue
-        # 门有效性（human gate）
+        # 门有效性（human gate）：活同步门节点状态——有效→succeeded，失效→blocked+gate.stale
         if node["gate"] == "human":
             params = _node_params(graph, nid)
             ch = gate_content_hash(nid, params, _upstream_hashes(session, run.id, nid, states, project_root))
-            ok, _stale = _gate_valid(session, run, nid, ch)
-            if not ok:
-                ready[nid] = "等待批准"
+            ok, stale = _gate_valid(session, run, nid, ch)
+            if ok:
+                if st.status != "succeeded":
+                    st.status = "succeeded"
+                    session.add(st)
+            else:
+                if st.status in ("succeeded", "cached"):
+                    emit("gate.stale", run.id, nid)
+                if st.status not in ("blocked",):
+                    st.status = "blocked"
+                    session.add(st)
+                ready[nid] = "等待批准" + ("（stale）" if stale else "")
                 continue
         # caps
         ok, why = caps_mod.check_allowed(nid, caps)
@@ -204,7 +213,15 @@ async def execute_node(run_id: int, node_id: str) -> dict:
         st = states[node_id]
 
         if N[node_id]["gate"] == "human":
-            return {"status": "blocked", "reason": "人工门由审批驱动"}
+            # 人工门：状态由审批有效性活同步（_ready_set 已写 succeeded），此处仅防御
+            ok, _ = _gate_valid(session, run, node_id,
+                                gate_content_hash(node_id, params,
+                                                  _upstream_hashes(session, run_id, node_id, states, project_root)))
+            if ok and st.status != "succeeded":
+                st.status = "succeeded"
+                session.add(st)
+                session.commit()
+            return {"status": st.status}
 
         input_hashes = _upstream_hashes(session, run_id, node_id, states, project_root)
         key = node_cache_key(node_id, EXECUTOR_VERSION, params, input_hashes, run.caps_json or [])
@@ -267,6 +284,8 @@ async def execute_node(run_id: int, node_id: str) -> dict:
             st.status = "succeeded"
             st.progress = 1.0
             emit("node.succeeded", run_id, node_id, lock_waits=lock_waits)
+            if node_id == "A04":
+                _auto_approve_a05(session, run, wf, states, project_root)
         except Exception as e:  # 失败必须可见（规格 §16）
             st.status = "failed"
             st.message = str(e)[:2000]
@@ -281,6 +300,26 @@ async def execute_node(run_id: int, node_id: str) -> dict:
             session.add(st)
             session.commit()
         return {"status": st.status, "message": st.message}
+
+
+def _auto_approve_a05(session: Session, run: Run, wf: Workflow, states: dict, project_root: str) -> None:
+    """A04 完成后自动携带 A05 批准（导入继承原风格 / 向导 materialize 携带选择）。
+
+    哈希在 A04 产物落定后计算，保证门 content_hash 与上游一致（不产生假 stale）。
+    """
+    meta = (wf.graph_json or {}).get("meta", {})
+    existing = session.exec(select(Approval).where(
+        Approval.run_id == run.id, Approval.gate_id == "A05", Approval.decision == "approved")).first()  # type: ignore[arg-type]
+    if existing is not None:
+        return
+    params = _node_params(_graph(wf), "A05")
+    ch = gate_content_hash("A05", params, _upstream_hashes(session, run.id, "A05", states, project_root))
+    decision = meta.get("style_decision") or {}
+    session.add(Approval(run_id=run.id, gate_id="A05", decision="approved", policy="inherit",
+                         content_hash=ch, author="local",
+                         note=decision.get("reason") or "导入继承原风格"))
+    session.commit()
+    emit("gate.decided", run.id, "A05", decision="approved", auto=True)
 
 
 def _clone_artifacts(session: Session, prev: NodeRun, run_id: int, new_node_run_id: int | None, node_id: str) -> None:
@@ -372,18 +411,17 @@ def cancel_run(run_id: int) -> None:
 
 
 async def resume_run(run_id: int) -> dict:
-    """断点续跑（规格 §9.4）：非终态节点重新入队。"""
+    """断点续跑（规格 §9.4）：非终态节点重新入队（含被级联 skip 的人工门）。"""
     with Session(engine) as session:
         run = session.get(Run, run_id)
         states = _states(session, run_id)
         n = 0
         for st in states.values():
             if st.status in ("failed", "canceled", "running", "queued", "idle", "skipped"):
-                if N[st.node_id]["gate"] != "human":
-                    st.status = "idle"
-                    st.progress = 0.0
-                    session.add(st)
-                    n += 1
+                st.status = "idle"
+                st.progress = 0.0
+                session.add(st)
+                n += 1
         session.add(run)
         session.commit()
     start_run(run_id)

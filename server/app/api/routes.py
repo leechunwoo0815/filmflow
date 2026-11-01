@@ -247,13 +247,16 @@ async def projects_create(payload: dict, session: Session = Depends(get_session)
         raise ApiError(ErrorCode.E_VALIDATION, f"项目根必须在白名单内：{settings.workspace_roots}")
     if not rp.is_dir():
         raise ApiError(ErrorCode.E_VALIDATION, f"目录不存在：{rp}")
-    p = Project(name=name, root=str(rp))
-    session.add(p)
-    session.commit()
-    session.refresh(p)
+    p = session.exec(select(Project).where(Project.root == str(rp))).first()  # type: ignore[arg-type,union-attr]
+    if p is None:
+        p = Project(name=name, root=str(rp))
+        session.add(p)
+        session.commit()
+        session.refresh(p)
     wf = _ensure_workflow(session, p)
+    run = _ensure_run(session, wf)
     audit(session, "project.create", root, after={"id": p.id})
-    return {"project": table_dict(p), "workflow_id": wf.id, "run_id": _ensure_run(session, wf)["id"]}
+    return {"project": table_dict(p), "workflow_id": wf.id, "run_id": run.id}
 
 
 @router.post("/projects/import")
@@ -276,8 +279,24 @@ async def projects_import(payload: dict, session: Session = Depends(get_session)
     graph["params"]["B06"] = {"mode": "import"}
     graph["params"]["B02"] = {"mode": "import"}
     graph["params"]["B03"] = {"mode": "import"}
+    graph["params"]["C01"] = {"engine_id": "riso"}   # 导入项目：参考片即 riso
+    stills_frames = (task.get("stills") or {}).get("frames") or []
+    if isinstance(stills_frames, list) and stills_frames:
+        graph["params"]["D02"] = {"scenes": [f.get("id") for f in stills_frames
+                                             if isinstance(f, dict) and f.get("id")][:3]}
     wf.graph_json = graph
     session.add(wf)
+    session.commit()
+    # 导入隐含 A05（风格已内嵌于 task.json）：携带批准 + decision 落盘
+    run = session.get(Run, created["run_id"])
+    import hashlib
+    ch = hashlib.sha256(task_p.read_bytes()).hexdigest()
+    (rp / "card").mkdir(parents=True, exist_ok=True)
+    (rp / "card" / "style_decision.json").write_text(json.dumps({
+        "primary": "imported:" + rp.name, "alternates": [], "reason": "导入项目继承原风格",
+        "author": "local", "decided_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc).isoformat(), "index_sha": ""},
+        ensure_ascii=False, indent=1), encoding="utf-8")
     session.commit()
     audit(session, "project.import", str(rp), after=graph["meta"])
     return created
@@ -410,10 +429,7 @@ async def drafts_materialize(draft_id: int, session: Session = Depends(get_sessi
     (proj_dir / "project.profile.json").write_text(json.dumps(profile, ensure_ascii=False, indent=1), encoding="utf-8")
     session.add(StylePick(project_id=proj.id, draft_id=d.id, primary_id=primary,
                           alternates_json=pick.get("alternates", []), reason=pick.get("reason", "")))
-    run = session.get(Run, created["run_id"])
-    ch = gate_content_hash("A05", {}, {"decision": json.dumps(decision, sort_keys=True)})
-    session.add(Approval(run_id=run.id, gate_id="A05", decision="approved", policy="inherit",
-                         content_hash=ch, author="local", note="向导 materialize 携带"))
+    # A05 批准由 RunEngine 在 A04 完成后自动携带（哈希与上游一致，避免假 stale）
     d.materialized_run_id = run.id
     session.add(d)
     session.commit()
@@ -612,6 +628,14 @@ async def gate_decide(gate_id: str, payload: dict, session: Session = Depends(ge
         raise not_found("run")
     if gate_id not in edges.N or edges.N[gate_id]["gate"] != "human":
         raise ApiError(ErrorCode.E_VALIDATION, f"{gate_id} 不是人工门")
+    # 门前置 ①：上游必须全部完成——失败/跳过的上游不得签字（规格 §16）
+    states = {r.node_id: r for r in session.exec(select(NodeRun).where(NodeRun.run_id == run_id)).all()}
+    for up, ty in edges.UPSTREAM[gate_id].items():
+        if ty in ("data", "trigger"):
+            up_st = states.get(up)
+            if not up_st or up_st.status not in ("succeeded", "cached"):
+                raise ApiError(ErrorCode.E_VALIDATION,
+                               f"门 {gate_id} 的上游 {up} 未完成（{up_st.status if up_st else 'missing'}），不能签字")
     decision = payload.get("decision")
     if decision not in ("approved", "rejected"):
         raise ApiError(ErrorCode.E_VALIDATION, "decision 必须是 approved/rejected")
@@ -652,6 +676,8 @@ async def gate_decide(gate_id: str, payload: dict, session: Session = Depends(ge
         session.commit()
     emit("gate.decided", run_id, gate_id, decision=decision)
     audit(session, "gate.decide", f"{run_id}:{gate_id}", after={"decision": decision, "note": payload.get("note", "")})
+    if decision == "approved":
+        re_mod.start_run(run_id)   # 调度循环在等门时退出；批准即重启
     return {"ok": True, "decision": decision, "content_hash": ch[:12]}
 
 
@@ -678,9 +704,14 @@ async def gates_pending(run_id: int, session: Session = Depends(get_session)):
     proj_root = re_mod._project_root(session, run)
     graph = wf.graph_json or {}
     out = []
+    terminal = ("succeeded", "cached")
     for gid in edges.HUMAN_GATES:
         st = states.get(gid)
-        if not st or st.status in ("succeeded", "cached"):
+        if not st or st.status in terminal:
+            continue
+        # 只列出「真正在等」的门：data/trigger 上游全部完成
+        if any((s := states.get(up)) is None or s.status not in terminal
+               for up, ty in edges.UPSTREAM[gid].items() if ty in ("data", "trigger")):
             continue
         ch = gate_content_hash(gid, (graph.get("params", {}) or {}).get(gid, {}),
                                re_mod._upstream_hashes(session, run_id, gid, states, proj_root))
@@ -714,6 +745,25 @@ async def stills_viewed(project_id: int, payload: dict, session: Session = Depen
 
 
 # ---------- 任务卡编辑器 API（T11） ----------
+
+@router.post("/projects/{project_id}/validate")
+async def task_validate(project_id: int, session: Session = Depends(get_session)):
+    """运行 vendored validate_task.py（编辑器校验按钮与 B07 同一验证器）。"""
+    proj = session.get(Project, project_id)
+    if not proj:
+        raise not_found("project")
+    tp = Path(proj.root) / "card" / "task.json"
+    if not tp.exists():
+        raise ApiError(ErrorCode.E_VALIDATION, "card/task.json 不存在：先编辑或导入")
+    tool = Path(__file__).resolve().parents[2] / "tools" / "validate_task.py"
+    import subprocess
+    r = subprocess.run(["python3", str(tool), str(tp)], capture_output=True, text=True, timeout=60)
+    try:
+        report = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        raise ApiError(ErrorCode.E_VALIDATION, "validator 输出异常：" + r.stderr[-300:])
+    return report
+
 
 @router.get("/projects/{project_id}/task")
 async def task_get(project_id: int, session: Session = Depends(get_session)):

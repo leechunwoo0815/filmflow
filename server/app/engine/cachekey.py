@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "1.0.0"  # 执行器行为变更时递增
+EXECUTOR_VERSION = "1.1.0"  # 执行器行为变更时递增
 
 
 def canonical(obj) -> str:

@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { height: 100%; }
+body { @apply bg-bg text-txt antialiased; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { @apply bg-line rounded; }
+::-webkit-scrollbar-track { @apply bg-panel; }
+
+input, textarea, select { @apply bg-panel2 border border-line rounded px-2 py-1.5 text-txt text-sm outline-none focus:border-blue; }
+
+.btn { @apply inline-flex items-center gap-1 rounded px-3 py-1.5 text-sm border border-line bg-panel2 hover:border-dim disabled:opacity-40 disabled:cursor-not-allowed; }
+.btn-primary { @apply btn bg-blue/15 border-blue/40 text-blue hover:border-blue; }
+.btn-amber { @apply btn bg-amber/15 border-amber/40 text-amber hover:border-amber; }
+.chip { @apply rounded-full px-2.5 py-0.5 text-xs border border-line text-dim cursor-pointer select-none hover:border-dim hover:text-txt; }
+.chip-on { @apply bg-blue/20 border-blue/50 text-blue; }
+.badge { @apply rounded px-1.5 py-0.5 text-[10px] border; }
+.card { @apply bg-panel border border-line rounded-lg overflow-hidden; }
