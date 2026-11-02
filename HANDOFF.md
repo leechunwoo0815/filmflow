@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-02 · R2.0 Phase 0.1–8 已完成；R2.5 FR-26 已完成
-> 当前基线：R2.5 FR-26 代码 `a37570d` / tag `r2_5-review`；交接文档提交见 `git log` 最新一条。
+> 更新时间：2026-11-02 · R2.0 Phase 0.1–8 已完成；R2.5 FR-26/27/28 完成、FR-31 部分
+> 当前基线：R2.5 代码 `65ba92a` / tag `r2_5-delivery`（FR-28）；FR-31 部分未打 tag；交接文档提交见 `git log` 最新一条。
 > 本文是**唯一权威接手入口**；规格 `../filmflow-web-agent-prompt.md` 仍是宪法，v2 需求以
 > `docs/prd/PRD-002-production-workbench.md` + `docs/adr/ADR-0005-v2-ratification.md` 为准。
 > **先读本文 §0、§1、§6，再读 `AGENTS.md`、PRD-002、ADR-0005、`vendor/README.md`。**
@@ -24,7 +24,7 @@ curl -s http://127.0.0.1:7860/api/health
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 86 passed
+cd server && uv run pytest tests -q                       # 93 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景
 uv run --project server python scripts/smoke_m1.py         # API 冒烟：46 节点 / 93 边
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量验收
@@ -35,9 +35,9 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 
 ### 0.3 当前下一步
 
-**R2.0 已验收；R2.5 已获授权并完成 FR-26，下一步 R2.5 · FR-27 音频工作台。**
-R2.0 证据见 §2.4–2.7/`docs/process/r2-acceptance.md`；R2.5 计划与 FR-26 证据见
-`docs/process/r2_5-plan.md` / §2.8。不要开始 R3/R4，也不要重做 R2.0。
+**R2.0 已验收；R2.5 已获授权并完成 FR-26/27/28，下一步收尾 FR-31（音频占位/wizard 标题预演/示例只读副本）与 40s 交付实测。**
+R2.0 证据见 §2.4–2.7/`docs/process/r2-acceptance.md`；R2.5 计划与证据见
+`docs/process/r2_5-plan.md` / §2.8–2.11。不要开始 R3/R4，也不要重做 R2.0。
 
 ### 0.4 不要做的事
 
@@ -57,7 +57,7 @@ R2.0 证据见 §2.4–2.7/`docs/process/r2-acceptance.md`；R2.5 计划与 FR-2
 
 | 项 | 值 |
 |---|---|
-| R2.5 FR-26 代码 | `a37570d`（tag `r2_5-review`）；当前 HEAD 以 `git log` 为准 |
+| R2.5 代码 | `65ba92a`（FR-28 tag `r2_5-delivery`；FR-31 部分未打 tag） |
 | Phase 1 tag | `r2-edge-fix` → `4f9e381` |
 | Phase 3 tag | `r2-scene-dsl` → `53e6462` |
 | Phase 4 tag | `r2-incremental` → `07b5237` |
@@ -66,10 +66,12 @@ R2.0 证据见 §2.4–2.7/`docs/process/r2-acceptance.md`；R2.5 计划与 FR-2
 | Phase 7 tag | `r2-jobs` → `f5d5de1` |
 | Phase 8 tag | `r2-golden` → `371ea4b` |
 | R2.5 FR-26 tag | `r2_5-review` → `a37570d` |
-| 测试 | **86 passed**（unit 67 / integration 12 / BDD 7） |
+| R2.5 FR-27 tag | `r2_5-audio` → `cd7312f` |
+| R2.5 FR-28 tag | `r2_5-delivery` → `9c4ac00` |
+| 测试 | **93 passed**（unit 74 / integration 12 / BDD 7） |
 | UI E2E | 8 场景 / 9 检查全绿（约 16–20s） |
 | API 冒烟 | 46 节点 / **93 边**通过 |
-| EXECUTOR_VERSION | **2.5.1**（`server/app/engine/cachekey.py`） |
+| EXECUTOR_VERSION | **2.6.2**（`server/app/engine/cachekey.py`） |
 
 ### 1.2 R2.0 八个 FR 的真实状态
 
@@ -145,7 +147,7 @@ PASS: R2.0 Phase 4 5s 增量验收通过
 ### 2.3 回归
 
 ```bash
-cd server && uv run pytest tests -q                       # 86 passed
+cd server && uv run pytest tests -q                       # 93 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # 8 场景
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
 ```
@@ -249,6 +251,42 @@ PASS: R2.5 FR-26 静帧审阅验收通过
 
 - `/review` Playwright 冒烟：22 张图、contact sheet 可见、全场景已看、100/200% 键盘可用。
 - 修复：B06 同文档缓存命中不写 Run 快照 task.json，`_task_path` 回退只读 `card/task.json`。
+
+### 2.9 R2.5 FR-27 音频工作台验收
+
+`scripts/verify_r2_5_audio.py` 实测（project 140 / run 184）：
+
+```
+waveform 1200 peaks in 51ms
+G01/G02/G05/G06/G07 = succeeded
+audio metrics lufs=-15.0 true_peak=-9.5 sync_dev_s=0.0 sync_verified=True
+stem voice/music/sfx = 5.0 / 5.0 / 5.0s
+master 5.000s + audio stream
+PASS: R2.5 FR-27 音频工作台验收通过
+```
+
+- 上传/录音 Take、主 Take、waveform、手动对齐、音乐许可均有 API；`/audio` 页面 Playwright 冒烟通过。
+- G05 已改 sidechaincompress + 音乐循环/淡出；G06 使用 true peak 与 0.15s 同步阈值。
+- 关键修复：G04 stdout 管道死锁；G07 批准后必须回 idle 才能执行 package。
+
+### 2.10 R2.5 FR-28 交付验收
+
+`scripts/verify_r2_5_delivery.py` 实测（project 142 / run 186）：
+
+```
+delivery job succeeded wall 26.1s
+qc {master16/9/duration/audio/lufs/truePeak/captions/covers} 全 true
+master16 1920×1080/24 + audio；master9 1080×1920/24 + audio，均 5.000s
+9 文件 + zip（README/manifest/qc/rights）
+PASS: R2.5 FR-28 交付 v1 验收通过
+```
+
+### 2.11 R2.5 FR-31 部分交付
+
+- 首页 3 模板（口播 15s / 观点 30s / 产品 40s）→ `POST /projects/from-template` 一键建项目；
+  冒烟 project 143/run 187。
+- 空项目 5 步引导卡（可跳过）、`/help` 快捷键/Scene DSL/QA 错误。
+- 待补：模板音频占位、wizard 标题预演、示例只读副本；因此 FR-31 仍为 PARTIAL。
 
 ## 3. R2.0 Phase 0.1–8 实施记录
 
@@ -706,9 +744,9 @@ docs(当前) + tokens/font/engine
 | FR | 状态 | 说明 |
 |---|---|---|
 | FR-26 全场景静帧审阅 | **DONE**（tag `r2_5-review`） | D01 长场景 6 帧、D02 contact sheet/stills_manifest、D03 逐场门禁、D04 review_diff、`/review` 页 |
-| FR-27 音频工作台 v1 | TODO（下一项） | peaks/录音导入/手动对齐/sidechain/stems/许可；G05/G06 改造 |
-| FR-28 交付 v1 | TODO | 16:9+9:16、SRT、双封面、manifest/QC/rights/zip、G07 改造 |
-| FR-31 新手引导 | TODO | 3 模板 + 10 分钟首片 |
+| FR-27 音频工作台 v1 | **DONE**（tag `r2_5-audio`） | Take/录音、peaks、手动对齐、许可、sidechain、Stems、G06 TP/同步 |
+| FR-28 交付 v1 | **DONE**（tag `r2_5-delivery`） | 9 文件、SRT、双封面、QC/zip；5s 26.1s |
+| FR-31 新手引导 | **PARTIAL** | 3 模板/首页引导/帮助已做；音频占位/wizard 标题预演/只读示例待补 |
 
 详见 `docs/process/r2_5-plan.md`。不要开始 R3/R4；FR-27/28/31 全部验收前不得宣称 R2.5 DoD。
 
@@ -720,7 +758,7 @@ docs(当前) + tokens/font/engine
 
 ```bash
 ./dev.sh                                                   # API 7860 + Web 3000
-cd server && uv run pytest tests -q                        # 86 passed
+cd server && uv run pytest tests -q                        # 93 passed
 cd .. && uv run --project server python scripts/e2e_ui.py   # UI 8 场景
 uv run --project server python scripts/smoke_m1.py          # 46 / 93
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量
@@ -729,6 +767,8 @@ uv run --project server python scripts/verify_r2_profiles.py        # Phase 6 �
 uv run --project server python scripts/verify_r2_recovery.py        # Phase 7 kill -9 恢复验收
 uv run --project server python scripts/golden_run.py --project 5s    # Phase 8 黄金回归（5s/15s/40s）
 uv run --project server python scripts/verify_r2_5_review.py        # R2.5 FR-26 审阅验收
+uv run --project server python scripts/verify_r2_5_audio.py         # R2.5 FR-27 音频验收
+uv run --project server python scripts/verify_r2_5_delivery.py      # R2.5 FR-28 交付验收
 uv run --project server python scripts/drive_run.py <run> <project>  # 旧全链驱动
 ```
 
@@ -802,7 +842,7 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh` 起服务；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **86 passed**（干净库首跑）。
+- [ ] `cd server && uv run pytest tests -q` → **93 passed**（干净库首跑）。
 - [ ] `uv run --project server python scripts/e2e_ui.py` → 8 场景全绿。
 - [ ] `uv run --project server python scripts/smoke_m1.py` → 46 节点 / 93 边。
 - [ ] `uv run --project server python scripts/verify_r2_5s_incremental.py` → PASS（66/54）。
@@ -811,6 +851,8 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 - [ ] `uv run --project server python scripts/verify_r2_recovery.py` → PASS（F02 中 kill -9，≤60s 恢复、frames=120）。
 - [ ] `uv run --project server python scripts/golden_run.py --project 5s` → PASS（6 帧 SSIM/pHash；15s/40s 可选）。
 - [ ] `uv run --project server python scripts/verify_r2_5_review.py` → PASS（逐场查看/contact sheet/diff）。
+- [ ] `uv run --project server python scripts/verify_r2_5_audio.py` → PASS（波形/对齐/许可/Stems/G06）。
+- [ ] `uv run --project server python scripts/verify_r2_5_delivery.py` → PASS（9 文件、QC、zip、9:16）。
 - [ ] 打开 run #1 画布，确认 46 绿 + 审批历史；`out/film/master.mp4` 39.5s。
 - [ ] 读本文 §5/§6/§9；确认从 Phase 6 开始，不重做 Phase 1–5。
 - [ ] 任何“完成”申报附：测试输出、真实产物路径+sha/时长、UI 截图（如涉及）、API curl。

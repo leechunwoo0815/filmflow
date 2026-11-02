@@ -7,9 +7,9 @@
 | FR | 状态 | 证据 |
 |---|---|---|
 | FR-26 全场景静帧审阅 | **DONE**（tag `r2_5-review`） | D01 长场景 6 帧；D02 contact sheet/stills_manifest；D03 逐场门禁；D04 review_diff；`/review` 页；`verify_r2_5_review.py` |
-| FR-27 音频工作台 v1 | TODO | 录音/导入、peaks、手动对齐、sidechain、stems、许可 |
-| FR-28 交付 v1 | TODO | 16:9+9:16、SRT、双封面、manifest/qc/rights/zip |
-| FR-31 新手引导 | TODO | 3 模板 + 10 分钟首片 |
+| FR-27 音频工作台 v1 | **DONE**（tag `r2_5-audio`） | Take/录音、waveform 51ms、手动对齐、许可、sidechain、Stems、G06 TP/同步 |
+| FR-28 交付 v1 | **DONE**（tag `r2_5-delivery`） | 16:9+9:16、SRT、双封面、manifest/qc/rights/zip；5s 26.1s |
+| FR-31 新手引导 | **PARTIAL** | 3 模板/首页引导/帮助；音频占位/wizard 标题预演/只读示例待补 |
 
 ## FR-26 已落地
 
@@ -22,6 +22,6 @@
 
 ## 后续顺序
 
-1. FR-27 音频：先 peaks/导入/手动对齐与 G05/G06 真计算，再接 UI。
-2. FR-28 交付：16:9 + 9:16 重排、SRT、封面、QC/rights/zip；可复用现有 alignment。
+1. FR-31 收尾：模板音频占位、wizard 用户标题预演、示例只读副本。
+2. 40s 交付实测与 R2.5 总验收。
 3. FR-31 模板/引导。

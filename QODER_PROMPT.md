@@ -3,8 +3,8 @@
 > 生成于 2026-11-02。目标：让 Qoder 在不读旧对话的情况下，完整接手 FilmFlow 的 R2.0 开发。
 > 配套文件：`AGENTS.md`、`HANDOFF.md`、`docs/prd/PRD-002-production-workbench.md`、`docs/adr/ADR-0005-v2-ratification.md`、`vendor/README.md`。
 >
-> **2026-11-02 状态更新：R2.0 全部完成，R2.5 FR-26 已完成**（tag `r2_5-review`；86 tests）。
-> 本文件的 Phase 0–4 内容保留为历史。新 Agent 先读 `HANDOFF.md` §0/§1/§6，下一步 R2.5 · FR-27 音频工作台；不要重做已完成的 R2.0/FR-26。
+> **2026-11-02 状态更新：R2.0 全部完成，R2.5 FR-26/27/28 已完成、FR-31 部分**（tag `r2_5-review`/`r2_5-audio`/`r2_5-delivery`；93 tests）。
+> 本文件的 Phase 0–4 内容保留为历史。新 Agent 先读 `HANDOFF.md` §0/§1/§6，下一步收尾 FR-31 与 40s 交付实测；不要重做已完成的 R2.0/FR-26。
 
 ---
 
@@ -99,7 +99,7 @@ uv run --project server python scripts/e2e_ui.py
 uv run --project server python scripts/smoke_m1.py
 ```
 
-确认：86 项测试通过（干净环境首跑）、UI 8 场景全绿、run #1 画布 46 绿、`out/film/master.mp4` 39.5s。
+确认：93 项测试通过（干净环境首跑）、UI 8 场景全绿、run #1 画布 46 绿、`out/film/master.mp4` 39.5s。
 然后写一份 `docs/process/r2-plan.md`：阶段拆分、每阶段改哪些文件、测试计划、风险。**计划写完再动代码。**
 
 ### Phase 1 · 边表修正（先做，最小但关键）
@@ -184,7 +184,7 @@ R2.0 完成必须同时满足：
 - [ ] **档位**：40s draft ≤8min；review ≤18min；final ≤30min；G07 拒绝 review 交付。
 - [ ] **恢复**：kill -9 API 进程 → 重启 ≤60s 回到 running；无孤儿 Chrome；帧数正确。
 - [ ] **回归**：rumor-39s 仍 46/46；master 39.5s；黄金帧 SSIM ≥0.98。
-- [ ] **测试**：全绿（当前 86 项：unit 67 / integration 12 / BDD 7）；UI E2E 8 场景仍绿。
+- [ ] **测试**：全绿（当前 93 项：unit 74 / integration 12 / BDD 7）；UI E2E 8 场景仍绿。
 - [ ] **文档**：规格 §4.8/§17 同步 3 条新边；`EXECUTOR_VERSION` 已升；README/HANDOFF 更新。
 
 每条“完成”的申报必须附：测试命令与输出、真实产物路径+sha/时长、UI 截图（如涉及）、API curl 结果。参考 run #1 的证据链标准。
