@@ -63,7 +63,8 @@ def _font_family(value) -> str:
 
 
 def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
-                  camera: dict | None = None, motion: bool = False) -> dict:
+                  camera: dict | None = None, motion: bool = False,
+                  layout: str = "16x9") -> dict:
     w = int(profile.get("width") or 1920)
     h = int(profile.get("height") or 1080)
     fps = int(profile.get("fps") or 24)
@@ -81,24 +82,37 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
     line_height = type_spec.get("line_height", 1.35)
     spacing = type_spec.get("letter_spacing", 0)
     span = scene.get("source_span") or []
+    if layout == "9x16":
+        card = {"x": 50, "y": 120, "w": w - 100, "h": h - 240}
+        rule = [100, h - 520, 620, 10]
+        title_box = [100, 560, w - 200, h - 1000]
+        title_size = max(int(title_range[0]), int(size * 0.85))
+        title_max = w - 200
+        cross = {"x": w - 140, "y": 100}
+    else:
+        card = {"x": 60, "y": 80, "w": w - 120, "h": h - 160}
+        rule = [160, 700, 520, 10]
+        title_box = [160, 320, w - 320, 360]
+        title_size = size
+        title_max = w - 320
+        cross = {"x": w - 152, "y": 128}
     layers = [
         {"id": "L_card", "type": "component", "z": 0,
          "component": "paper-card",
-         "props": {"x": 60, "y": 80, "w": w - 120, "h": h - 160, "radius": 8,
-                   "paper": pal[0], "ink": pal[1], "grain": 0.08}},
+         "props": {**card, "radius": 8, "paper": pal[0], "ink": pal[1], "grain": 0.08}},
         {"id": "L_rule", "type": "shape", "z": 8,
-         "shape": "rect", "box": [160, 700, 520, 10], "fill": pal[2], "alpha": 0.9},
+         "shape": "rect", "box": rule, "fill": pal[2], "alpha": 0.9},
         {"id": "L_title", "type": "text", "z": 10, "content": text,
-         "box": [160, 320, w - 320, 360],
-         "style": {"font": family, "weight": 900, "size": size,
+         "box": title_box,
+         "style": {"font": family, "weight": 900, "size": title_size,
                    "lineHeight": line_height, "letterSpacing": spacing,
-                   "color": pal[0], "align": "left", "maxWidth": w - 320},
+                   "color": pal[0], "align": "left", "maxWidth": title_max},
          "reveal": {"type": "mask-reveal", "at": 0.15, "duration": 0.6, "ease": "easeOut"},
          "in": {"at": 0.0, "type": "cut"},
          "out": {"at": round(max(0.0, duration - 0.4), 3), "type": "fade", "duration": 0.4}},
         {"id": "L_cross", "type": "component", "z": 50,
          "component": "registration-cross",
-         "props": {"x": w - 152, "y": 128, "size": 1.0, "color": pal[1]}},
+         "props": {**cross, "size": 1.0, "color": pal[1]}},
     ]
     program = {
         "schema": SCENE_SCHEMA,
@@ -108,7 +122,7 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
                     "paper": pal[0], "inks": pal[1:4], "angles": angles, "periods": periods},
         "layers": layers,
         "audioCues": [],
-        "meta": {"operation": scene.get("operation", ""), "source_span": span,
+        "meta": {"operation": scene.get("operation", ""), "source_span": span, "layout": layout,
                  "text": text, "compiler_version": "1.0.0"},
     }
     if motion:

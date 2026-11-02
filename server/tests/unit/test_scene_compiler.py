@@ -40,6 +40,16 @@ def test_font_family_strips_weight_suffix():
     assert title["style"]["font"] == "Noto Sans SC"
 
 
+def test_vertical_layout_is_reflowed():
+    script = build_script_doc("风从纸上起。")
+    profile = {"width": 1080, "height": 1920, "fps": 24, "duration": 2.5}
+    prog = compile_scene(_scene(), script, TOKENS, profile, layout="9x16")
+    assert prog["canvas"]["w"] == 1080 and prog["canvas"]["h"] == 1920
+    title = next(layer for layer in prog["layers"] if layer["id"] == "L_title")
+    assert title["box"][2] <= 880
+    assert not validate_program(prog)
+
+
 def test_compiler_is_deterministic():
     script = build_script_doc("一句话。")
     a = compile_scene(_scene(), script, TOKENS, PROFILE)

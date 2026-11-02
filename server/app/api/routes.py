@@ -26,6 +26,7 @@ from ..services import environment as env_svc
 from ..services import engines as engines_svc
 from ..services import preview as preview_svc
 from ..services import audio as audio_svc
+from ..services import delivery as delivery_svc
 from ..services import jobs as jobs_svc
 from ..services import project_docs as docs_svc
 from ..services import render_profiles as profiles_svc
@@ -748,6 +749,64 @@ async def preview_job_file(job_id: str, session: Session = Depends(get_session))
 async def project_preview_cache(project_id: int, session: Session = Depends(get_session)):
     _project_or_404(session, project_id)
     return preview_svc.PreviewCache(project_id).stats()
+
+
+# ---------- 交付 v1（FR-28） ----------
+
+@router.post("/projects/{project_id}/delivery", status_code=202)
+async def project_delivery(project_id: int, payload: dict,
+                           session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    job = delivery_svc.create_job(session, proj, payload.get("runId"), str(payload.get("profile") or "final"))
+    asyncio.create_task(delivery_svc.run_delivery(job.id or 0))
+    audit(session, "delivery.create", f"project:{project_id}", after={"job": job.id})
+    return {"jobId": job.id, "kind": job.kind, "status": job.status, "priority": job.priority}
+
+
+@router.get("/projects/{project_id}/deliveries")
+async def project_deliveries(project_id: int, session: Session = Depends(get_session)):
+    _project_or_404(session, project_id)
+    rows = jobs_svc.list_jobs(session, kind="delivery", limit=200)
+    return {"items": [table_dict(j) for j in rows
+                      if (j.payload_json or {}).get("projectId") == project_id]}
+
+
+@router.get("/projects/{project_id}/deliveries/{run_id}")
+async def project_delivery_detail(project_id: int, run_id: int,
+                                  session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    outdir = Path(proj.root).resolve() / "out" / "deliveries" / str(run_id)
+    if not outdir.exists():
+        raise not_found("交付目录")
+    def read(name: str) -> dict:
+        p = outdir / name
+        if not p.exists():
+            return {}
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    names = ["master_16x9.mp4", "master_9x16.mp4", "captions.zh.srt",
+             "cover_16x9.jpg", "cover_9x16.jpg", "manifest.json", "qc.json",
+             "rights.json", "FilmFlow-delivery.zip"]
+    return {"runId": run_id, "manifest": read("manifest.json"), "qc": read("qc.json"),
+            "rights": read("rights.json"),
+            "files": [{"name": n, "url": f"/api/projects/{project_id}/deliveries/{run_id}/{n}",
+                       "bytes": (outdir / n).stat().st_size if (outdir / n).exists() else 0}
+                      for n in names]}
+
+
+@router.get("/projects/{project_id}/deliveries/{run_id}/{name}")
+async def project_delivery_file(project_id: int, run_id: int, name: str,
+                                session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    base = (Path(proj.root).resolve() / "out" / "deliveries" / str(run_id)).resolve()
+    p = (base / name).resolve()
+    if not p.is_relative_to(base) or not p.is_file():
+        raise not_found("交付文件")
+    media = "video/mp4" if p.suffix == ".mp4" else "application/zip" if p.suffix == ".zip" else         "image/jpeg" if p.suffix in (".jpg", ".jpeg") else "application/octet-stream"
+    return FileResponse(p, media_type=media, filename=p.name)
 
 
 # ---------- 渲染档位（FR-24） ----------
