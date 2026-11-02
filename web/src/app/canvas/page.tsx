@@ -100,6 +100,7 @@ function CanvasInner() {
         {graph && <span className="text-dim text-xs">caps: {graph.caps.join("/")}</span>}
         <div className="ml-auto flex gap-2">
           <a className="btn" href={`/editor?project=${projectId}`}>{t("nav.editor")}</a>
+          <a className="btn" href={`/review?project=${projectId}&run=${runId}`}>静帧审阅</a>
           <button className="btn" data-testid="step-btn" onClick={() => act(`/runs/${runId}/step`)}>{t("cv.step")}</button>
           <button className="btn-amber" data-testid="run-btn" onClick={() => act(`/runs/${runId}/start`)}>{t("cv.run")}</button>
           <button className="btn" onClick={() => act(`/runs/${runId}/cancel`)}>{t("cv.cancel")}</button>

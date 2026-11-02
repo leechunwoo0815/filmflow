@@ -215,6 +215,58 @@ def _project_url(ctx, rel: str) -> str:
     return f"http://127.0.0.1:8787/project/{rel}"
 
 
+def _still_times(start: float, end: float) -> list[float]:
+    dur = max(0.0, end - start)
+    fractions = (0.2, 0.35, 0.5, 0.65, 0.8, 0.95) if dur >= 8.0 else (0.5,)
+    return sorted({round(min(end, start + max(0.8, dur * f)), 3) for f in fractions})
+
+
+def _contact_sheet_picks(items: list[tuple], limit: int = 16) -> list[tuple]:
+    by_scene: dict[str, list[tuple]] = {}
+    for it in items:
+        by_scene.setdefault(it[0], []).append(it)
+    picks = [by_scene[sid][0] for sid in sorted(by_scene)]
+    for it in items:
+        if len(picks) >= limit:
+            break
+        if it not in picks:
+            picks.append(it)
+    return picks[:limit]
+
+
+def _make_contact_sheet(ctx, items: list[tuple[str, float, str, str]]) -> dict:
+    """FR-26：16 宫格 contact sheet（含全部场景，最多 16 张 review 静帧）。"""
+    if not items:
+        return {}
+    picks = _contact_sheet_picks(items)
+    from PIL import Image, ImageDraw, ImageFont
+    sheet = Image.new("RGB", (1920, 1080), "#111")
+    draw = ImageDraw.Draw(sheet)
+    try:
+        font = ImageFont.load_default(size=20)
+    except Exception:
+        font = ImageFont.load_default()
+    for i, (sid, t, path, _sha) in enumerate(picks):
+        img = Image.open(path).convert("RGB")
+        img.thumbnail((480, 270), Image.LANCZOS)
+        x, y = (i % 4) * 480, (i // 4) * 270
+        sheet.paste(img, (x + (480 - img.width) // 2, y + (270 - img.height) // 2))
+        label = f"{sid} @{t:.1f}s"
+        draw.rectangle([x, y, x + 180, y + 30], fill=(0, 0, 0))
+        draw.text((x + 8, y + 5), label, fill="#fff", font=font)
+    from ...services import artifacts as art
+    out = _project_file(ctx, "out/stills/contact_sheet.png")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(out)
+    ap, sha = art.store_file(ctx["project_root"], out, "PNG")
+    art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "PNG",
+                 str(ap), sha, {"contact_sheet": True,
+                                "scenes": sorted({p[0] for p in picks}),
+                                "count": len(picks)})
+    return {"path": str(ap), "sha256": sha, "scenes": sorted({p[0] for p in picks}),
+            "count": len(picks)}
+
+
 @executor("still-spec")
 async def d01(ctx):
     task_p = _task_path(ctx)
@@ -248,9 +300,10 @@ async def d01(ctx):
         dst.write_text(json.dumps(prog, ensure_ascii=False, indent=1), encoding="utf-8")
         start = float(s.get("start", 0))
         end = float(s.get("end", start + 1))
-        still_t = round(min(end, start + max(0.8, (end - start) * 0.5)), 3)
+        # 长场景 ≥6 张关键静帧；短场景一张中段帧（FR-26）
+        times = _still_times(start, end)
         entries.append({**s, "program": _project_url(ctx, rel),
-                        "program_sha": prog["program_sha"], "times": [still_t]})
+                        "program_sha": prog["program_sha"], "times": times})
     spec = {"schema": "filmflow.still-spec/2", "profile": profile, "tokens": tokens,
             "scenes": entries}
     _artifact_json(ctx, "still_spec.json", spec)
@@ -269,63 +322,110 @@ async def d02(ctx):
     ensure_frame_server(ctx)
     from ...services import artifacts as art
     profiles = _profiles(ctx)
-    stills = []
-    total = max(len(spec.get("scenes", [])) * (1 if ctx.get("run_imported") else 2), 1)
+    stills: list[str] = []
+    review_items: list[tuple[str, float, str, str]] = []
+    artifacts_by_key: dict[tuple[str, float, str], dict] = {}
+    imported = bool(ctx.get("run_imported"))
+    if imported:
+        total = max(len(spec.get("scenes", [])), 1)
+    else:
+        total = max(sum(len(s.get("times") or [0]) for s in spec.get("scenes", [])) * 2, 1)
+    done = 0
     for s in spec.get("scenes", []):
-        if ctx.get("run_imported"):
-            t = s.get("last_text_at", s.get("start", 0))
-        else:
-            t = (s.get("times") or [s.get("last_text_at", s.get("start", 0))])[0]
-        if ctx.get("run_imported"):
-            entry = _legacy_entry(build, "still")
-            if not entry:
-                raise RuntimeError("imported 项目缺少 legacy_entry.still")
-            url = _engine_url(ctx, build, entry, f"scene={s['id']}&t={t}")
-            out = _project_file(ctx, f"out/stills/{s['id']}_{t}.png")
-            await _chrome_screenshot(ctx, url, out, w, h, timeout=120)
-            ap, sha = art.store_file(ctx["project_root"], out, "PNG")
-            art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "PNG",
-                         str(ap), sha, {"scene": s["id"], "t": t, "profile": "legacy"})
-            stills.append(str(ap))
-        else:
-            if not _api_v2(build):
-                from ...errors import ApiError, ErrorCode
-                raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 still_spec")
-            entry = _entry(build, "still_spec")
-            if not entry:
-                from ...errors import ApiError, ErrorCode
-                raise ApiError(ErrorCode.E_PROGRAM_INVALID, "新项目 still_spec 入口未登记")
-            spec_url = _project_url(ctx, "card/still_spec.json")
-            url = _engine_url(ctx, build, entry,
-                              f"spec={quote(spec_url, safe='')}&scene={s['id']}&t={t}")
-            native = _project_file(ctx, f"out/stills/{s['id']}_{t}_native.png")
-            await _chrome_screenshot(ctx, url, native, w, h, timeout=120)
-            from PIL import Image
-            img = Image.open(native)
-            for pname in ("review", "draft"):
-                spec_p = profiles[pname]
-                dst = _project_file(ctx, f"out/stills/{s['id']}_{t}_{pname}.png")
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                img.resize((int(spec_p["width"]), int(spec_p["height"])), Image.LANCZOS).save(dst)
-                ap, sha = art.store_file(ctx["project_root"], dst, "PNG")
-                art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"],
-                             "PNG", str(ap), sha,
-                             {"scene": s["id"], "t": t, "profile": pname,
-                              "width": int(spec_p["width"]), "height": int(spec_p["height"])})
+        times = [s.get("last_text_at", s.get("start", 0))] if imported else \
+            (s.get("times") or [s.get("last_text_at", s.get("start", 0))])
+        for t in times:
+            if imported:
+                entry = _legacy_entry(build, "still")
+                if not entry:
+                    raise RuntimeError("imported 项目缺少 legacy_entry.still")
+                url = _engine_url(ctx, build, entry, f"scene={s['id']}&t={t}")
+                out = _project_file(ctx, f"out/stills/{s['id']}_{t}.png")
+                await _chrome_screenshot(ctx, url, out, w, h, timeout=120)
+                ap, sha = art.store_file(ctx["project_root"], out, "PNG")
+                art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "PNG",
+                             str(ap), sha, {"scene": s["id"], "t": t, "profile": "legacy"})
                 stills.append(str(ap))
-            native.unlink(missing_ok=True)
-        await ctx["progress"](len(stills) / total, f"still {s['id']}")
-    _artifact_json(ctx, "stills_manifest.json", {"stills": stills, "profiles": {
-        k: profiles[k] for k in ("review", "draft")}})
+                review_items.append((s["id"], float(t), str(ap), sha))
+                artifacts_by_key[(s["id"], float(t), "legacy")] = {"path": str(ap), "sha256": sha}
+                done += 1
+            else:
+                if not _api_v2(build):
+                    from ...errors import ApiError, ErrorCode
+                    raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 still_spec")
+                entry = _entry(build, "still_spec")
+                if not entry:
+                    from ...errors import ApiError, ErrorCode
+                    raise ApiError(ErrorCode.E_PROGRAM_INVALID, "新项目 still_spec 入口未登记")
+                spec_url = _project_url(ctx, "card/still_spec.json")
+                url = _engine_url(ctx, build, entry,
+                                  f"spec={quote(spec_url, safe='')}&scene={s['id']}&t={t}")
+                native = _project_file(ctx, f"out/stills/{s['id']}_{t}_native.png")
+                await _chrome_screenshot(ctx, url, native, w, h, timeout=120)
+                from PIL import Image
+                img = Image.open(native)
+                for pname in ("review", "draft"):
+                    spec_p = profiles[pname]
+                    dst = _project_file(ctx, f"out/stills/{s['id']}_{t}_{pname}.png")
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    img.resize((int(spec_p["width"]), int(spec_p["height"])), Image.LANCZOS).save(dst)
+                    ap, sha = art.store_file(ctx["project_root"], dst, "PNG")
+                    art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"],
+                                 "PNG", str(ap), sha,
+                                 {"scene": s["id"], "t": t, "profile": pname,
+                                  "width": int(spec_p["width"]), "height": int(spec_p["height"])})
+                    stills.append(str(ap))
+                    artifacts_by_key[(s["id"], float(t), pname)] = {"path": str(ap), "sha256": sha}
+                    if pname == "review":
+                        review_items.append((s["id"], float(t), str(ap), sha))
+                    done += 1
+                native.unlink(missing_ok=True)
+            await ctx["progress"](done / total, f"still {s['id']}@{t}")
+
+    scenes_manifest: dict[str, list[dict]] = {}
+    for sid, t, ap, sha in review_items:
+        scenes_manifest.setdefault(sid, []).append({
+            "t": t, "review": {"path": ap, "sha256": sha},
+            "draft": artifacts_by_key.get((sid, t, "draft")),
+            "legacy": artifacts_by_key.get((sid, t, "legacy"))})
+    contact = _make_contact_sheet(ctx, review_items)
+    manifest = {
+        "schema": "filmflow.stills-manifest/1", "stills": stills,
+        "profiles": {k: profiles[k] for k in ("review", "draft")},
+        "scenes": scenes_manifest, "contact_sheet": contact,
+        "scene_count": len(scenes_manifest),
+        "still_count": len(review_items)}
+    _artifact_json(ctx, "stills_manifest.json", manifest)
+    dst = _project_file(ctx, "card/stills_manifest.json")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _task_scene_ids(ctx) -> list[str]:
+    task_p = _task_path(ctx)
+    task = _read_json(task_p) if task_p.exists() else {}
+    scenes = task.get("scenes") or []
+    if not scenes:
+        tl = _run_doc_file(ctx, "timeline.doc.json")
+        scenes = (_read_json(tl).get("scenes") or []) if tl.exists() else []
+    return [s["id"] for s in scenes if s.get("id")]
 
 
 @executor("still-view")
 async def d03(ctx):
-    """人工查看：审批门校验 viewed.json（API /stills/viewed 写入）。"""
+    """人工查看：新项目逐场至少 1 张；imported 保持 ≥3 区域。"""
     v = _project_file(ctx, "card/viewed.json")
-    regions = _read_json(v).get("regions", []) if v.exists() else []
-    if len(regions) < 3:
-        raise RuntimeError(f"静帧查看不足：已查看 {len(regions)} 个区域 < 3")
+    data = _read_json(v) if v.exists() else {}
+    regions = data.get("regions", [])
+    if ctx.get("run_imported"):
+        if len(regions) < 3:
+            raise RuntimeError(f"静帧查看不足：已查看 {len(regions)} 个区域 < 3")
+        return
+    scenes = _task_scene_ids(ctx)
+    viewed = {str(x.get("scene")) for x in regions if x.get("scene")}
+    missing = [s for s in scenes if s not in viewed]
+    if missing:
+        raise RuntimeError(f"静帧查看缺场景：{missing}（每个场景至少看 1 张）")
 
 
 @executor("still-qa")
@@ -339,9 +439,11 @@ async def d04(ctx):
     base = _profile(ctx)
     rows = ctx["session"].exec(select(Artifact).where(
         Artifact.run_id == ctx["run_id"], Artifact.node_id == "D02")).all()  # type: ignore[arg-type]
-    rows = [r for r in rows if r.type == "PNG"]   # 只检图像产物（清单 JSON 排除）
+    rows = [r for r in rows if r.type == "PNG"
+            and not (r.meta_json or {}).get("contact_sheet")]   # 图像产物，排除 contact sheet
     metrics = []
     seen: dict[str, set[str]] = {"review": set(), "draft": set(), "legacy": set()}
+    current_review: dict[str, list[str]] = {}
     for r in rows:
         meta = r.meta_json or {}
         pname = meta.get("profile") or "legacy"
@@ -360,6 +462,10 @@ async def d04(ctx):
             raise RuntimeError(f"静帧过暗 lum_mean={g.mean():.1f} < 40")
         if meta.get("scene"):
             seen.setdefault(pname, set()).add(str(meta["scene"]))
+        if pname == "review" and meta.get("scene"):
+            current_review.setdefault(str(meta["scene"]), []).append(r.sha256)
+    for scene in current_review:
+        current_review[scene].sort()
     if not ctx.get("run_imported"):
         task = (_upstream_json(ctx, ["B06"]).get("B06") or {})
         scenes = [s.get("id") for s in (task.get("scenes") or []) if s.get("id")]
@@ -370,6 +476,35 @@ async def d04(ctx):
     _artifact_json(ctx, "still_metrics.json", {
         "frames": metrics, "coverage": {k: sorted(v) for k, v in seen.items()},
         "profiles": {k: profiles[k] for k in ("review", "draft", "final")}})
+
+    # FR-26：与上一版 D05 静帧 diff（按场景汇总 sha 集合）
+    from ...models import Run, Workflow
+    run = ctx["session"].get(Run, ctx["run_id"])
+    wf = ctx["session"].get(Workflow, run.workflow_id) if run else None
+    prev_run = ctx["session"].exec(select(Run).where(
+        Run.workflow_id == (wf.id if wf else -1), Run.id < ctx["run_id"])
+        .order_by(Run.id.desc())).first() if wf else None  # type: ignore[arg-type,union-attr]
+    prev_review: dict[str, list[str]] = {}
+    if prev_run:
+        prev_rows = ctx["session"].exec(select(Artifact).where(
+            Artifact.run_id == prev_run.id, Artifact.node_id == "D02")).all()  # type: ignore[arg-type]
+        for r in prev_rows:
+            meta = r.meta_json or {}
+            if r.type == "PNG" and meta.get("profile") == "review" and meta.get("scene"):
+                prev_review.setdefault(str(meta["scene"]), []).append(r.sha256)
+        for scene in prev_review:
+            prev_review[scene].sort()
+    diff = []
+    for scene in sorted(set(current_review) | set(prev_review)):
+        cur, old = current_review.get(scene), prev_review.get(scene)
+        status = ("added" if not old else "removed" if not cur
+                  else "unchanged" if cur == old else "changed")
+        diff.append({"scene": scene, "status": status,
+                     "current": cur, "previous": old})
+    _artifact_json(ctx, "review_diff.json", {
+        "schema": "filmflow.review-diff/1", "runId": ctx["run_id"],
+        "previousRunId": prev_run.id if prev_run else None, "scenes": diff,
+        "changed": [d["scene"] for d in diff if d["status"] != "unchanged"]})
 
 
 @executor("gate")

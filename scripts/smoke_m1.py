@@ -96,7 +96,7 @@ def main() -> int:
             approve("D03", run_id)
         if "D05" in pending and st.get("D04") in ("succeeded", "cached"):
             approve("D05", run_id)
-        if st.get("D05") in ("succeeded", "cached") and "E07" in pending:
+        if st.get("D05") in ("succeeded", "cached"):
             break
         time.sleep(2)
     print("D05 批准后：D02/D04 =", st.get("D02"), st.get("D04"), "| E01 等待 =", st.get("E01"))

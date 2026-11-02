@@ -44,12 +44,13 @@ def _run_doc_file(ctx, name: str) -> Path:
 
 
 def _task_path(ctx) -> Path:
-    """运行时任务卡：优先 Run 快照；imported 项目才回退项目根。"""
+    """运行时任务卡：优先 Run 快照；B06 缓存命中时快照 task 可能未落盘，回退只读导出。"""
     p = _run_doc_file(ctx, "task.json")
     if p.exists():
         return p
-    if ctx.get("run_imported"):
-        return _project_file(ctx, "card/task.json")
+    card = _project_file(ctx, "card/task.json")
+    if card.exists():
+        return card
     return p
 
 

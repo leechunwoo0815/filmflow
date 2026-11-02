@@ -854,16 +854,21 @@ async def gate_decide(gate_id: str, payload: dict, session: Session = Depends(ge
 
 
 def _gate_precheck(session: Session, run_id: int, gate_id: str) -> str | None:
-    if gate_id == "D03":
+    if gate_id in ("D03", "D05"):
         from ..engine.executors.pipeline import _project_file  # type: ignore
         run = session.get(Run, run_id)
-        v = re_mod._project_root(session, run)
-        vp = Path(v) / "card" / "viewed.json"
-        if not vp.exists():
-            return "尚无静帧查看记录（至少查看 3 个区域）"
-        regions = json.loads(vp.read_text()).get("regions", [])
-        if len(regions) < 3:
-            return f"已查看 {len(regions)} 个区域 < 3"
+        root = re_mod._project_root(session, run)
+        wf = session.get(Workflow, run.workflow_id)
+        imported = bool(((((wf.graph_json or {}) if wf else {}).get("meta")) or {}).get("imported"))
+        entries, viewed, missing = _review_viewed(session, run, root)
+        if gate_id == "D03":
+            if imported:
+                if len(entries) < 3:
+                    return f"已查看 {len(entries)} 个区域 < 3"
+            elif missing:
+                return f"未查看场景：{', '.join(missing)}（每个场景至少看 1 张）"
+        elif not imported and missing:
+            return f"静帧未看全：{', '.join(missing)}"
     return None
 
 
@@ -895,8 +900,40 @@ async def gates_pending(run_id: int, session: Session = Depends(get_session)):
         if task_p.exists():
             t = json.loads(task_p.read_text(encoding="utf-8-sig"))
             checklist = [f"{s['id']}: {s.get('meaning') or '（未填 meaning）'}" for s in t.get("scenes", [])]
-        out.append({"gate": gid, "title": edges.N[gid]["title"], "stale": stale,
-                    "checklist": checklist or [f"{edges.N[gid]['title']} 检查项"]})
+        item = {"gate": gid, "title": edges.N[gid]["title"], "stale": stale,
+                "checklist": checklist or [f"{edges.N[gid]['title']} 检查项"]}
+        if gid in ("D03", "D05"):
+            entries, viewed, missing = _review_viewed(session, run, proj_root)
+            item["review"] = {"sceneCount": len(set(viewed) | set(missing)),
+                              "viewed": viewed, "missing": missing,
+                              "entries": len(entries)}
+            if gid == "D05":
+                rows = session.exec(select(Artifact).where(
+                    Artifact.run_id == run_id, Artifact.node_id == "D02")).all()  # type: ignore[arg-type]
+                stills = []
+                contact = None
+                for a in rows:
+                    meta = a.meta_json or {}
+                    if a.type != "PNG":
+                        continue
+                    if meta.get("contact_sheet"):
+                        contact = {"artifact": a.id, "url": f"/api/artifacts/{a.id}/file",
+                                   "sha256": a.sha256, "scenes": meta.get("scenes") or []}
+                    elif meta.get("profile") == "review":
+                        stills.append({"scene": meta.get("scene"), "t": meta.get("t"),
+                                       "artifact": a.id, "sha256": a.sha256,
+                                       "url": f"/api/artifacts/{a.id}/file"})
+                diff = {}
+                dr = session.exec(select(Artifact).where(
+                    Artifact.run_id == run_id, Artifact.node_id == "D04")).all()  # type: ignore[arg-type]
+                for a in dr:
+                    if (a.meta_json or {}).get("name") == "review_diff.json":
+                        try:
+                            diff = json.loads(Path(a.path).read_text(encoding="utf-8"))
+                        except Exception:
+                            diff = {}
+                item["review"].update({"stills": stills, "contactSheet": contact, "diff": diff})
+        out.append(item)
     return {"items": out}
 
 
@@ -907,13 +944,35 @@ async def stills_viewed(project_id: int, payload: dict, session: Session = Depen
     proj = session.get(Project, project_id)
     if not proj:
         raise not_found("project")
+    entry = {k: payload[k] for k in ("scene", "sceneId", "time", "t", "region", "zoom", "at")
+             if k in payload}
+    if "sceneId" in entry and "scene" not in entry:
+        entry["scene"] = entry.pop("sceneId")
+    if "t" in entry and "time" not in entry:
+        entry["time"] = entry.pop("t")
     vp = Path(proj.root) / "card" / "viewed.json"
     vp.parent.mkdir(parents=True, exist_ok=True)
     data = json.loads(vp.read_text()) if vp.exists() else {"regions": []}
-    data["regions"].append(payload)
+    data.setdefault("regions", []).append(entry)
     vp.write_text(json.dumps(data, ensure_ascii=False))
-    audit(session, "stills.viewed", proj.root, after=payload)
-    return {"regions": len(data["regions"])}
+    audit(session, "stills.viewed", proj.root, after=entry)
+    run = session.exec(select(Run).where(Run.workflow_id.in_(
+        select(Workflow.id).where(Workflow.project_id == project_id))).order_by(Run.id.desc())).first()  # type: ignore[arg-type,union-attr]
+    viewed, missing = [], []
+    if run:
+        _entries, viewed, missing = _review_viewed(session, run, proj.root)
+    return {"regions": len(data["regions"]), "scenes": viewed, "missing": missing}
+
+
+@router.get("/projects/{project_id}/stills/viewed")
+async def stills_viewed_get(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    run = session.exec(select(Run).where(Run.workflow_id.in_(
+        select(Workflow.id).where(Workflow.project_id == project_id))).order_by(Run.id.desc())).first()  # type: ignore[arg-type,union-attr]
+    if not run:
+        return {"entries": [], "scenes": [], "missing": []}
+    entries, viewed, missing = _review_viewed(session, run, proj.root)
+    return {"entries": entries, "scenes": viewed, "missing": missing}
 
 
 # ---------- 任务卡编辑器 API（T11） ----------
@@ -984,6 +1043,37 @@ def _project_or_404(session: Session, project_id: int) -> Project:
     if not proj:
         raise not_found("项目")
     return proj
+
+
+def _review_scene_ids(session: Session, run: Run, project_root: str) -> list[str]:
+    task_p = Path(project_root) / "runs" / str(run.id) / "docs" / "task.json"
+    if not task_p.exists():
+        task_p = Path(project_root) / "card" / "task.json"
+    try:
+        task = json.loads(task_p.read_text(encoding="utf-8-sig")) if task_p.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        task = {}
+    scenes = [str(s["id"]) for s in (task.get("scenes") or []) if s.get("id")]
+    if scenes:
+        return scenes
+    wf = session.get(Workflow, run.workflow_id)
+    if not wf:
+        return []
+    tl = docs_svc.doc_payload(session, wf.project_id, project_root, "timeline")
+    return [str(s["id"]) for s in (tl.get("content", {}).get("scenes") or []) if s.get("id")]
+
+
+def _review_viewed(session: Session, run: Run, project_root: str) -> tuple[list[dict], list[str], list[str]]:
+    vp = Path(project_root) / "card" / "viewed.json"
+    try:
+        data = json.loads(vp.read_text(encoding="utf-8")) if vp.exists() else {}
+    except json.JSONDecodeError:
+        data = {}
+    entries = data.get("regions", [])
+    scenes = _review_scene_ids(session, run, project_root)
+    viewed = sorted({str(x.get("scene")) for x in entries if x.get("scene")})
+    missing = [s for s in scenes if s not in viewed]
+    return entries, viewed, missing
 
 
 def _project_profile(root: str | Path) -> dict:
