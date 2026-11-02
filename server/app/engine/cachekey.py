@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.3.0"  # R2.0 Phase 6：draft/review/final 档位、D02/E05/F02/G07 接入
+EXECUTOR_VERSION = "2.3.1"  # R2.0 Phase 6：G06 真实同步口径（不再伪报 0）
 
 
 def canonical(obj) -> str:

@@ -1119,13 +1119,34 @@ async def g06(ctx):
         raise RuntimeError(f"LUFS {lufs} 超出 −16±1")
     if tp is not None and tp > -1.5:
         raise RuntimeError(f"True Peak {tp} > −1.5dBTP")
-    # 口播-画面同步偏差：alignment vs events.at
+    # 口播-画面同步偏差：alignment.segment.end vs scene.last_text_at（不再用 abs(start-0) 伪计算）
+    from ...services.render_profiles import qa_policy
     u = _upstream_json(ctx, ["G02"])
-    dev = 0.0
-    align = (u.get("G02") or {}).get("segments") or []
-    if align:
-        dev = min((abs(s["start"] - 0) for s in align), default=0.0)
-    _artifact_json(ctx, "audio_metrics.json", {"lufs": lufs, "true_peak": tp, "sync_dev_s": round(dev, 3)})
+    alignment = u.get("G02") or {}
+    segments = alignment.get("segments") or []
+    source = alignment.get("source")
+    dev = None
+    sync_verified = False
+    basis = "unavailable"
+    if segments and source in ("whisper", "manual"):
+        task_p = _task_path(ctx)
+        task = _read_json(task_p) if task_p.exists() else {}
+        last_times = [float(s["last_text_at"]) for s in (task.get("scenes") or [])
+                      if s.get("last_text_at") is not None]
+        if last_times:
+            pairs = [min((abs(float(seg.get("end", 0)) - lt)
+                          for seg in segments if seg.get("end") is not None), default=None)
+                     for lt in last_times]
+            values = [x for x in pairs if x is not None]
+            if values:
+                dev = max(values)
+                sync_verified = True
+                basis = "alignment.segment.end vs scene.last_text_at"
+    _artifact_json(ctx, "audio_metrics.json", {
+        "lufs": lufs, "true_peak": tp, "profile": "final", "policy": qa_policy("final"),
+        "sync_dev_s": round(dev, 3) if dev is not None else None,
+        "sync_verified": sync_verified, "sync_basis": basis,
+        "approximate": not sync_verified})
 
 
 @executor("package")
