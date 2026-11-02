@@ -3,7 +3,7 @@
 > 2026-11-02 · 接手基线审计后制定 · 依据 `QODER_PROMPT.md`、`docs/prd/PRD-002-production-workbench.md`、`docs/adr/ADR-0005-v2-ratification.md`
 > 范围：FR-20/21/22/23/24/25/29/30。不做时间轴、审片、音频 v2、资产库、批量、photo 引擎。
 > 冻结项：46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；只加 3 条 data 边。
-> **进度（2026-11-02）**：Phase 0.1–5 已完成。5s 新项目已跑通参数化静帧与 E03–F06；改 S02 文案后新 Run 只渲 66/120 帧（S01 复用，0..53 帧哈希不变），40s 规划单测 204/948=21.5% ≤25%。Phase 5 预览服务已完成：F02 运行中 CDP 附加 p50 1.25s/p95 1.31s，5s 片段 12.7s，缓存 5ms。下一步 Phase 6 档位；设计、证据与坑见 `HANDOFF.md` §6.2 / §2.4。
+> **进度（2026-11-02）**：Phase 0.1–6 已完成。5s 新项目已跑通参数化静帧与 E03–F06；改 S02 文案后新 Run 只渲 66/120 帧（S01 复用，0..53 帧哈希不变），40s 规划单测 204/948=21.5% ≤25%。Phase 5 预览（attached p50 1.31s/p95 1.44s，片段 12.7s，缓存 5ms）与 Phase 6 档位（D02 review/draft、E05 720p/24、F02 only-final、切档不重跑）已完成。下一步 Phase 7 恢复；证据与坑见 `HANDOFF.md` §2.4/§2.5/§6.3。
 
 ---
 
@@ -154,7 +154,7 @@
 - 实测：attached p50 1.25s/p95 1.31s；5s 片段 12.7s；缓存 5ms；单帧归一化 SSIM 0.9987。
 - 出口：`scripts/verify_r2_preview.py` 全绿；ADR-0006 落盘。
 
-### Phase 6 · 档位与 final 校验（FR-24，3–4d）
+### Phase 6 · 档位与 final 校验（FR-24，3–4d）——[DONE] tag `r2-profiles`
 - `render.profile.json`：draft 960×540/12、review 1280×720/24、final 1920×1080/24；profile 进 scene_hash。
 - F02 只跑 final；E05 跑 review；D02 出 draft+review 静帧；draft/review 整片走 PreviewService。
 - QA 阈值按 profile；G07 校验最新 F02 manifest `profile=final`，缺失 → `E_FINAL_REQUIRED`。
@@ -231,7 +231,7 @@
 3. Phase 2：文档模型与快照。
 4. Phase 3：Scene DSL + film_spec + 12 组件，打 `r2-scene-dsl`。
 5. Phase 4：增量，打 `r2-incremental`。
-6. Phase 5 已完成（预览）；Phase 6–8：档位、恢复、黄金；全部验收后再申请 R2.5。
+6. Phase 5（预览）/Phase 6（档位）已完成；Phase 7–8：恢复、黄金；全部验收后再申请 R2.5。
 
 **第一个失败测试**（Phase 1 之前）：
 `server/tests/unit/test_dag_core.py::test_edge_table_has_r2_repairs` —— 断言 93 边、E04 出边、C05 含 B05、拓扑无环；先红后绿。

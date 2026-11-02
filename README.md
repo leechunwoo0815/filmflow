@@ -15,7 +15,7 @@
 实测（rumor-39s 导入全链，Run #1）：46/46 节点 succeeded · 49 产物 · 9 条审批记录（含驳回→重批历史）· master.mp4 = 69.9MB · 三引擎可生产 61 条。
 
 > ⚠️ 以上是**导入参考片**的实测。R2.0 参数化链路正在按 [docs/process/r2-plan.md](docs/process/r2-plan.md) 实施：
-> Phase 1 边表/Contract v2、Phase 2 文档模型与 Run 快照、Phase 3 5s 新项目参数化静帧 + `film_spec` 逐帧渲染（120 帧 / 5.000s / F05 通过）、Phase 4 场景级增量（改 S02 只渲 66/120 帧，S01 复用）、Phase 5 PreviewService（F02 运行中 CDP 附加 p50 1.25s/p95 1.31s，5s 片段 12.7s，缓存 5ms）已完成；档位、崩溃恢复与黄金项目待做。
+> Phase 1 边表/Contract v2、Phase 2 文档模型与 Run 快照、Phase 3 5s 新项目参数化静帧 + `film_spec` 逐帧渲染（120 帧 / 5.000s / F05 通过）、Phase 4 场景级增量（改 S02 只渲 66/120 帧，S01 复用）、Phase 5 PreviewService（F02 运行中 CDP 附加 p50 1.31s/p95 1.44s，5s 片段 12.7s，缓存 5ms）、Phase 6 draft/review/final 档位（D02 双静帧、E05 720p/24、F02 only-final、切档不重跑）已完成；崩溃恢复与黄金项目待做。
 
 ## 快速开始
 
@@ -31,11 +31,12 @@
 
 ```bash
 cd server
-uv run pytest tests -q   # 59（干净环境首跑；部分集成需 API 在跑）
+uv run pytest tests -q   # 71（干净环境首跑；部分集成需 API 在跑）
 uv run --project server python scripts/smoke_m1.py    # M0/M1 API 全链冒烟（需服务在跑）
 uv run --project server python scripts/e2e_ui.py      # Playwright UI E2E（8 场景，需 ./dev.sh 在跑）
 uv run --project server python scripts/verify_r2_5s_incremental.py  # R2.0 5s 参数化 + 增量验收
 uv run --project server python scripts/verify_r2_preview.py         # R2.0 Phase 5 预览验收
+uv run --project server python scripts/verify_r2_profiles.py        # R2.0 Phase 6 档位验收
 uv run --project server python scripts/drive_run.py <run> <project>   # 全链驱动（自动批门）
 ```
 

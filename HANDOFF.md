@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-02 · R2.0 Phase 0.1–5 已完成
-> 当前基线：Phase 5 代码 `25ff0d9` / tag `r2-preview`；交接文档提交见 `git log` 最新一条。
+> 更新时间：2026-11-02 · R2.0 Phase 0.1–6 已完成
+> 当前基线：Phase 6 代码 `426aa20` / tag `r2-profiles`；交接文档提交见 `git log` 最新一条。
 > 本文是**唯一权威接手入口**；规格 `../filmflow-web-agent-prompt.md` 仍是宪法，v2 需求以
 > `docs/prd/PRD-002-production-workbench.md` + `docs/adr/ADR-0005-v2-ratification.md` 为准。
 > **先读本文 §0、§1、§6，再读 `AGENTS.md`、PRD-002、ADR-0005、`vendor/README.md`。**
@@ -24,7 +24,7 @@ curl -s http://127.0.0.1:7860/api/health
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 59 passed
+cd server && uv run pytest tests -q                       # 71 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景
 uv run --project server python scripts/smoke_m1.py         # API 冒烟：46 节点 / 93 边
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量验收
@@ -35,17 +35,17 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 
 ### 0.3 当前下一步
 
-**从 Phase 6（draft/review/final 档位 / FR-24）开始，不要重做 Phase 1–5。**
-Phase 5 PreviewService 已完成并通过验收（见 §2.4 / §6.1）：F02 运行中 CDP 附加同一 Chrome，
-单帧 p50 1.25s / p95 1.31s，5s 片段 12.7s，缓存 5ms。下一步按 §6.2 做档位与 G07 `E_FINAL_REQUIRED`；
-预览 UI 接线留到 R3 编辑器（当前只有 API/服务）。
+**从 Phase 7（持久化 Job + 崩溃恢复 / FR-29）开始，不要重做 Phase 1–6。**
+Phase 6 档位已完成并通过验收（见 §2.5 / §6.2）：D02 review/draft 全场景静帧、E05 720p/24 代理、
+F02 only-final + `E_FINAL_REQUIRED`、Preview draft/review、切档不重跑 final。下一步按 §6.3 做
+Job 表/租约/心跳/启动恢复/孤儿清理；档位 UI 与 40s 计时留 Phase 8/R3（当前 API/服务已可用）。
 
 ### 0.4 不要做的事
 
 - 不要重写 RunEngine 的 caps / 门 / 三类边 / content_hash / 断点续跑。
 - 不要新增 DAG 节点；46 节点/7 阶段/93 边不变。
 - 不要把新项目回退到 `legacy_entry`；只有 `meta.imported=true` 的旧项目可走 v1 harness。
-- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 `2.2.0`）。
+- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 `2.3.1`）。
 - 不要把 76MB 风格库/示例 mp4 提交进 git；不要把 `vendor/fy-code-animation` import 进服务端。
 - 不要调用在线生成模型、上传文件、开第二个 Chrome。
 - 不要用“页面能点”代替真实产物；所有完成申报必须附测试输出 + 产物路径/sha/时长 + curl/截图。
@@ -58,15 +58,16 @@ Phase 5 PreviewService 已完成并通过验收（见 §2.4 / §6.1）：F02 运
 
 | 项 | 值 |
 |---|---|
-| Phase 5 代码 | `25ff0d9`（tag `r2-preview`）；当前 HEAD 以 `git log` 为准 |
+| Phase 6 代码 | `426aa20`（tag `r2-profiles`）；当前 HEAD 以 `git log` 为准 |
 | Phase 1 tag | `r2-edge-fix` → `4f9e381` |
 | Phase 3 tag | `r2-scene-dsl` → `53e6462` |
 | Phase 4 tag | `r2-incremental` → `07b5237` |
 | Phase 5 tag | `r2-preview` → `25ff0d9` |
-| 测试 | **59 passed**（unit 44 / integration 12 / BDD 3） |
+| Phase 6 tag | `r2-profiles` → `426aa20` |
+| 测试 | **71 passed**（unit 56 / integration 12 / BDD 3） |
 | UI E2E | 8 场景 / 9 检查全绿（约 16–20s） |
 | API 冒烟 | 46 节点 / **93 边**通过 |
-| EXECUTOR_VERSION | **2.2.0**（`server/app/engine/cachekey.py`） |
+| EXECUTOR_VERSION | **2.3.1**（`server/app/engine/cachekey.py`） |
 
 ### 1.2 R2.0 八个 FR 的真实状态
 
@@ -76,7 +77,7 @@ Phase 5 PreviewService 已完成并通过验收（见 §2.4 / §6.1）：F02 运
 | FR-21 场景组件库 v1 | [DONE，视觉回归待补] | `scene-kit.js` 12 组件 + Python schema + `fixture/scene-kit.json`；组件 fixture 的 SSIM/视觉回归留 Phase 8。 |
 | FR-22 场景级增量 | [DONE，40s 实测待补] | manifest + SceneState + F02 只渲 dirty；5s/2 场实测 66 渲/54 复用；40s/5 场规划单测 204/948=21.5%。 |
 | FR-23 PreviewService | [DONE，UI 待接] | CDP 附加 F02 Chrome；单帧/片段/整片 job、PREVIEW 水印、500MB 缓存、latest-wins。F02 运行中 p50 1.25s/p95 1.31s，5s 片段 12.7s，缓存 5ms，不写 `out/frames`、不产生 Artifact/Approval。预览 UI 留 R3。 |
-| FR-24 draft/review/final | [PARTIAL] | `film_spec` 已支持 `profile` 参数，但 F02 固定 `final`；无 draft/review 产物、无 G07 `E_FINAL_REQUIRED`。 |
+| FR-24 draft/review/final | [DONE，UI 待接] | `render.profile.json` + API；D02 review/draft 静帧；E05 720p/24 代理；F02 只跑 final 且 manifest 写 `profileSpec`；F05/G07 `E_FINAL_REQUIRED`；Preview draft/review；切档不重跑 final。 |
 | FR-25 文档模型/快照 | [DONE] | ProjectDoc/DocRevision、409、版本/diff/回滚、Run 快照、新项目 task.json 只读、DocsEditor 自动保存/撤销/影响预估。 |
 | FR-29 持久化 Job/恢复 | [TODO] | `Job` 表仍未写入；`ACTIVE/CANCELS` 仍是内存态；无启动恢复/孤儿清理。 |
 | FR-30 黄金项目 | [TODO] | 无 `fixtures/golden/`、`golden_run.py`、SSIM/pHash 回归、BDD 新场景。 |
@@ -138,7 +139,7 @@ PASS: R2.0 Phase 4 5s 增量验收通过
 ### 2.3 回归
 
 ```bash
-cd server && uv run pytest tests -q                       # 59 passed
+cd server && uv run pytest tests -q                       # 71 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # 8 场景
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
 ```
@@ -167,12 +168,33 @@ PASS: R2.0 Phase 5 PreviewService 验收通过
 - 片段二次请求：`reused=60`，0.5s（仅 ffmpeg 封装）；整片 draft 5s：13.2s。
 - 单帧缓存 5MB 上限 500MB/项目；`GET /api/projects/:id/preview/cache` 可查。
 
-## 3. R2.0 Phase 0.1–5 实施记录
+### 2.5 Phase 6 档位验收（脚本可复现）
+
+`scripts/verify_r2_profiles.py` 实测输出（2026-11-02，project 93 / run 115 /
+`filmflow-projects/r2-profiles-112`）：
+
+```
+D02 stills: [('draft', (960, 540)), ('review', (1280, 720))]
+E05 proxy frames=120 size=(1280, 720)
+F02 manifest: profile=final profileSpec={1920×1080, 24, crf17}
+preview film draft: succeeded 13.3s frames=60 960×540/12
+preview film review: succeeded 32.5s frames=120 1280×720/24
+draft vs final worst SSIM=0.998663（6 帧，motion program，归一化 960×540）
+render profile override: draft 640×360/10；F02 status/cache_key 不变
+PASS: R2.0 Phase 6 档位验收通过
+```
+
+- 导入 legacy 回归：rumor-39s 跑 E05/E06 → 474 帧 480×270/12fps，E06 `profile=legacy`、
+  `static_len=6`，未被 review 档位误伤。
+- `verify_r2_preview.py` 最终回归仍通过（attached p50 1.31s / p95 1.44s，5s 片段 12.7s）。
+- `G07`/`F05` 的 `E_FINAL_REQUIRED` 由单测覆盖（缺 manifest / profile=review / Run 不匹配）。
+
+## 3. R2.0 Phase 0.1–6 实施记录
 
 ### Phase 0.1 · 基线修复（提交 `4f9e381` 的一部分）
 
 - `server/tests/conftest.py`：session 级 autouse `init_db()`，修复 BDD 在干净库首跑
-  `no such table: style`；现在干净环境首跑全绿（当前 59 项）。
+  `no such table: style`；现在干净环境首跑全绿（当前 71 项）。
 - `dev.sh`：macOS 自带 bash 3.2 不支持 `wait -n`，改为 `kill -0` 轮询；否则脚本启动即退出。
 - 文档同步测试计数。
 
@@ -277,6 +299,27 @@ PASS: R2.0 Phase 5 PreviewService 验收通过
 - 同时修复：F05/G07 读取 F04 跨项目缓存产物路径；C02 改异步 curl + 本地字体缓存，
   避免同步下载阻塞整个事件循环。
 
+### Phase 6 · draft/review/final 档位（tag `r2-profiles`）
+
+- 新 `server/app/services/render_profiles.py`：默认 draft 960×540/12 crf28、review 1280×720/24 crf22、
+  final 1920×1080/24 crf17；`render.profile.json` 可覆盖 draft/review 与编码；
+  final 尺寸/fps 由 `project.profile.json` 决定，不允许在 render profile 里改。
+- `GET/PUT /api/projects/:id/render-profile`；PUT 校验后原子写文件并审计；导入项目允许低于 1080p。
+- Run 快照新增 `render_profiles`；`PROFILE_NODES`（D02/E05/E06/F02/F03/F04/F05/G07）缓存键加入
+  `renderProfilesSha`。切档只影响后续 Run/预览，不会重跑已完成 final。
+- D02：新项目每个场景 native 渲染一次 → review 1280×720 + draft 960×540 两张；D04 按档位校验
+  尺寸/亮度/场景覆盖；imported 仍只产 legacy 静帧。
+- E05：review 代理 1280×720/24（`film_spec` proxy 支持 outW/outH/proxy_fps）；legacy 仍 480×270/12。
+- E06：`profile=review/legacy`、`fps`、`policy`；`static_len=0.5s*fps`。
+- F02：仍只跑 final；manifest 写 `profileSpec`；F04 使用 final crf/preset；F03 输出 `profile/policy`
+  （draft 不查重复帧）。
+- F05/G07：非导入项目必须存在 final manifest（profile/fps/frames/Run 匹配），否则
+  `E_FINAL_REQUIRED`；导入项目跳过。
+- PreviewService：draft/review 尺寸与编码来自项目 `render.profile.json`；单帧新增 `motion` 参数
+  （E03 运动 program，用于与 final 同刻对比；默认仍用 D01 base program）。
+- G06 改为真实口径：`alignment.segment.end vs scene.last_text_at`，输出 `sync_verified/sync_basis/
+  approximate`；无对齐时不再伪报 `sync_dev_s=0`（G05/G06 完整修复仍属 R2.5）。
+
 ---
 
 ## 4. 当前 v2 架构（必须理解）
@@ -292,17 +335,17 @@ docs(script/timeline/profile)
   → B07 校验快照
   → C01 contract v2（只有 2.x 引擎可跑新项目）
   → D01 编译 scenes/<sid>.base.program.json + card/still_spec.json
-  → D02 entry.still_spec（program → 静帧；still_t=场景中段）
+  → D02 entry.still_spec（native → review 720p + draft 540p；still_t=场景中段）
   → D05
   → E01/E02/E03 编译 scenes/<sid>.program.json + scenes/timeline_binding.json（内联 program）
   → E04 scenes/transitions.json
-  → E05 entry.film_spec mode=proxy
+  → E05 entry.film_spec mode=proxy（review 720p/24）
   → E07
   → F01 8787 帧服务
-  → F02 entry.film_spec mode=render + renders/final/manifest.json + SceneState
-  → F03 scene_report
-  → F04 ffmpeg → F05 QA → F06
-  → G...
+  → F02 entry.film_spec mode=render（只 final）+ renders/final/manifest.json（profileSpec）+ SceneState
+  → F03 scene_report（profile/policy）
+  → F04 ffmpeg（final crf/preset）→ F05 QA（final 校验）→ F06
+  → G...（G07 再校验 final manifest）
 ```
 
 预览旁路（不新增节点、不进 DAG）：
@@ -325,8 +368,9 @@ docs(当前) + tokens/font/engine
 
 ### 4.3 缓存
 
-- `EXECUTOR_VERSION=2.2.0`，任何执行器行为变化必须升。
+- `EXECUTOR_VERSION=2.3.1`，任何执行器行为变化必须升。
 - 节点缓存键 = version + params + 上游产物 sha + caps + `doc_snapshot_sha`（DOC_NODES）。
+  `PROFILE_NODES` 额外加入 `renderProfilesSha`；改 `render.profile.json` 不会复用旧档位产物。
 - 场景 manifest hash = program + tokens lock + engine sha + **C02 源字体** + profile + 邻接 transitions。
 - 跨项目缓存注意：E03 binding 已内联 program；F02 读 E03/E04 artifacts；C02/C03 有产物路径回退；
   B06 `task_id` 已进缓存键。
@@ -354,6 +398,7 @@ docs(当前) + tokens/font/engine
 | 增量规划 | `server/app/engine/render_manifest.py` |
 | Run 快照 | `server/app/engine/snapshot.py` |
 | 预览服务 | `server/app/services/preview.py`；API 在 `routes.py` 的 `preview/*` |
+| 渲染档位 | `server/app/services/render_profiles.py`、项目 `render.profile.json` |
 | 文档模型/API | `server/app/services/project_docs.py`、`server/app/api/routes.py` |
 | 引擎页 | `engines/riso/entry/{still_spec,film_spec}.html`、`assets/{scene-kit,scene-render,riso-core}.js` |
 | 编辑器 | `web/src/app/editor/page.tsx`、`web/src/components/DocsEditor.tsx` |
@@ -363,7 +408,7 @@ docs(当前) + tokens/font/engine
 
 ## 5. R2.0 新增踩坑（按优先级）
 
-1. **`EXECUTOR_VERSION`**：改任何执行器行为不升版 = 缓存返回旧行为。当前 `2.2.0`。
+1. **`EXECUTOR_VERSION`**：改任何执行器行为不升版 = 缓存返回旧行为。当前 `2.3.1`。
 2. **doc 快照**：A01/B02/B03/B06/D01/E01/E03 的缓存键必须含 `doc_snapshot_sha`；新增读文档的
    执行器要加入 `DOC_NODES`，否则改文档不失效。
 3. **字体 hash**：manifest `font_sha` 用 **C02 源字体**，不要用 C04 子集 CSS（随文案变化会让
@@ -414,10 +459,24 @@ docs(当前) + tokens/font/engine
     still 250ms 防抖 + generation 丢弃旧请求。不要为 job 长期占住 page semaphore，否则编辑预览被批处理堵住。
 27. **预览不落 final**：预览只写 `out/preview/` 与 `~/.filmflow/cache/preview`；绝不写 `out/frames`、
     不登记 Artifact、不产生 Approval；`film_spec` preview 模式不发 `/done`。
+28. **final 尺寸锁定**：`render.profile.json` 的 final width/height/fps 必须与 `project.profile.json`
+    一致；要改 final 分辨率先改项目 profile。导入项目允许低 final（allow_low_final）。
+29. **D02 档位静帧**：新项目每场 artifact meta 必须带 `profile=review|draft`；D04 依赖它校验尺寸与
+    全场景覆盖。imported 的 meta 是 `legacy`，不要套 review/draft 覆盖检查。
+30. **E05 帧率分歧**：新项目 review 代理是 1280×720/24；imported legacy 仍是 480×270/12。
+    不要把 review 的帧数/static_len 套到 imported，否则 E05 会缺帧、E06 阈值漂移。
+31. **final 门禁**：F02 只跑 final；F05/G07 调 `ensure_final_ready`，manifest 缺失/非 final/
+    run 不匹配 → `E_FINAL_REQUIRED`。G07 人工门批准前也会检查；imported 跳过。
+32. **档位快照**：Run 快照的 `render_profiles` 不可变；`PROFILE_NODES` 缓存键含 `renderProfilesSha`。
+    修改 `render.profile.json` 只影响后续 Run/预览，不得让已完成 final 重跑或失效。
+33. **预览一致性口径**：单帧默认 D01 base program；与 final 同刻对比要传 `motion=true`（E03 运动
+    program），并避开转场帧。draft mp4 是 crf28，H.264 会把抽帧 SSIM 拉到 ~0.95；原始 PNG 为 0.9987。
+34. **验收脚本时序**：门可能在缓存/继承下直接 succeeded，`wait_status(want=...)` 会永久等 pending；
+    脚本应先看状态，只对仍 pending 的门签字。`smoke_m1.py` 与 Phase 4/5/6 verifier 已按此修。
 
 ---
 
-## 6. R2.0 Phase 5–8：Phase 5 已完成，Phase 6–8 可直接开工
+## 6. R2.0 Phase 6–8：Phase 5–6 已完成，Phase 7–8 可直接开工
 
 ### 6.1 Phase 5 · PreviewService（FR-23）——[DONE]
 
@@ -460,7 +519,7 @@ docs(当前) + tokens/font/engine
 **退路**：若 CDP 页 p95 >6s，改为 F02 每 10 帧分块、块间释放 `chrome-queue`/`port-8787`，
 让预览独立启动 Chrome；仍必须单个 Chrome 串行。
 
-### 6.2 Phase 6 · 档位 draft/review/final（FR-24）——下一步
+### 6.2 Phase 6 · 档位 draft/review/final（FR-24）——[DONE]
 
 - 新增 `render.profile.json` 或项目 profile 字段：
   - draft 960×540/12、review 1280×720/24、final 1920×1080/24。
@@ -469,10 +528,12 @@ docs(当前) + tokens/font/engine
 - `scene_hash` 包含 profile；不同 profile 缓存不共享。
 - G07 前检查最新 F02 manifest `profile=final` 且 run 匹配；缺失 → `E_FINAL_REQUIRED`。
 - QA 阈值按 profile（draft 只查 missing/black；review 运动/同步；final 全量）。
-- 测试：40s draft/review/final 耗时；G07 拒绝 review；切档不重跑已完成 final。
-- 注意：G05/G06 当前 `amix duration=first`/伪同步是 R2.5 范围；R2.0 final QA 不得让它假通过。
+- 测试：5s draft 13.2s / review 31.6s / final 全链约 1 分钟；40s 计时留 Phase 8。
+  G07 拒绝 review、切档不重跑已完成 final 已由 `verify_r2_profiles.py` + 单测覆盖。
+- 注意：G05 `amix duration=first` 属 R2.5；G06 已在 Phase 6 改为真实口径并输出
+  `sync_verified/approximate`（无对齐不伪报 0），但尚未设硬阈值/失败门，Phase 8 标定。
 
-### 6.3 Phase 7 · 持久化 Job + 崩溃恢复（FR-29）
+### 6.3 Phase 7 · 持久化 Job + 崩溃恢复（FR-29）——下一步
 
 - 扩展 `Job`：priority/attempts/lease_until/heartbeat_at/parent_id/cancel_requested/progress/eta/
   error_code/error_msg；迁移用 `schema_migrations`（SQLite 幂等）。
@@ -503,11 +564,12 @@ docs(当前) + tokens/font/engine
 
 ```bash
 ./dev.sh                                                   # API 7860 + Web 3000
-cd server && uv run pytest tests -q                        # 59 passed
+cd server && uv run pytest tests -q                        # 71 passed
 cd .. && uv run --project server python scripts/e2e_ui.py   # UI 8 场景
 uv run --project server python scripts/smoke_m1.py          # 46 / 93
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量
 uv run --project server python scripts/verify_r2_preview.py         # Phase 5 预览验收
+uv run --project server python scripts/verify_r2_profiles.py        # Phase 6 档位验收
 uv run --project server python scripts/drive_run.py <run> <project>  # 旧全链驱动
 ```
 
@@ -546,12 +608,16 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 
 ## 9. 已知限制 / 风险（交接时必须知道）
 
-1. **40s 实测未跑**：5s 已过；40s 的 25% 指标目前只有规划单测（204/948=21.5%），Phase 8 必须真跑。
+1. **40s 实测未跑**：5s 增量与档位已过；40s 的 25% 指标目前只有规划单测（204/948=21.5%）。
+   Phase 8 必须真跑 40s final/draft/review 并记录耗时（Phase 6 验收用 5s 外推：draft 13.2s、
+   review 31.6s、final 全链约 1 分钟）。
 2. **rumor 新 Run 未在 v2 上重渲**：smoke 的 46/46 是旧 run #1 状态；Phase 8 用干净副本验证
    imported legacy；F02 legacy 若 `out/frames` 齐全会提前返回，必须清帧或复制项目。
 3. **Preview 已完成但 UI 未接**：API/服务与验收已完成；DocsEditor/编辑器还没有预览按钮（R3）。
    片段 mp4 是 draft crf28，抽帧与 final 归一化 SSIM≈0.974（H.264 损失）；单帧 PNG 为 0.9987。
-4. **FR-24 只有 final 硬编码**：draft/review、G07 `E_FINAL_REQUIRED` 未做；Phase 6 下一步。
+   Phase 6 的单帧新增 `motion=true`，用于与 final 同刻对比（默认仍是 D01 base program）。
+4. **FR-24 已完成但无档位 UI**：API `GET/PUT /render-profile` 与预览/交付链路可用；页面顶部切档、
+   「预计 X 分钟 / 复用 Y 帧」留 R3。draft mp4 crf28 抽帧 vs final SSIM ~0.95，原始 PNG 0.9987。
 5. **Job 未落库**：kill -9 只能人工 resume；无租约/心跳/孤儿清理。
 6. **黄金项目/视觉回归未建**：组件 fixture 只有 schema/JSON，未做 SSIM/pHash。
 7. **非 riso 新项目被 C01 阻断**：ink/code-video 仍是 Contract 1.0，R2.0 不支持新项目；
@@ -574,11 +640,12 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh` 起服务；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **59 passed**（干净库首跑）。
+- [ ] `cd server && uv run pytest tests -q` → **71 passed**（干净库首跑）。
 - [ ] `uv run --project server python scripts/e2e_ui.py` → 8 场景全绿。
 - [ ] `uv run --project server python scripts/smoke_m1.py` → 46 节点 / 93 边。
 - [ ] `uv run --project server python scripts/verify_r2_5s_incremental.py` → PASS（66/54）。
 - [ ] `uv run --project server python scripts/verify_r2_preview.py` → PASS（attached p50/p95、片段 ≤20s、缓存 ≤300ms）。
+- [ ] `uv run --project server python scripts/verify_r2_profiles.py` → PASS（D02 双静帧、E05 720p、F02 final、切档不重跑）。
 - [ ] 打开 run #1 画布，确认 46 绿 + 审批历史；`out/film/master.mp4` 39.5s。
 - [ ] 读本文 §5/§6/§9；确认从 Phase 6 开始，不重做 Phase 1–5。
 - [ ] 任何“完成”申报附：测试输出、真实产物路径+sha/时长、UI 截图（如涉及）、API curl。
