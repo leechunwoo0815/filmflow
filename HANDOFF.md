@@ -4,6 +4,8 @@
 > 本文件是**唯一权威的接手入口**。规格（`../filmflow-web-agent-prompt.md`）是宪法，但**已经落后于实现**的地方以本文 §9 为准。
 > **深化需求**：v2 补充 PRD 见 [docs/prd/PRD-002-production-workbench.md](docs/prd/PRD-002-production-workbench.md)（30 FR / 场景 DSL / 两级执行 / R2–R4 路线图）。
 > **内置技能**：`vendor/fy-code-animation/`（fy-code-animation，984KB）；341 风格库路径见 [vendor/style-library.path](vendor/style-library.path)（76MB 库不入库），说明见 [vendor/README.md](vendor/README.md)。
+> **老板已裁决（2026-11-02）**：v2 的 D1–D7 全部按建议执行（R2 能出片优先 / 46 节点不变 / 封闭 Scene DSL / 允许门前后 draft 预览 / 首批 16:9+9:16+SRT+封面 / 本地规则式辅助 / whisper medium）；见 [ADR-0005](docs/adr/ADR-0005-v2-ratification.md)。
+> **Qoder 直接接手**：复制 [QODER_PROMPT.md](QODER_PROMPT.md) 到对话框；它包含 R2.0 的 8 个 FR、开工顺序、验收与踩坑。
 
 ---
 
@@ -141,9 +143,10 @@ filmflow/
 | ADR-0002 | 解析器实测矩阵 173/20/45/103（替代 spike 参考值） | `docs/adr/ADR-0002-matrix-measured.md` |
 | ADR-0003 | embed.css 上限 profile 化（默认 512KB） | `docs/adr/ADR-0003-embed-limit.md` |
 | ADR-0004 | 默认白天主题，夜间可切 | `docs/adr/ADR-0004-theme-light-default.md` |
+| ADR-0005 | v2 范围裁决 D1–D7（R2 优先/46 节点/封闭 DSL/预览/交付/规则辅助/whisper） | `docs/adr/ADR-0005-v2-ratification.md` |
 | §19 补录 | F03 重复帧=警告；G07 门后真实打包；门控活同步；style-index 为 A03 产物 | 规格 §19 |
 
-**待老板书面追认**：ADR-0002 / 0003 + 上述 §19 四项（已于交付报告提请）。
+**已追认（老板 2026-11-02）**：ADR-0002 / 0003 + §19 四项 + v2 D1–D7（ADR-0005）。R2.0 按 PRD-002 执行。
 
 ---
 
@@ -227,13 +230,15 @@ uv run --project server python scripts/drive_run.py <run_id> <project_id> --time
 ## 10. 深化路线图（资深视频创作者视角，按生产力价值排序）
 
 > 原则：**不动已稳定的执行/门/缓存内核**（它是可靠底座），所有扩展围绕"创作循环"与"交付闭环"。
-> 详细需求、验收标准与 6 个待裁决决策见 [docs/prd/PRD-002-production-workbench.md](docs/prd/PRD-002-production-workbench.md)（本节的展开版）。
+> 详细需求、验收标准与已裁决 D1–D7 见 [docs/prd/PRD-002-production-workbench.md](docs/prd/PRD-002-production-workbench.md)（本节的展开版）。**R2.0 只做 FR-20/21/22/23/24/25/29/30；未过 FR-20/22/23/30 不进入 R2.5。**
 
-### P0-1 参数化渲染链（让新项目真出片）
-1. `D02`：项目有 `still_spec.json` → 改走 `entry.still_spec`（需把 spec 作为 URL 可访问的 artifact，如 `http://127.0.0.1:8787/project/artifacts/...json`）。
-2. 新写 `entry/film_spec.html`：读 `card/timeline_binding.json`（场景/事件/相机/转场），逐帧渲染（同 riso-core shader），支持 `mode=render|proxy`。
-3. `E05/F02`：绑定存在 → 走 `film_spec`；`meta.imported` 项目保留原版 harness。
-4. 验收：用 AG1 建 5 秒新项目 → 全链跑通 → 成片里是**用户文案**而非 rumor 内容。（新增 BDD 场景）
+### P0-1 参数化渲染链（R2.0，已裁决，第一优先）
+1. **文档模型**：`script.doc` / `timeline.doc` 为事实源；`task.json` 只读快照；Run 启动快照哈希进缓存键（FR-25）。
+2. **静帧链**：D01 编译 `base.program`（全场景）→ D02 走 `entry.still_spec`；imported 项目才回退 `legacy_entry.still`。
+3. **分镜链**：E03 合并相机为 `motion.program` → E04 转场并补 `E04→E05/F02` 两条 data 边 → E05/F02 走 `entry.film_spec`；**F02 只跑 final**，draft/review 走 PreviewService/E05。
+4. **组件库**：`scene-kit.js` 12 组件 / 8 转场；新增 `film_spec.html`；补 `B05→C05` 边，让排版进 tokens.lock。
+5. **配套**：`render.manifest` 场景级增量（FR-22）、PreviewService（FR-23）、持久化 Job/崩溃恢复（FR-29）、黄金项目 5s/15s/40s（FR-30）。
+6. **验收**：5s 新项目全链出用户文案；改 S03 只渲 S03+邻接；单帧 p50 ≤2s；kill -9 后 ≤60s 恢复；rumor-39s 仍 46/46。详见 PRD-002 §7.2 / §8.1–8.8。
 
 ### P0-2 秒级创作循环
 - 海报级"单帧热预览"：编辑器右上角"预览当前句"→ `still_spec` 直渲 1 帧（复用已缓存字体，~2s，走 chrome-queue）。
@@ -284,4 +289,4 @@ uv run --project server python scripts/drive_run.py <run_id> <project_id> --time
 - [ ] `uv run --project server python scripts/e2e_ui.py` → 8 场景全绿
 - [ ] 打开 run #1 画布，确认 46 绿 + 审批历史（含 B08 驳回→重批）
 - [ ] `out/film/master.mp4` 39.5s 带音轨
-- [ ] 读 §9 缺口 + §10 路线图，与老板确认下一阶段 P0 范围（建议 P0-1 参数化渲染链）
+- [ ] 读 §9 缺口 + §10 路线图；**D1–D7 已裁决（ADR-0005），直接执行 R2.0**，不要再等确认

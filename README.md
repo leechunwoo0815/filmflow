@@ -39,6 +39,7 @@ uv run --project server python scripts/drive_run.py <run> <project>   # 全链�
 | 文档 | 说明 |
 |---|---|
 | **[AGENTS.md](AGENTS.md)** | **Qoder / 新 Agent 入口（3 份必读 + 硬约束）** |
+| **[QODER_PROMPT.md](QODER_PROMPT.md)** | **给 Qoder 的完整接手 prompt（复制到对话框）** |
 | **[HANDOFF.md](HANDOFF.md)** | **接手入口（交接文档：状态/坑/缺口/路线图）** |
 | **[vendor/README.md](vendor/README.md)** | **内置 fy-code-animation 技能 + 341 风格库路径（76MB 库不入库）** |
 | `../filmflow-web-agent-prompt.md` | 技术规格（§4.8 边表 / §19 裁决表为宪法） |
@@ -47,7 +48,7 @@ uv run --project server python scripts/drive_run.py <run> <project>   # 全链�
 | `docs/tech-plan.md` | §18 九项技术方案 |
 | `docs/process/` | SDLC / Feature 拆分 / 测试策略 |
 | `bdd/features/` | 16 个中文 Gherkin 特性文件（自动化 3 场景 + 手动验收拆分） |
-| `docs/adr/` | ADR-0001 技术栈 · ADR-0002 实测矩阵 · ADR-0003 embed 上限 · ADR-0004 白天主题 |
+| `docs/adr/` | ADR-0001 技术栈 · ADR-0002 实测矩阵 · ADR-0003 embed 上限 · ADR-0004 白天主题 · **ADR-0005 v2 裁决 D1–D7** |
 
 ## 已知边界（诚实清单）
 
