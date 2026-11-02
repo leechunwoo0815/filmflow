@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-02 · R2.0 Phase 0.1–4 已完成
-> 当前基线：Phase 4 代码 `07b5237` / tag `r2-incremental`；交接文档提交见 `git log` 最新一条。
+> 更新时间：2026-11-02 · R2.0 Phase 0.1–5 已完成
+> 当前基线：Phase 5 代码 `25ff0d9` / tag `r2-preview`；交接文档提交见 `git log` 最新一条。
 > 本文是**唯一权威接手入口**；规格 `../filmflow-web-agent-prompt.md` 仍是宪法，v2 需求以
 > `docs/prd/PRD-002-production-workbench.md` + `docs/adr/ADR-0005-v2-ratification.md` 为准。
 > **先读本文 §0、§1、§6，再读 `AGENTS.md`、PRD-002、ADR-0005、`vendor/README.md`。**
@@ -24,7 +24,7 @@ curl -s http://127.0.0.1:7860/api/health
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 52 passed
+cd server && uv run pytest tests -q                       # 59 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景
 uv run --project server python scripts/smoke_m1.py         # API 冒烟：46 节点 / 93 边
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量验收
@@ -35,15 +35,17 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 
 ### 0.3 当前下一步
 
-**从 Phase 5（PreviewService / FR-23）开始，不要重做 Phase 1–4。**
-推荐方案与验收见本文 §6.1；不要新开第二个浏览器，不要把预览写进 `out/frames` 或产生 Approval。
+**从 Phase 6（draft/review/final 档位 / FR-24）开始，不要重做 Phase 1–5。**
+Phase 5 PreviewService 已完成并通过验收（见 §2.4 / §6.1）：F02 运行中 CDP 附加同一 Chrome，
+单帧 p50 1.25s / p95 1.31s，5s 片段 12.7s，缓存 5ms。下一步按 §6.2 做档位与 G07 `E_FINAL_REQUIRED`；
+预览 UI 接线留到 R3 编辑器（当前只有 API/服务）。
 
 ### 0.4 不要做的事
 
 - 不要重写 RunEngine 的 caps / 门 / 三类边 / content_hash / 断点续跑。
 - 不要新增 DAG 节点；46 节点/7 阶段/93 边不变。
 - 不要把新项目回退到 `legacy_entry`；只有 `meta.imported=true` 的旧项目可走 v1 harness。
-- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 `2.1.2`）。
+- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 `2.2.0`）。
 - 不要把 76MB 风格库/示例 mp4 提交进 git；不要把 `vendor/fy-code-animation` import 进服务端。
 - 不要调用在线生成模型、上传文件、开第二个 Chrome。
 - 不要用“页面能点”代替真实产物；所有完成申报必须附测试输出 + 产物路径/sha/时长 + curl/截图。
@@ -56,14 +58,15 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 
 | 项 | 值 |
 |---|---|
-| Phase 4 代码 | `07b5237`（tag `r2-incremental`）；当前 HEAD 以 `git log` 为准 |
+| Phase 5 代码 | `25ff0d9`（tag `r2-preview`）；当前 HEAD 以 `git log` 为准 |
 | Phase 1 tag | `r2-edge-fix` → `4f9e381` |
 | Phase 3 tag | `r2-scene-dsl` → `53e6462` |
 | Phase 4 tag | `r2-incremental` → `07b5237` |
-| 测试 | **52 passed**（unit 37 / integration 12 / BDD 3） |
+| Phase 5 tag | `r2-preview` → `25ff0d9` |
+| 测试 | **59 passed**（unit 44 / integration 12 / BDD 3） |
 | UI E2E | 8 场景 / 9 检查全绿（约 16–20s） |
 | API 冒烟 | 46 节点 / **93 边**通过 |
-| EXECUTOR_VERSION | **2.1.2**（`server/app/engine/cachekey.py`） |
+| EXECUTOR_VERSION | **2.2.0**（`server/app/engine/cachekey.py`） |
 
 ### 1.2 R2.0 八个 FR 的真实状态
 
@@ -72,7 +75,7 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 | FR-20 参数化渲染链 | [DONE] | 5s 新项目 `风从纸上起。纸不动，风先动。` 已跑通 D02 静帧与 E03–F06；画面文字来自 `source_span`/program，不再渲染 rumor 内容。 |
 | FR-21 场景组件库 v1 | [DONE，视觉回归待补] | `scene-kit.js` 12 组件 + Python schema + `fixture/scene-kit.json`；组件 fixture 的 SSIM/视觉回归留 Phase 8。 |
 | FR-22 场景级增量 | [DONE，40s 实测待补] | manifest + SceneState + F02 只渲 dirty；5s/2 场实测 66 渲/54 复用；40s/5 场规划单测 204/948=21.5%。 |
-| FR-23 PreviewService | [TODO] | 未实现；F02 目前整片持锁，预览必须在 Phase 5 与 F02 共享同一个 Chrome。 |
+| FR-23 PreviewService | [DONE，UI 待接] | CDP 附加 F02 Chrome；单帧/片段/整片 job、PREVIEW 水印、500MB 缓存、latest-wins。F02 运行中 p50 1.25s/p95 1.31s，5s 片段 12.7s，缓存 5ms，不写 `out/frames`、不产生 Artifact/Approval。预览 UI 留 R3。 |
 | FR-24 draft/review/final | [PARTIAL] | `film_spec` 已支持 `profile` 参数，但 F02 固定 `final`；无 draft/review 产物、无 G07 `E_FINAL_REQUIRED`。 |
 | FR-25 文档模型/快照 | [DONE] | ProjectDoc/DocRevision、409、版本/diff/回滚、Run 快照、新项目 task.json 只读、DocsEditor 自动保存/撤销/影响预估。 |
 | FR-29 持久化 Job/恢复 | [TODO] | `Job` 表仍未写入；`ACTIVE/CANCELS` 仍是内存态；无启动恢复/孤儿清理。 |
@@ -96,6 +99,8 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
   （run 38，120 帧 / 1920×1080 / 5.000s / intermediate.mp4）。
 - Phase 4 手工项目：`/Users/litianyu/cc-projects/ai-v/filmflow-projects/r2-p4-75`
   （project 47 / run 51，manifest 66/54）。
+- Phase 5 验收项目：`/Users/litianyu/cc-projects/ai-v/filmflow-projects/r2-preview-98`
+  （project 76 / run 86→87；预览缓存 75 文件 / 63MB；`out/preview/segment_S01_0.0_5.0_draft.mp4`）。
 
 ---
 
@@ -133,19 +138,41 @@ PASS: R2.0 Phase 4 5s 增量验收通过
 ### 2.3 回归
 
 ```bash
-cd server && uv run pytest tests -q                       # 52 passed
+cd server && uv run pytest tests -q                       # 59 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # 8 场景
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
 ```
 
 ---
 
-## 3. R2.0 Phase 0.1–4 实施记录
+### 2.4 Phase 5 预览验收（脚本可复现）
+
+`scripts/verify_r2_preview.py` 实测输出（2026-11-02，project 76 / run 86→87 /
+`filmflow-projects/r2-preview-98`）：
+
+```
+still idle: 1270ms chrome=owned size=(960, 540) watermark=True
+still cache: 5ms cache=hit
+during-F02 samples=14 attached=12
+attached p50=1253ms p95=1314ms max=1314ms
+preview vs final normalized SSIM=0.998717
+latest-wins: 200=1 429=19
+segment: succeeded 12.7s frames=60 rendered=60 reused=0 chrome=owned
+segment meta={'width': 960, 'height': 540, 'fps': 12.0, 'frames': 60, 'duration': 5.0}
+frame_delta=0 cache=75 files/63716KB artifacts 37->37 approvals 6->6
+PASS: R2.0 Phase 5 PreviewService 验收通过
+```
+
+- F02 运行中预览样本全部 `X-Preview-Chrome: attached`；F02/F03/F04/F05/F06 未因预览失败。
+- 片段二次请求：`reused=60`，0.5s（仅 ffmpeg 封装）；整片 draft 5s：13.2s。
+- 单帧缓存 5MB 上限 500MB/项目；`GET /api/projects/:id/preview/cache` 可查。
+
+## 3. R2.0 Phase 0.1–5 实施记录
 
 ### Phase 0.1 · 基线修复（提交 `4f9e381` 的一部分）
 
 - `server/tests/conftest.py`：session 级 autouse `init_db()`，修复 BDD 在干净库首跑
-  `no such table: style`；现在 52 项干净环境首跑全绿。
+  `no such table: style`；现在干净环境首跑全绿（当前 59 项）。
 - `dev.sh`：macOS 自带 bash 3.2 不支持 `wait -n`，改为 `kill -0` 轮询；否则脚本启动即退出。
 - 文档同步测试计数。
 
@@ -227,6 +254,29 @@ uv run --project server python scripts/smoke_m1.py         # 46 / 93
   - 无就绪节点且非终态 → Run `blocked`，不再假装 running。
 - 实测：5s 改 S02 → 66 渲/54 复用；40s 规划 204/948=21.5%。
 
+### Phase 5 · PreviewService（tag `r2-preview`）
+
+- F02 Chrome 加 `--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1`；
+  `PreviewRenderer` 检测 `chrome-queue` holder 是否以 `:F02` 结尾：
+  - F02 运行中：`playwright.chromium.connect_over_cdp`，在同一 Chrome 新建临时 page，渲染完只关 page，
+    **不关浏览器**（`playwright.stop()` 已验证不会杀掉 F02 Chrome）。
+  - F02 空闲：按 `chrome-queue` 启动临时 Chrome，渲染完关闭；不常驻第二个浏览器。
+- `server/app/services/preview.py`：上下文解析（当前 docs/时间轴/tokens/engine/font/transitions）、
+  base/motion program 编译、水印、缓存、job、latest-wins、交互优先。
+- 单帧：native 1920×1080 渲染 → Lanczos 降到 960×540 → `PREVIEW` 水印；
+  与 final 同刻帧归一化 SSIM 0.9987（直接 960 渲染会改变半调网点相位，仅 0.80）。
+- 片段/整片：native 渲染后返回 JPEG q0.98 → Lanczos 降到目标尺寸 → 水印 → 写 `out/preview`；
+  5s/60 帧 12.7s；二次请求 60 帧全缓存复用 0.5s。
+- 缓存：`~/.filmflow/cache/preview/<project>/<hash>/<key>.png`；key 含 scene/film hash、时间、profile、
+  尺寸、水印、`RENDERER_VER`；项目 LRU 500MB。
+- 防抖/latest-wins：still 250ms 防抖 + `(project,scene)` generation；20 并发只保留最后 1 个，
+  其余 429 `E_PREVIEW_BUSY {superseded:true}`。job 每帧检查 `_INTERACTIVE`，still 优先。
+- 审计：`preview.segment`/`preview.film` 写 AuditLog；**不写 Artifact/Approval**。
+- `film_spec.html` 新增 `__FF_PREVIEW_INIT__/__FF_PREVIEW_FRAME__/__FF_PREVIEW_FRAME_JPEG__/__FF_PREVIEW__`；
+  preview 模式不 POST `/done`。
+- 同时修复：F05/G07 读取 F04 跨项目缓存产物路径；C02 改异步 curl + 本地字体缓存，
+  避免同步下载阻塞整个事件循环。
+
 ---
 
 ## 4. 当前 v2 架构（必须理解）
@@ -255,6 +305,17 @@ docs(script/timeline/profile)
   → G...
 ```
 
+预览旁路（不新增节点、不进 DAG）：
+
+```
+docs(当前) + tokens/font/engine
+  → PreviewService.resolve_context
+  → compile base/motion program
+  → F02 运行中? CDP attach 9222 : 临时 Chrome（chrome-queue）
+  → 单帧 native render → Lanczos → PREVIEW 水印 → 缓存 → PNG
+  → 片段/整片 native render(JPEG q0.98) → Lanczos → 水印 → out/preview/*.mp4
+```
+
 ### 4.2 imported 旧项目
 
 - `Workflow.graph_json.meta.imported=true`（`projects_import` 现在会持久化，已修 `flag_modified`）。
@@ -264,7 +325,7 @@ docs(script/timeline/profile)
 
 ### 4.3 缓存
 
-- `EXECUTOR_VERSION=2.1.2`，任何执行器行为变化必须升。
+- `EXECUTOR_VERSION=2.2.0`，任何执行器行为变化必须升。
 - 节点缓存键 = version + params + 上游产物 sha + caps + `doc_snapshot_sha`（DOC_NODES）。
 - 场景 manifest hash = program + tokens lock + engine sha + **C02 源字体** + profile + 邻接 transitions。
 - 跨项目缓存注意：E03 binding 已内联 program；F02 读 E03/E04 artifacts；C02/C03 有产物路径回退；
@@ -275,8 +336,11 @@ docs(script/timeline/profile)
 - `chrome-queue=1`：所有 Chrome 渲染串行。
 - `ffmpeg=1`。
 - `port-8787=1`：F01 与 **D02/E05/F02** 都持有；任何一个渲染节点运行期间，FrameServer 根不能被
-  别的 Run 切换。Phase 5 预览若在 F02 运行中，必须通过同一 Chrome/同一 8787 根，不得绕过此锁。
-- F02 Chrome profile：`/tmp/ff-F02`；Phase 5 将加 `--remote-debugging-port=9222` 供预览 CDP 附加。
+  别的 Run 切换。预览不读 8787：F02 运行中通过 CDP 附加同一 Chrome；空闲时临时 Chrome 只用 `chrome-queue`。
+- F02 Chrome profile：`/tmp/ff-F02`；已加 `--remote-debugging-port=9222` 供预览 CDP 附加。
+  F02 每个渲染区间启动一次 Chrome；区间之间 9222 可能短暂不可用，PreviewService 最多等 3s，
+  超时返回 `E_PREVIEW_BUSY`（不会另起第二个 Chrome）。
+- PreviewService 空闲时自己拿 `chrome-queue` 启动临时 Chrome；不使用 `port-8787`（payload 内联 + `file://` 页面）。
 
 ### 4.5 关键文件
 
@@ -289,6 +353,7 @@ docs(script/timeline/profile)
 | Scene DSL | `server/app/engine/scene/*` |
 | 增量规划 | `server/app/engine/render_manifest.py` |
 | Run 快照 | `server/app/engine/snapshot.py` |
+| 预览服务 | `server/app/services/preview.py`；API 在 `routes.py` 的 `preview/*` |
 | 文档模型/API | `server/app/services/project_docs.py`、`server/app/api/routes.py` |
 | 引擎页 | `engines/riso/entry/{still_spec,film_spec}.html`、`assets/{scene-kit,scene-render,riso-core}.js` |
 | 编辑器 | `web/src/app/editor/page.tsx`、`web/src/components/DocsEditor.tsx` |
@@ -298,7 +363,7 @@ docs(script/timeline/profile)
 
 ## 5. R2.0 新增踩坑（按优先级）
 
-1. **`EXECUTOR_VERSION`**：改任何执行器行为不升版 = 缓存返回旧行为。当前 `2.1.2`。
+1. **`EXECUTOR_VERSION`**：改任何执行器行为不升版 = 缓存返回旧行为。当前 `2.2.0`。
 2. **doc 快照**：A01/B02/B03/B06/D01/E01/E03 的缓存键必须含 `doc_snapshot_sha`；新增读文档的
    执行器要加入 `DOC_NODES`，否则改文档不失效。
 3. **字体 hash**：manifest `font_sha` 用 **C02 源字体**，不要用 C04 子集 CSS（随文案变化会让
@@ -330,20 +395,35 @@ docs(script/timeline/profile)
 16. **新项目 task.json 只读**：`PUT /projects/:id/task` 对新项目返回 `E_DOC_READONLY`；
     imported 例外。运行时只读 Run 快照。
 17. **film_spec DONE**：短项目必须发 `/done`；不要在页面里用固定 `FRAMES=948` 判断。
-18. **Chrome 进程**：F02 用 `/tmp/ff-F02`；Phase 5 预览 CDP 附加前要确认 `9222` 可连接；
-    不要启动第二个 Chrome 做预览。
+18. **Chrome 进程**：F02 用 `/tmp/ff-F02` 且暴露 9222；预览附加前要确认 `9222` 可连接；
+    不要启动第二个 Chrome 做预览（F02 空闲时临时 Chrome 例外，必须持有 `chrome-queue`）。
 19. **`dev.sh`**：macOS bash 3.2 不支持 `wait -n`；当前用 `kill -0` 轮询。
 20. **调度 deadlock**：无 runnable、无 pending 门但不是终态时 Run 标 `blocked`；不要静默
     running。排查先看 caps 和 failed 节点。
+21. **F04 跨项目缓存**：F04 命中旧 Run 时 `out/film/intermediate.mp4` 只在旧项目内容寻址目录；
+    F05/G07 必须用 `_upstream_file(ctx,"F04","MP4",...)`，不要直接读当前项目路径（否则 ffprobe 失败）。
+22. **C02 禁止同步下载**：同步 `subprocess.run(curl)` 会阻塞 FastAPI 事件循环（health 都超时）；
+    已改 `ctx["runner"].run` + `--max-time 120` + `~/.filmflow/cache/fonts` 与既有 C02 产物回退。
+23. **预览分辨率/网点**：直接 960p 渲染会改变 RISO 半调网点相位，与 final 归一化 SSIM 仅 ~0.80；
+    单帧/片段统一 native 渲染后 Lanczos 降采样（单帧 PNG；片段 JPEG q0.98 再降采样），SSIM 0.9987。
+24. **F02 CDP 生命周期**：9222 只在 F02 每个渲染区间存在；预览仅在 `chrome-queue` holder 以 `:F02`
+    结尾时附加，最多等 3s；不可用返回 `E_PREVIEW_BUSY`，**不得**另起第二个 Chrome。
+25. **Playwright 附加关闭**：attached 模式只 `page.close()+playwright.stop()`，**不要** `browser.close()`；
+    后者可能关闭 F02 浏览器。已实测 `pw.stop()` 不会杀 Chrome。
+26. **预览优先级**：job 每帧检查 `_INTERACTIVE` 并让位 still；`_PAGE_SEM=2` 限制同时求值页面；
+    still 250ms 防抖 + generation 丢弃旧请求。不要为 job 长期占住 page semaphore，否则编辑预览被批处理堵住。
+27. **预览不落 final**：预览只写 `out/preview/` 与 `~/.filmflow/cache/preview`；绝不写 `out/frames`、
+    不登记 Artifact、不产生 Approval；`film_spec` preview 模式不发 `/done`。
 
 ---
 
-## 6. 未完成 R2.0：Phase 5–8 可直接开工
+## 6. R2.0 Phase 5–8：Phase 5 已完成，Phase 6–8 可直接开工
 
-### 6.1 Phase 5 · PreviewService（FR-23）
+### 6.1 Phase 5 · PreviewService（FR-23）——[DONE]
 
-**目标**：F02 运行中单帧 p50 ≤2s / p95 ≤6s；5s 片段 ≤20s；缓存命中 ≤300ms；
-预览不写 `out/frames`、不产生 Approval；门前 `PREVIEW` 水印。
+**已完成**（tag `r2-preview`，证据见 §2.4）：F02 运行中单帧 p50 1.25s / p95 1.31s；
+5s 片段 12.7s；缓存 5ms；不写 `out/frames`、不产生 Artifact/Approval；`PREVIEW` 水印。
+下面是已落地的设计与测试项，后续改预览行为先看 §5 的 21–27 条坑。
 
 **推荐设计（CDP 附加，不重写 F02）**：
 1. `_chrome_render_argv` 给 F02 Chrome 加 `--remote-debugging-port=9222`
@@ -380,7 +460,7 @@ docs(script/timeline/profile)
 **退路**：若 CDP 页 p95 >6s，改为 F02 每 10 帧分块、块间释放 `chrome-queue`/`port-8787`，
 让预览独立启动 Chrome；仍必须单个 Chrome 串行。
 
-### 6.2 Phase 6 · 档位 draft/review/final（FR-24）
+### 6.2 Phase 6 · 档位 draft/review/final（FR-24）——下一步
 
 - 新增 `render.profile.json` 或项目 profile 字段：
   - draft 960×540/12、review 1280×720/24、final 1920×1080/24。
@@ -423,10 +503,11 @@ docs(script/timeline/profile)
 
 ```bash
 ./dev.sh                                                   # API 7860 + Web 3000
-cd server && uv run pytest tests -q                        # 52 passed
+cd server && uv run pytest tests -q                        # 59 passed
 cd .. && uv run --project server python scripts/e2e_ui.py   # UI 8 场景
 uv run --project server python scripts/smoke_m1.py          # 46 / 93
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量
+uv run --project server python scripts/verify_r2_preview.py         # Phase 5 预览验收
 uv run --project server python scripts/drive_run.py <run> <project>  # 旧全链驱动
 ```
 
@@ -468,8 +549,9 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 1. **40s 实测未跑**：5s 已过；40s 的 25% 指标目前只有规划单测（204/948=21.5%），Phase 8 必须真跑。
 2. **rumor 新 Run 未在 v2 上重渲**：smoke 的 46/46 是旧 run #1 状态；Phase 8 用干净副本验证
    imported legacy；F02 legacy 若 `out/frames` 齐全会提前返回，必须清帧或复制项目。
-3. **Preview 未实现**：F02 运行中无预览；Phase 5 是下一步。
-4. **FR-24 只有 final 硬编码**：draft/review、G07 `E_FINAL_REQUIRED` 未做。
+3. **Preview 已完成但 UI 未接**：API/服务与验收已完成；DocsEditor/编辑器还没有预览按钮（R3）。
+   片段 mp4 是 draft crf28，抽帧与 final 归一化 SSIM≈0.974（H.264 损失）；单帧 PNG 为 0.9987。
+4. **FR-24 只有 final 硬编码**：draft/review、G07 `E_FINAL_REQUIRED` 未做；Phase 6 下一步。
 5. **Job 未落库**：kill -9 只能人工 resume；无租约/心跳/孤儿清理。
 6. **黄金项目/视觉回归未建**：组件 fixture 只有 schema/JSON，未做 SSIM/pHash。
 7. **非 riso 新项目被 C01 阻断**：ink/code-video 仍是 Contract 1.0，R2.0 不支持新项目；
@@ -478,24 +560,27 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 9. **DocsEditor 只做了 script/时间轴只读**：时间轴拖拽/审片/音频 UI 是 R3。
 10. **DB 迁移是 create_all + schema 1/2 记录**：若 Phase 7 加 Job 字段，需要真正的 SQLite ALTER
     幂等迁移，不要只 create_all。
-11. **Chrome 进程语义**：`chrome-queue` 串行的是渲染操作；A04 previs 的常驻浏览器可能空闲存在，
-    但 F02/预览不得新开第二个浏览器；Phase 5 必须用 CDP 或复用。
+11. **Chrome 进程语义**：`chrome-queue` 串行的是渲染操作；A04 previs 的常驻浏览器可能空闲存在。
+    F02 运行中预览必须 CDP 附加 9222（已实现）；F02 空闲时可临时启动一个 Chrome，但不得常驻第二个浏览器。
 12. **跨项目缓存**：已修 C02/C03/B06/E03/E04 的已知路径；新增执行器若读项目相对文件，先检查
     缓存命中时文件是否存在，必要时用 artifact/inline。
 13. **测试项目污染真实 DB**：大量 `it-*`/`r2-*` project/run；不影响运行，清理时先确认无引用。
 14. **i18n**：DocsEditor/新提示目前中文为主；R2.0 不强制双语页面，但不要破坏原有 i18n。
+15. **F02 固定 9222**：若本机已有其他进程占用 9222，F02 的新 Chrome 可能启动失败；排查先
+    `lsof -i :9222`。Phase 7 可改为 `--remote-debugging-port=0` + `DevToolsActivePort` 发现端口。
 
 ---
 
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh` 起服务；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **52 passed**（干净库首跑）。
+- [ ] `cd server && uv run pytest tests -q` → **59 passed**（干净库首跑）。
 - [ ] `uv run --project server python scripts/e2e_ui.py` → 8 场景全绿。
 - [ ] `uv run --project server python scripts/smoke_m1.py` → 46 节点 / 93 边。
 - [ ] `uv run --project server python scripts/verify_r2_5s_incremental.py` → PASS（66/54）。
+- [ ] `uv run --project server python scripts/verify_r2_preview.py` → PASS（attached p50/p95、片段 ≤20s、缓存 ≤300ms）。
 - [ ] 打开 run #1 画布，确认 46 绿 + 审批历史；`out/film/master.mp4` 39.5s。
-- [ ] 读本文 §5/§6/§9；确认从 Phase 5 开始，不重做 Phase 1–4。
+- [ ] 读本文 §5/§6/§9；确认从 Phase 6 开始，不重做 Phase 1–5。
 - [ ] 任何“完成”申报附：测试输出、真实产物路径+sha/时长、UI 截图（如涉及）、API curl。
 
 ---
@@ -541,6 +626,7 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 | `AGENTS.md` | Agent 入口与硬约束 |
 | `docs/prd/PRD-002-production-workbench.md` | v2 30 FR / 两级执行 / 交付矩阵 |
 | `docs/adr/ADR-0005-v2-ratification.md` | D1–D7 冻结裁决 |
+| `docs/adr/ADR-0006-preview-service.md` | PreviewService：同一 Chrome/CDP、全分辨率降采样、缓存与边界 |
 | `docs/process/r2-plan.md` | R2.0 阶段计划（Phase 0.1–8） |
 | `docs/tech-plan.md` | v1 技术方案 |
 | `../filmflow-web-agent-prompt.md` | 宪法；§4.8 边表/§17/§19 已同步 93 边（仓库外，不在 git） |

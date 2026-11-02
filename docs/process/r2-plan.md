@@ -3,7 +3,7 @@
 > 2026-11-02 · 接手基线审计后制定 · 依据 `QODER_PROMPT.md`、`docs/prd/PRD-002-production-workbench.md`、`docs/adr/ADR-0005-v2-ratification.md`
 > 范围：FR-20/21/22/23/24/25/29/30。不做时间轴、审片、音频 v2、资产库、批量、photo 引擎。
 > 冻结项：46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；只加 3 条 data 边。
-> **进度（2026-11-02）**：Phase 0.1–4 已完成。5s 新项目已跑通参数化静帧与 E03–F06；改 S02 文案后新 Run 只渲 66/120 帧（S01 复用，0..53 帧哈希不变），40s 规划单测 204/948=21.5% ≤25%。下一步 Phase 5 预览服务；设计、证据与坑见 `HANDOFF.md` §6.1 / §2。
+> **进度（2026-11-02）**：Phase 0.1–5 已完成。5s 新项目已跑通参数化静帧与 E03–F06；改 S02 文案后新 Run 只渲 66/120 帧（S01 复用，0..53 帧哈希不变），40s 规划单测 204/948=21.5% ≤25%。Phase 5 预览服务已完成：F02 运行中 CDP 附加 p50 1.25s/p95 1.31s，5s 片段 12.7s，缓存 5ms。下一步 Phase 6 档位；设计、证据与坑见 `HANDOFF.md` §6.2 / §2.4。
 
 ---
 
@@ -144,13 +144,15 @@
 - 测试：改 S03 文字/时长/转场；kill -9 后 resume；`renderedFrames ≤25%`、墙钟 ≤20%。
 - 出口：tag `r2-incremental`。
 
-### Phase 5 · PreviewService（FR-23，4–5d）
-- `RendererSession` + `server/app/services/preview.py`：优先级 preview(100)/interactive(80)/batch(40)/delivery(20)；帧间让位。
-- API：`POST /projects/:id/preview/still|segment|film`、`GET/DELETE /preview/jobs/:id`、`GET /preview/cache`。
-- 缓存 `~/.filmflow/cache/preview/<project>/<scene_hash>/<time>.png`，LRU 500MB；`mode=preview` 不写 `out/frames`、不产生 Approval。
-- 防抖 250ms；取消在帧边界；等待 >3s → `E_PREVIEW_BUSY` + ETA；门前 `PREVIEW` 水印。
-- 测试：F02 运行中单帧 p50/p95；20 次拖动只留最后一次；缓存命中 ≤300ms；预览/final SSIM。
-- 出口：5s 片段 ≤20s；ADR-0006 落盘。
+### Phase 5 · PreviewService（FR-23，4–5d）——[DONE] tag `r2-preview`
+- `PreviewRenderer` + `server/app/services/preview.py`：F02 运行中 CDP 附加 9222；空闲时按 `chrome-queue`
+  启动临时 Chrome；still 优先（`_INTERACTIVE` 帧间让位）、`_PAGE_SEM=2`。
+- API：`POST /projects/:id/preview/still|segment|film`、`GET/DELETE /preview/jobs/:id`、
+  `GET /preview/jobs/:id/file`、`GET /projects/:id/preview/cache`。
+- 缓存 `~/.filmflow/cache/preview/<project>/<hash>/<key>.png`，LRU 500MB；不写 `out/frames`、不产生 Artifact/Approval。
+- 防抖 250ms + latest-wins（20 并发只留最后 1 个）；等待 >3s → `E_PREVIEW_BUSY`；门前 `PREVIEW` 水印。
+- 实测：attached p50 1.25s/p95 1.31s；5s 片段 12.7s；缓存 5ms；单帧归一化 SSIM 0.9987。
+- 出口：`scripts/verify_r2_preview.py` 全绿；ADR-0006 落盘。
 
 ### Phase 6 · 档位与 final 校验（FR-24，3–4d）
 - `render.profile.json`：draft 960×540/12、review 1280×720/24、final 1920×1080/24；profile 进 scene_hash。
@@ -229,7 +231,7 @@
 3. Phase 2：文档模型与快照。
 4. Phase 3：Scene DSL + film_spec + 12 组件，打 `r2-scene-dsl`。
 5. Phase 4：增量，打 `r2-incremental`。
-6. Phase 5–8：预览、档位、恢复、黄金；全部验收后再申请 R2.5。
+6. Phase 5 已完成（预览）；Phase 6–8：档位、恢复、黄金；全部验收后再申请 R2.5。
 
 **第一个失败测试**（Phase 1 之前）：
 `server/tests/unit/test_dag_core.py::test_edge_table_has_r2_repairs` —— 断言 93 边、E04 出边、C05 含 B05、拓扑无环；先红后绿。
