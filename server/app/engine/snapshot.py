@@ -64,6 +64,17 @@ def ensure_run_snapshot(session: Session, run: Run, project_root: str) -> dict:
         if "timeline" not in docs and "script" in docs:
             timeline = build_timeline_doc(docs["script"]["content"], profile)
             docs["timeline"] = {"version": 0, "hash": content_hash(timeline), "content": timeline}
+            # 旧项目首次快照补持久化 timeline：之后改文案不重建时间轴，保证增量只脏目标场景
+            if wf and not session.exec(select(ProjectDoc).where(
+                    ProjectDoc.project_id == wf.project_id,
+                    ProjectDoc.kind == "timeline")).first():  # type: ignore[arg-type,union-attr]
+                row = ProjectDoc(project_id=wf.project_id, kind="timeline", version=1,
+                                 content_json=timeline, hash=content_hash(timeline),
+                                 author="snapshot")
+                session.add(row)
+                session.commit()
+                session.refresh(row)
+                docs["timeline"] = {"version": 1, "hash": row.hash, "content": timeline}
         for kind in ("script", "timeline"):
             if kind in docs:
                 (run_dir / f"{kind}.doc.json").write_text(

@@ -1,0 +1,8 @@
+{
+  "schema": "filmflow.golden/1",
+  "name": "5s",
+  "copy": "风从纸上起。纸不动，风先动。",
+  "profile": {"width": 1920, "height": 1080, "fps": 24, "duration": 5.0},
+  "style_family": "print",
+  "primary": "H2"
+}

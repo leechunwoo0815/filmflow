@@ -315,11 +315,15 @@ async def b04(ctx):
 
 @executor("type-spec")
 async def b05(ctx):
+    import re
     u = _upstream_json(ctx, ["A06", "B04"])
+    raw_family = str(((u.get("A06") or {}).get("type") or ["Noto Sans SC"])[0])
+    # A06 的 type 常带字重（如 "Noto Sans SC 900/500"）；CSS font-family 必须去掉字重
+    family = re.sub(r"\s+\d{3}(?:/\d{3})?.*$", "", raw_family).strip() or "Noto Sans SC"
     _artifact_json(ctx, "type_spec.json", {
         "body_min_px": 44, "title_range": [72, 120],
         "line_height": 1.35, "letter_spacing": 0,
-        "family": ((u.get("A06") or {}).get("type") or ["Noto Sans SC"])[0],
+        "family": family,
     })
 
 

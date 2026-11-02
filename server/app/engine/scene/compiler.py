@@ -56,6 +56,12 @@ def camera_from_e02(camera: dict | None, duration: float, w: int, h: int) -> dic
     return {"anchor": camera.get("anchor") or [w / 2, h / 2], "keyframes": kfs}
 
 
+def _font_family(value) -> str:
+    import re
+    s = re.sub(r"\s+\d{3}(?:/\d{3})?.*$", "", str(value or "")).strip()
+    return s or "Noto Sans SC"
+
+
 def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
                   camera: dict | None = None, motion: bool = False) -> dict:
     w = int(profile.get("width") or 1920)
@@ -68,7 +74,7 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
     pal = _palette(tokens)
     angles, periods = _screen(tokens)
     type_spec = tokens.get("type_spec") or {}
-    family = type_spec.get("family") or "Noto Sans SC"
+    family = _font_family(type_spec.get("family") or "Noto Sans SC")
     title_range = type_spec.get("title_range") or [72, 120]
     base_size = 132 if len(text) <= 10 else 112 if len(text) <= 18 else 92
     size = max(int(title_range[0]), min(int(title_range[1]), base_size))

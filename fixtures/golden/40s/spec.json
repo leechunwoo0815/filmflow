@@ -1,0 +1,8 @@
+{
+  "schema": "filmflow.golden/1",
+  "name": "40s",
+  "copy": "风从纸上起，慢慢穿过整条街。纸不动，风先动。短句。字在风里排队，排成一条很长的路。最后一阵风把纸吹向远处。",
+  "profile": {"width": 1920, "height": 1080, "fps": 24, "duration": 40.0},
+  "style_family": "print",
+  "primary": "H2"
+}

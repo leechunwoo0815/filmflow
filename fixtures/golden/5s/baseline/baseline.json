@@ -1,0 +1,28 @@
+{
+ "schema": "filmflow.golden-baseline/1",
+ "project": "5s",
+ "primary": "H2",
+ "profile": {
+  "width": 1920,
+  "height": 1080,
+  "fps": 24,
+  "duration": 5.0
+ },
+ "times": [
+  0.417,
+  1.25,
+  2.083,
+  2.917,
+  3.75,
+  4.583
+ ],
+ "phash": [
+  "9f1dd4c0e0e08f1f",
+  "9f1dc6c2e0e03d1d",
+  "9f1cd4c6e0e08f3c",
+  "bf33c4ccc8c03733",
+  "bf33c4ccc8c03733",
+  "bf33c4ccc8c03733"
+ ],
+ "sceneCount": 2
+}

@@ -32,6 +32,14 @@ def test_compiler_uses_user_text_and_static_identity():
     assert not validate_program(base) and not validate_program(motion)
 
 
+def test_font_family_strips_weight_suffix():
+    script = build_script_doc("风从纸上起。")
+    tokens = {**TOKENS, "type_spec": {**TOKENS["type_spec"], "family": "Noto Sans SC 900/500"}}
+    prog = compile_scene(_scene(), script, tokens, PROFILE)
+    title = next(layer for layer in prog["layers"] if layer["id"] == "L_title")
+    assert title["style"]["font"] == "Noto Sans SC"
+
+
 def test_compiler_is_deterministic():
     script = build_script_doc("一句话。")
     a = compile_scene(_scene(), script, TOKENS, PROFILE)

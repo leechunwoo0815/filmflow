@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.4.0"  # R2.0 Phase 7：持久化 Job/恢复；Chrome profile 带 run_id
+EXECUTOR_VERSION = "2.4.2"  # R2.0 Phase 8：修复 type_spec family 含字重导致文字不渲染
 
 
 def canonical(obj) -> str:

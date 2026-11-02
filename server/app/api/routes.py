@@ -452,6 +452,19 @@ async def drafts_materialize(draft_id: int, session: Session = Depends(get_sessi
                                          "duration": payload.get("duration", 39.5)}
     profile.setdefault("frames", round(profile.get("duration", 39.5) * profile.get("fps", 24)))
     (proj_dir / "project.profile.json").write_text(json.dumps(profile, ensure_ascii=False, indent=1), encoding="utf-8")
+    # 初始化文档事实源：timeline 一旦落库，改文案不会重建时间轴（增量只脏目标场景）
+    from ..services.project_docs import build_script_doc, build_timeline_doc
+    profile_content = {"schema": docs_svc.SCHEMAS["profile"], **profile}
+    script_doc = docs_svc.get_doc(session, proj.id, "script")
+    if script_doc is None and payload.get("copy"):
+        script_content = build_script_doc(payload["copy"],
+                                          (payload.get("brief") or {}).get("title") or d.name)
+        script_doc, _ = docs_svc.save_doc(session, proj.id, "script", script_content, 0, "materialize")
+    if docs_svc.get_doc(session, proj.id, "profile") is None:
+        docs_svc.save_doc(session, proj.id, "profile", profile_content, 0, "materialize")
+    if script_doc is not None and docs_svc.get_doc(session, proj.id, "timeline") is None:
+        timeline = build_timeline_doc(script_doc.content_json, profile_content)
+        docs_svc.save_doc(session, proj.id, "timeline", timeline, 0, "materialize")
     run = session.get(Run, created["run_id"])
     session.add(StylePick(project_id=proj.id, draft_id=d.id, primary_id=primary,
                           alternates_json=pick.get("alternates", []), reason=pick.get("reason", "")))
