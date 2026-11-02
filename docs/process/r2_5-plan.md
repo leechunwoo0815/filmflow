@@ -9,7 +9,7 @@
 | FR-26 全场景静帧审阅 | **DONE**（tag `r2_5-review`） | D01 长场景 6 帧；D02 contact sheet/stills_manifest；D03 逐场门禁；D04 review_diff；`/review` 页；`verify_r2_5_review.py` |
 | FR-27 音频工作台 v1 | **DONE**（tag `r2_5-audio`） | Take/录音、waveform 51ms、手动对齐、许可、sidechain、Stems、G06 TP/同步 |
 | FR-28 交付 v1 | **DONE**（tag `r2_5-delivery`） | 16:9+9:16、SRT、双封面、manifest/qc/rights/zip；5s 26.2s、40s 190.0s；G07 master QC + Delivery gate（ADR-0007） |
-| FR-31 新手引导 | **DONE** | 3 模板 + 音频占位、示例只读/克隆、向导用户标题 3 候选、Studio 5 步引导、`/help`；`verify_r2_5_onboarding.py` + `e2e_onboarding.py` |
+| FR-31 新手引导 | **DONE**（tag `r2_5-onboarding`） | 3 模板 + 音频占位、示例只读/克隆、向导用户标题 3 候选、Studio 5 步引导、`/help`；`verify_r2_5_onboarding.py` + `e2e_onboarding.py` |
 
 ## FR-26 已落地
 

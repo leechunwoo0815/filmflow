@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
 > 更新时间：2026-11-02 · **R2.0 已验收；R2.5 FR-26/27/28/31 全部完成并通过实测**
-> 当前代码基线：R2.5 代码 `64e6898` + FR-31/G07 QC 未提交改动；文档基线见 `git log` 最新一条。
+> 当前代码基线：R2.5 代码 `b7591bd`（FR-31 + G07 QC + 40s 交付）；文档基线见 `git log` 最新一条。
 > **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r2_5-plan.md`、PRD-002、ADR-0005/0007。**
 > 上下文压缩后继续开发时：从 §6.4 的 R2.5 总验收开始，不要回滚或重做 R2.0/R2.5 已完成部分。
 
@@ -71,6 +71,7 @@ uv run --project server python scripts/verify_rumor_regression.py   # 干净 rum
 | R2.5 FR-26 tag | `r2_5-review` → `a37570d` |
 | R2.5 FR-27 tag | `r2_5-audio` → `cd7312f` |
 | R2.5 FR-28 tag | `r2_5-delivery` → `9c4ac00` |
+| R2.5 FR-31 tag | `r2_5-onboarding` → `b7591bd` |
 | R2.0 起始 tag | `r2-edge-fix` → `4f9e381` |
 | R2.0 Scene DSL | `r2-scene-dsl` → `53e6462` |
 | R2.0 增量 | `r2-incremental` → `07b5237` |

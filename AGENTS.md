@@ -5,7 +5,7 @@
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
 > 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（76 MB 库不入库）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
-> **当前进度（2026-11-02）**：R2.0 Phase 0.1–8 全部完成并通过 DoD；**R2.5 FR-26/27/28/31 已完成**（tag `r2_5-review`/`r2_5-audio`/`r2_5-delivery`；FR-31 无 tag，102 tests）。G07 已加 master QC（`EXECUTOR_VERSION=2.6.6`），交付必须等 G07 通过（40s 交付已实测 190.0s）。下一步只剩 R2.5 总验收。详见 `docs/process/r2_5-plan.md`。
+> **当前进度（2026-11-02）**：R2.0 Phase 0.1–8 全部完成并通过 DoD；**R2.5 FR-26/27/28/31 已完成**（tag `r2_5-review`/`r2_5-audio`/`r2_5-delivery`；FR-31 tag `r2_5-onboarding`，102 tests）。G07 已加 master QC（`EXECUTOR_VERSION=2.6.6`），交付必须等 G07 通过（40s 交付已实测 190.0s）。下一步只剩 R2.5 总验收。详见 `docs/process/r2_5-plan.md`。
 > **完整接手 prompt**：[`QODER_PROMPT.md`](QODER_PROMPT.md)（历史 prompt；新 Agent 先看 HANDOFF §0/§6）。
 
 ## 这个仓库是什么
