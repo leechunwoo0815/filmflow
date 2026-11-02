@@ -45,6 +45,20 @@ def test_g06_not_invalidated_by_f04():
     assert edges.UPSTREAM["G06"]["F06"] == "order"
 
 
+def test_edge_table_has_r2_repairs():
+    """R2.0 三处边表修复：E04 转场出边、B05 排版进 C05；节点数仍 46。"""
+    assert len(edges.N) == 46
+    assert len(edges.EDGES) == 93
+    assert ("E04", "E05", "data") in edges.EDGES
+    assert ("E04", "F02", "data") in edges.EDGES
+    assert ("B05", "C05", "data") in edges.EDGES
+    assert set(edges.DATA_DOWN["E04"]) == {"E05", "F02"}
+    assert edges.UPSTREAM["C05"]["B05"] == "data"
+    assert "C05" in edges.data_descendants("B05")
+    # 拓扑序仍覆盖 46 节点且无环
+    assert len(edges.TOPOLOGY) == 46
+
+
 def test_gate_trigger_edges_restored():
     # B08/D05 必须有出边（门控规则落点）——from 是上游门，to 是下游节点
     assert ("B08", "C01", "trigger") in edges.EDGES

@@ -249,14 +249,19 @@ async def projects_list(session: Session = Depends(get_session)):
     return {"items": [table_dict(p) for p in session.exec(select(Project)).all()]}
 
 
+def _require_workspace_root(rp: Path) -> None:
+    roots = [w.resolve() for w in settings.workspace_roots]
+    if not any(rp == w or rp.is_relative_to(w) for w in roots):
+        raise ApiError(ErrorCode.E_VALIDATION, f"项目根必须在白名单内：{settings.workspace_roots}")
+
+
 @router.post("/projects")
 async def projects_create(payload: dict, session: Session = Depends(get_session)):
     name, root = payload.get("name", "").strip(), payload.get("root", "").strip()
     if not name or not root:
         raise ApiError(ErrorCode.E_VALIDATION, "name/root 必填")
     rp = Path(root).resolve()
-    if not any(str(rp).startswith(str(w.resolve())) for w in settings.workspace_roots):
-        raise ApiError(ErrorCode.E_VALIDATION, f"项目根必须在白名单内：{settings.workspace_roots}")
+    _require_workspace_root(rp)
     if not rp.is_dir():
         raise ApiError(ErrorCode.E_VALIDATION, f"目录不存在：{rp}")
     p = session.exec(select(Project).where(Project.root == str(rp))).first()  # type: ignore[arg-type,union-attr]
@@ -276,6 +281,7 @@ async def projects_import(payload: dict, session: Session = Depends(get_session)
     """导入参考项目：读 task.json → workflow + run + 初始状态（T06）。"""
     root = payload.get("root", "").strip()
     rp = Path(root).resolve()
+    _require_workspace_root(rp)
     task_p = rp / "card" / "task.json"
     if not task_p.exists():
         raise ApiError(ErrorCode.E_VALIDATION, f"缺少 card/task.json：{rp}")

@@ -9,4 +9,7 @@ WEB_PID=$!
 trap "kill $API_PID $WEB_PID 2>/dev/null" EXIT
 echo "API  → http://127.0.0.1:7860/api/docs"
 echo "Web  → http://127.0.0.1:3000"
-wait -n
+# macOS 自带 bash 3.2 不支持 wait -n；轮询到任一子进程退出（trap 负责清理另一个）
+while kill -0 "$API_PID" 2>/dev/null && kill -0 "$WEB_PID" 2>/dev/null; do
+  sleep 1
+done

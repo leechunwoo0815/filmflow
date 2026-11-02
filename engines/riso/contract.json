@@ -1,14 +1,20 @@
 {
   "engine_id": "riso",
   "families": ["print", "collage"],
-  "version": "1.0.0",
-  "api_version": "1.0",
+  "version": "2.0.0",
+  "api_version": "2.0",
+  "scene_schema": "filmflow.scene/1",
   "entry": {
     "still": "entry/still.html",
     "film": "entry/film.html",
     "still_spec": "entry/still_spec.html",
     "previs": "entry/previs.html",
+    "preview": "entry/previs.html",
     "proxy": "entry/film.html?mode=proxy"
+  },
+  "legacy_entry": {
+    "still": "entry/still.html",
+    "film": "entry/film.html"
   },
   "tokens_schema": {
     "palette": 5,
@@ -17,7 +23,17 @@
     "motion": ["pacing"],
     "type": ["family", "weights"]
   },
-  "capabilities": ["spot_ink", "halftone", "overprint", "registration", "cn_type"],
+  "capabilities": {
+    "elements": ["text", "shape", "image", "group", "component"],
+    "components": ["paper-card", "headline", "body-block", "stamp", "arrow-grow",
+                   "hand-pointer", "roller", "halftone-field", "registration-cross",
+                   "evidence-card", "chart-bar", "count-up"],
+    "transitions": ["cut", "match-shape", "paper-slide", "wipe", "dissolve",
+                    "ink-bleed", "glitch", "push"],
+    "text_animations": ["typewriter", "stagger", "mask-reveal", "line-reveal", "pulse"],
+    "effects": ["halftone", "overprint", "registration", "paper-grain", "misregister"]
+  },
+  "limits": {"max_layers": 200, "max_text_chars": 2000, "max_fps": 30},
   "fixtures": [
     "fixture/S01_6.45.png",
     "fixture/S03_17.2.png",
@@ -27,5 +43,5 @@
     "source": "rumor-39s（参考项目真帧）",
     "check": "C01 结构校验 + 预演渲染与基准 SSIM（M1 起启用渲染级校验）"
   },
-  "notes": "entry/still.html 与 entry/film.html 为 rumor-39s 原版（补字体注入/续渲/proxy 参数）；参数化渲染走 still_spec.html 与 previs.html，共用 assets/riso-core.js 权威 shader。"
+  "notes": "Contract v2：新项目走 entry.still_spec/film_spec（film_spec 随 R2.0 Phase 3 交付）；imported 项目走 legacy_entry.still/film（rumor-39s 原版）。所有入口共用 assets/riso-core.js 权威 shader。"
 }

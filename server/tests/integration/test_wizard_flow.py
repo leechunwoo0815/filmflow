@@ -60,7 +60,7 @@ def test_wizard_materialize_full():
     assert r["run_id"] > 0, r
     # 5 画布：46 节点
     g = _req("GET", f"/runs/{r['run_id']}/graph")
-    assert len(g["nodes"]) == 46 and len(g["edges"]) == 90
+    assert len(g["nodes"]) == 46 and len(g["edges"]) == 93
     # 6 A05 已随 materialize 批准（批准人在 approvals）
     gates = _req("GET", f"/gates/{r['run_id']}/pending")
     assert all(p["gate"] != "A05" for p in gates["items"])

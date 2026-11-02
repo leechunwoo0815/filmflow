@@ -2,7 +2,7 @@
 
 本地代码动画全生命周期 Web 工作台。**46 节点 / 7 阶段 / 341 条风格库 / 3 个渲染引擎（riso · code-video · ink）/ 中英双语。**
 
-## 当前状态：全链已贯通 ✅
+## 当前状态：参考片全链已贯通 ✅ · 新项目参数化出片进行中 ⚠️
 
 ```
 文案 → 索引 341 → 预演/推荐 → 风格门 → tokens → 任务卡+校验门 → 引擎编译
@@ -13,6 +13,8 @@
 ```
 
 实测（rumor-39s 导入全链，Run #1）：46/46 节点 succeeded · 49 产物 · 9 条审批记录（含驳回→重批历史）· master.mp4 = 69.9MB · 三引擎可生产 61 条。
+
+> ⚠️ 以上是**导入参考片**的实测。新项目当前仍会渲染参考片内容（D02/E05/F02 走 rumor 原版 harness）；R2.0 参数化渲染链正在按 [docs/process/r2-plan.md](docs/process/r2-plan.md) 实施。
 
 ## 快速开始
 
@@ -28,7 +30,7 @@
 
 ```bash
 cd server
-uv run pytest tests/unit tests/bdd tests/integration/test_style_index.py -q   # 25+
+uv run pytest tests -q   # 28（干净环境首跑；2 项向导集成需 API 在跑）
 uv run --project server python scripts/smoke_m1.py    # M0/M1 API 全链冒烟（需服务在跑）
 uv run --project server python scripts/e2e_ui.py      # Playwright UI E2E（8 场景，需 ./dev.sh 在跑）
 uv run --project server python scripts/drive_run.py <run> <project>   # 全链驱动（自动批门）

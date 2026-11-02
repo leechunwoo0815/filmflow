@@ -27,12 +27,12 @@ class FrameServer:
     def start(self) -> None:
         if self.httpd is not None:
             return
-        import functools
         from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import urlparse, parse_qs, unquote
 
         root = self.project_root
-        engines_dir = Path(__file__).resolve().parents[4] / "engines"
+        root_resolved = root.resolve()
+        engines_dir = (Path(__file__).resolve().parents[4] / "engines").resolve()
 
         class Handler(SimpleHTTPRequestHandler):
             def log_message(self, fmt, *args):
@@ -41,13 +41,15 @@ class FrameServer:
                 super().log_message(fmt, *args)
 
             def translate_path(self, path):
-                u = urlparse(path).path
+                u = unquote(urlparse(path).path)
                 if u.startswith("/engine/"):
-                    rel = u[len("/engine/"):]
-                    return str(engines_dir / rel)
+                    target = _safe_join(engines_dir, u[len("/engine/"):])
+                    return str(target) if target else str(engines_dir / "__forbidden__")
                 if u.startswith("/project/"):
-                    return str(root / u[len("/project/"):])
-                return super().translate_path(path)
+                    target = _safe_join(root_resolved, u[len("/project/"):])
+                    return str(target) if target else str(root_resolved / "__forbidden__")
+                # 只服务 /engine 与 /project，绝不把 API 进程 cwd 暴露出去
+                return str(root_resolved / "__not_found__")
 
             def do_POST(self):
                 u = urlparse(self.path)
@@ -116,6 +118,12 @@ async def f01(ctx):
 
 
 # ---------- 通用 Chrome 截图 ----------
+
+def _safe_join(root: Path, rel: str) -> Path | None:
+    """把 URL 相对路径安全地拼到 root 下；越界返回 None。"""
+    target = (root / rel).resolve()
+    return target if target.is_relative_to(root) else None
+
 
 async def _chrome_screenshot(ctx, url: str, out_png: Path, width: int, height: int, timeout: float) -> None:
     from ...config import detect_chrome

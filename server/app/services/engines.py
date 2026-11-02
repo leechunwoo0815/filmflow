@@ -44,6 +44,18 @@ def validate_contract(contract: dict, pack_root: Path) -> None:
         base = rel.split("?")[0]
         if not (pack_root / base).exists():
             raise ApiError(ErrorCode.E_VALIDATION, f"entry 文件不存在：{base}")
+    if str(contract.get("api_version", "1")).startswith("2"):
+        if not contract.get("scene_schema"):
+            raise ApiError(ErrorCode.E_VALIDATION, "Contract v2 缺 scene_schema")
+        legacy = contract.get("legacy_entry") or {}
+        for e in ("still", "film"):
+            if e not in legacy:
+                raise ApiError(ErrorCode.E_VALIDATION, f"Contract v2 legacy_entry 缺 {e}")
+            base = legacy[e].split("?")[0]
+            if not (pack_root / base).exists():
+                raise ApiError(ErrorCode.E_VALIDATION, f"legacy_entry 文件不存在：{base}")
+        if "still_spec" not in contract["entry"]:
+            raise ApiError(ErrorCode.E_VALIDATION, "Contract v2 entry 缺 still_spec")
     for fx in contract.get("fixtures", []):
         p = pack_root / fx.split("?")[0]
         if not p.exists():

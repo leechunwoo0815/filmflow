@@ -14,6 +14,14 @@ sys.path.insert(0, str(SERVER_DIR))
 import pytest  # noqa: E402
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _init_test_db():
+    """所有测试共享同一临时库：先建表，避免 BDD 在集成测试之前跑时缺表。"""
+    from app.db import init_db
+    init_db()
+    yield
+
+
 @pytest.fixture()
 def isolated_db():
     """兼容签名：环境已在导入前隔离；保证建表。"""
