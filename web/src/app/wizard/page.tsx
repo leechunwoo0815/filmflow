@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useLang, LangToggle } from "@/lib/i18n";
+import { ThemeToggle } from "@/lib/theme";
 import StylePicker from "@/components/StylePicker";
 
 const STEPS = ["wiz.step1", "wiz.step2", "wiz.step3", "wiz.step4", "wiz.step5"];
@@ -54,7 +55,7 @@ export default function Wizard() {
 
   return (
     <main className="max-w-7xl mx-auto p-6">
-      <div className="flex items-center justify-between"><h1 className="text-xl font-bold mb-1">{t("wiz.title")}</h1><LangToggle /></div>
+      <div className="flex items-center justify-between"><h1 className="text-xl font-bold mb-1">{t("wiz.title")}</h1><div className="flex items-center gap-2"><LangToggle /><ThemeToggle /></div></div>
       <p className="text-dim text-sm mb-4">{t("wiz.disclaimer")}</p>
       <ol className="flex gap-2 mb-5 text-sm">
         {STEPS.map((key, i) => (

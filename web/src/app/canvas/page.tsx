@@ -5,6 +5,7 @@ import { ReactFlow, Background, Controls, MarkerType } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { api } from "@/lib/api";
 import { useLang, LangToggle } from "@/lib/i18n";
+import { ThemeToggle } from "@/lib/theme";
 
 const STAGE_COLORS: Record<string, string> = {
   A: "#4C8DFF", B: "#39C5CF", C: "#3FB950", D: "#E3B341", E: "#F5A623", F: "#F47067", G: "#A371F7",
@@ -75,8 +76,8 @@ function CanvasInner() {
       ),
     },
     style: {
-      background: "#12161D", border: `1px solid ${n.status === "running" ? "#F5A623" : n.status === "failed" ? "#F47067" : "#1F2630"}`,
-      borderRadius: 8, padding: 6, width: 190, color: "#D7DEE8",
+      background: "rgb(var(--panel))", border: `1px solid ${n.status === "running" ? "rgb(var(--amber))" : n.status === "failed" ? "rgb(var(--red))" : "rgb(var(--line))"}`,
+      borderRadius: 8, padding: 6, width: 190, color: "rgb(var(--txt))",
       borderStyle: n.status === "blocked" ? "dashed" : "solid",
     },
   })), [graph]);
@@ -84,8 +85,8 @@ function CanvasInner() {
   const rfEdges = useMemo(() => (graph?.edges || []).map(([f, t, ty]: [string, string, string], i: number) => ({
     id: `e${i}`, source: f, target: t,
     animated: ty === "data",
-    style: { stroke: ty === "trigger" ? "#A371F7" : ty === "order" ? "#556" : "#2A3547", strokeDasharray: ty === "order" ? "4 3" : undefined },
-    markerEnd: { type: MarkerType.ArrowClosed, color: ty === "trigger" ? "#A371F7" : "#556" },
+    style: { stroke: ty === "trigger" ? "rgb(var(--purple))" : ty === "order" ? "rgb(var(--dim))" : "rgb(var(--line))", strokeDasharray: ty === "order" ? "4 3" : undefined },
+    markerEnd: { type: MarkerType.ArrowClosed, color: ty === "trigger" ? "rgb(var(--purple))" : "rgb(var(--dim))" },
   })), [graph]);
 
   if (!projectId) return <main className="p-8">缺 project 参数</main>;
@@ -94,7 +95,7 @@ function CanvasInner() {
     <main className="h-screen flex flex-col">
       <header className="flex items-center gap-2 p-3 border-b border-line">
         <a className="btn" href="/">{t("nav.back")}</a>
-        <span className="font-semibold">Run {runId}</span><LangToggle />
+        <span className="font-semibold">Run {runId}</span><LangToggle /><ThemeToggle />
         {graph && <span className={`text-sm ${STATUS_CLS[graph.run.status]}`}>{graph.run.status}</span>}
         {graph && <span className="text-dim text-xs">caps: {graph.caps.join("/")}</span>}
         <div className="ml-auto flex gap-2">
@@ -111,7 +112,7 @@ function CanvasInner() {
         <div className="flex-1" data-testid="node-canvas">
           <ReactFlow nodes={rfNodes} edges={rfEdges} fitView proOptions={{ hideAttribution: true }}
             onNodeClick={(_, n) => setSelected(graph.nodes.find((x: any) => x.id === n.id))}>
-            <Background color="#1F2630" gap={18} />
+            <Background color="rgb(var(--line))" gap={18} />
             <Controls />
           </ReactFlow>
         </div>

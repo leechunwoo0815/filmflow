@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useLang, LangToggle } from "@/lib/i18n";
+import { ThemeToggle } from "@/lib/theme";
 
 export default function Home() {
   const { t } = useLang();
@@ -37,7 +38,7 @@ export default function Home() {
         <div className="flex gap-2 items-center">
           <a className="btn" href="/labeling">{t("nav.labeling")}{lib ? ` (${lib.matrix?.label_queue ?? 0})` : ""}</a>
           <a className="btn-primary" href="/wizard">{t("nav.newProject")}</a>
-          <LangToggle />
+          <LangToggle /><ThemeToggle />
         </div>
       </header>
 

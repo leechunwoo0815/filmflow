@@ -2,6 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---- 主题变量（ADR-0004：默认白天，夜间可切）----
+   格式：R G B 三元组，供 Tailwind rgb(var(--x) / <alpha>) 使用 */
+:root {
+  --bg: 246 244 239;        /* 纸白底 */
+  --panel: 255 255 255;
+  --panel2: 241 238 231;
+  --line: 223 217 204;
+  --txt: 36 39 44;
+  --dim: 107 114 128;
+  --amber: 180 83 9;        /* 浅色下加深保证对比度 */
+  --blue: 37 99 235;
+  --green: 21 128 61;
+  --red: 220 38 38;
+  --purple: 124 58 237;
+  --cyan: 14 116 144;
+  --gold: 146 96 10;
+}
+
+html.dark {
+  --bg: 11 14 19;
+  --panel: 18 22 29;
+  --panel2: 22 27 36;
+  --line: 31 38 48;
+  --txt: 215 222 232;
+  --dim: 138 147 160;
+  --amber: 245 166 35;
+  --blue: 76 141 255;
+  --green: 63 185 80;
+  --red: 244 112 103;
+  --purple: 163 113 247;
+  --cyan: 57 197 207;
+  --gold: 227 179 65;
+}
+
 html, body { height: 100%; }
 body { @apply bg-bg text-txt antialiased; }
 

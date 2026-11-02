@@ -3,6 +3,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useLang, LangToggle } from "@/lib/i18n";
+import { ThemeToggle } from "@/lib/theme";
 
 function EditorInner() {
   const { t } = useLang();
@@ -50,7 +51,7 @@ function EditorInner() {
   return (
     <main className="max-w-6xl mx-auto p-6">
       <header className="flex items-center gap-2 mb-4">
-        <a className="btn" href={`/canvas?project=${projectId}`}>← Canvas</a><LangToggle />
+        <a className="btn" href={`/canvas?project=${projectId}`}>← Canvas</a><LangToggle /><ThemeToggle />
         <h1 className="text-xl font-bold">{t("ed.title")}</h1>
         <span className="text-dim text-sm">{t("ed.disclaimer")}</span>
         <div className="ml-auto flex gap-2">

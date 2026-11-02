@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, FAMILY_LABELS, StyleDTO } from "@/lib/api";
 import { useLang, LangToggle } from "@/lib/i18n";
+import { ThemeToggle } from "@/lib/theme";
 
 export default function Labeling() {
   const { t } = useLang();
@@ -55,7 +56,7 @@ export default function Labeling() {
 
   return (
     <main className="max-w-5xl mx-auto p-6">
-      <div className="flex items-center justify-between"><h1 className="text-xl font-bold mb-1">{t("lb.title")} <span className="text-dim text-sm">{items.length} {t("lb.pending")}</span></h1><LangToggle /></div>
+      <div className="flex items-center justify-between"><h1 className="text-xl font-bold mb-1">{t("lb.title")} <span className="text-dim text-sm">{items.length} {t("lb.pending")}</span></h1><div className="flex items-center gap-2"><LangToggle /><ThemeToggle /></div></div>
       <p className="text-dim text-sm mb-4">{t("lb.hint")}</p>
       {msg && <div className="card border-green/40 p-2 mb-3 text-green text-sm">{msg}</div>}
       <div className="grid grid-cols-[220px_1fr] gap-3">

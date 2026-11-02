@@ -3,6 +3,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
+import { ThemeToggle } from "@/lib/theme";
 
 function MonitorInner() {
   const { t } = useLang();
@@ -18,7 +19,7 @@ function MonitorInner() {
 
   return (
     <main className="max-w-6xl mx-auto p-6">
-      <h1 className="text-xl font-bold mb-4">{t("mo.title")}</h1>
+      <div className="flex items-center gap-2 mb-4"><h1 className="text-xl font-bold">{t("mo.title")}</h1><ThemeToggle /></div>
       {report && (
         <section className="card p-3 mb-4">
           <h2 className="font-semibold mb-2">Run {runId} · {report.run.status}</h2>
