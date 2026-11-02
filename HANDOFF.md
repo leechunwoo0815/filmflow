@@ -3,6 +3,7 @@
 > 写于 2026-11-02 · 交接人：开发 Agent（v0.1.3）· 接手人：下一位 Agent / 编辑器
 > 本文件是**唯一权威的接手入口**。规格（`../filmflow-web-agent-prompt.md`）是宪法，但**已经落后于实现**的地方以本文 §9 为准。
 > **深化需求**：v2 补充 PRD 见 [docs/prd/PRD-002-production-workbench.md](docs/prd/PRD-002-production-workbench.md)（30 FR / 场景 DSL / 两级执行 / R2–R4 路线图）。
+> **内置技能**：`vendor/fy-code-animation/`（fy-code-animation，984KB）；341 风格库路径见 [vendor/style-library.path](vendor/style-library.path)（76MB 库不入库），说明见 [vendor/README.md](vendor/README.md)。
 
 ---
 
@@ -98,6 +99,7 @@ filmflow/
 ├─ engines/                 riso / code-video / ink（Engine Contract + 基准 fixture）
 ├─ bdd/features/            16 个中文 Gherkin（style-indexing 3 场景已自动化绑定）
 ├─ scripts/                 smoke_m1.py / drive_run.py / e2e_ui.py
+├─ vendor/                  fy-code-animation（984KB）+ 341 库路径/说明（库 76MB 外置，勿入库）
 └─ docs/                    tech-plan / process / adr（ADR-0001~0004）
 ```
 

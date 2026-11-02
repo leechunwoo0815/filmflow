@@ -38,7 +38,9 @@ uv run --project server python scripts/drive_run.py <run> <project>   # 全链�
 
 | 文档 | 说明 |
 |---|---|
+| **[AGENTS.md](AGENTS.md)** | **Qoder / 新 Agent 入口（3 份必读 + 硬约束）** |
 | **[HANDOFF.md](HANDOFF.md)** | **接手入口（交接文档：状态/坑/缺口/路线图）** |
+| **[vendor/README.md](vendor/README.md)** | **内置 fy-code-animation 技能 + 341 风格库路径（76MB 库不入库）** |
 | `../filmflow-web-agent-prompt.md` | 技术规格（§4.8 边表 / §19 裁决表为宪法） |
 | `../filmflow-prd.md` | v1 PRD（FR-1~14 / US-01~10 / 风险） |
 | **[docs/prd/PRD-002-production-workbench.md](docs/prd/PRD-002-production-workbench.md)** | **v2 补充 PRD（30 FR / 场景 DSL / 两级执行 / 交付矩阵 / R2–R4 路线图）** |

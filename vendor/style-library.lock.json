@@ -1,0 +1,20 @@
+{
+  "root": "/Users/litianyu/Documents/fy-style-library/代码动画_341种风格提示词",
+  "library_version": "4a96742d3643538227c849a593380f25b66f001f613ed2915dd20f3dfd216f5a",
+  "prompt_count": 341,
+  "covers": 193,
+  "by_series": {
+    "AG": 26,
+    "M": 40,
+    "K": 38,
+    "Z": 15,
+    "H": 12,
+    "L": 59,
+    "V": 15,
+    "X": 31,
+    "R": 7,
+    "O": 98
+  },
+  "captured_at": "2026-11-02",
+  "note": "路径/计数为复制技能时的快照；换机器或换库后更新本文件，并重跑 style_library.py build 与 /api/library/index。"
+}
