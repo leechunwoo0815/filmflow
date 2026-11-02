@@ -490,6 +490,60 @@ def _default_project_root(name: str) -> Path:
     return d
 
 
+# ---------- 新手模板（FR-31） ----------
+
+FIRST_TEMPLATES = [
+    {"id": "voice15", "title": "口播 15 秒", "seconds": 15,
+     "description": "一个观点 + 三个短句，适合口播开场。",
+     "copy": "一句话说清观点。用三个例子说明。最后给一个行动建议。",
+     "profile": {"width": 1920, "height": 1080, "fps": 24, "duration": 15.0},
+     "style_family": "print", "audioPlaceholder": "voice"},
+    {"id": "opinion30", "title": "观点 30 秒", "seconds": 30,
+     "description": "提出问题、给出证据、收束观点。",
+     "copy": "先说一个反常识判断。再给两个可验证的证据。把证据翻译成观众能记住的话。最后落到一个具体行动。",
+     "profile": {"width": 1920, "height": 1080, "fps": 24, "duration": 30.0},
+     "style_family": "print", "audioPlaceholder": "voice"},
+    {"id": "product40", "title": "产品 40 秒", "seconds": 40,
+     "description": "痛点、方案、证据、行动，五场完整短片。",
+     "copy": "先说用户每天遇到的麻烦。指出旧方案为什么失效。给出你的方案与关键差异。用一个真实结果证明。最后告诉用户下一步做什么。",
+     "profile": {"width": 1920, "height": 1080, "fps": 24, "duration": 40.0},
+     "style_family": "print", "audioPlaceholder": "voice"},
+]
+
+
+@router.get("/templates")
+async def templates_list():
+    return {"items": FIRST_TEMPLATES}
+
+
+@router.post("/projects/from-template")
+async def project_from_template(payload: dict, session: Session = Depends(get_session)):
+    tpl = next((t for t in FIRST_TEMPLATES if t["id"] == payload.get("templateId")), None)
+    if not tpl:
+        raise not_found("模板")
+    family = tpl.get("style_family") or "print"
+    st = session.exec(select(Style).where(
+        Style.family == family, Style.engine_status == "available",
+        Style.tokens_status == "complete")).first()  # type: ignore[arg-type,union-attr]
+    if not st:
+        st = session.exec(select(Style).where(Style.family == family)).first()  # type: ignore[arg-type,union-attr]
+    if not st:
+        raise ApiError(ErrorCode.E_STYLE_INCOMPLETE, f"没有可用的 {family} 风格")
+    root = _default_project_root(str(payload.get("name") or f"first-{tpl['id']}"))
+    profile = dict(tpl["profile"])
+    profile["frames"] = round(profile["duration"] * profile["fps"])
+    d = Draft(name=str(payload.get("name") or f"第一条片 · {tpl['title']}"), step=5,
+              payload_json={"root": str(root), "copy": tpl["copy"], "profile": profile,
+                            "pick": {"primary": st.id, "alternates": [], "reason": f"模板 {tpl['id']}"},
+                            "brief": {"title": tpl["title"]}})
+    session.add(d)
+    session.commit()
+    session.refresh(d)
+    result = await drafts_materialize(d.id or 0, session)
+    result["template"] = tpl["id"]
+    return result
+
+
 # ---------- workflow / runs ----------
 
 @router.post("/workflows")

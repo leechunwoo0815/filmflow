@@ -10,6 +10,8 @@ export default function Home() {
   const [projects, setProjects] = useState<any[]>([]);
   const [lib, setLib] = useState<any>(null);
   const [env, setEnv] = useState<any>(null);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [onboard, setOnboard] = useState(true);
   const [importRoot, setImportRoot] = useState("/Users/litianyu/cc-projects/ai-v/rumor-39s");
   const [msg, setMsg] = useState("");
   const router = useRouter();
@@ -18,8 +20,18 @@ export default function Home() {
     setProjects((await api("/projects")).items);
     setLib(await api("/library/status"));
     setEnv(await api("/environment"));
+    setTemplates((await api<{ items: any[] }>("/templates")).items);
   };
   useEffect(() => { load().catch((e) => setMsg(String(e))); }, []);
+
+  const useTemplate = async (templateId: string) => {
+    try {
+      const r = await api<any>("/projects/from-template", {
+        method: "POST", body: JSON.stringify({ templateId }),
+      });
+      router.push(`/canvas?project=${r.project.id}&run=${r.run_id}`);
+    } catch (e: any) { setMsg(e.message); }
+  };
 
   const doImport = async () => {
     try {
@@ -36,6 +48,7 @@ export default function Home() {
           <p className="text-dim text-sm mt-1">{t("app.tagline")}</p>
         </div>
         <div className="flex gap-2 items-center">
+          <a className="btn" href="/help">帮助</a>
           <a className="btn" href="/labeling">{t("nav.labeling")}{lib ? ` (${lib.matrix?.label_queue ?? 0})` : ""}</a>
           <a className="btn-primary" href="/wizard">{t("nav.newProject")}</a>
           <LangToggle /><ThemeToggle />
@@ -49,6 +62,42 @@ export default function Home() {
         <Stat title={t("home.stat.labelQueue")} value={lib ? `${lib.matrix?.label_queue}` : "…"} sub={t("home.stat.labelSub")} />
         <Stat title={t("home.stat.env")} value={env?.ok ? t("home.stat.envReady") : "—"} sub={env?.ok ? "Chrome · ffmpeg ✓" : "/api/environment"} />
       </div>
+
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">做第一条片</h2>
+          <span className="text-dim text-xs">选一个模板，系统会预置文案/场景/风格；音频可稍后补</span>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {templates.map((tpl) => (
+            <div key={tpl.id} className="card p-4 flex flex-col">
+              <div className="flex items-baseline justify-between">
+                <div className="font-medium">{tpl.title}</div>
+                <span className="text-gold text-sm">{tpl.seconds}s</span>
+              </div>
+              <p className="text-dim text-sm mt-2 flex-1">{tpl.description}</p>
+              <p className="text-xs text-dim mt-2 line-clamp-2">{tpl.copy}</p>
+              <button className="btn-primary mt-3" onClick={() => useTemplate(tpl.id)}>用此模板</button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {onboard && projects.length === 0 && (
+        <section className="card p-4 mb-6 border-gold/40">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">第一次用？按 5 步走（10 分钟出片）</h2>
+            <button className="btn" onClick={() => setOnboard(false)}>跳过</button>
+          </div>
+          <ol className="grid grid-cols-5 gap-2 mt-3 text-sm">
+            <li className="border border-line p-2"><b>1</b> 场景列表<br /><span className="text-dim">画布 / 编辑器</span></li>
+            <li className="border border-line p-2"><b>2</b> 单帧预览<br /><span className="text-dim">静帧审阅</span></li>
+            <li className="border border-line p-2"><b>3</b> 改一句<br /><span className="text-dim">编辑器自动保存</span></li>
+            <li className="border border-line p-2"><b>4</b> 看 diff<br /><span className="text-dim">审阅页对比</span></li>
+            <li className="border border-line p-2"><b>5</b> 出 draft<br /><span className="text-dim">预览 / 交付</span></li>
+          </ol>
+        </section>
+      )}
 
       <section className="card p-4 mb-6">
         <h2 className="font-semibold mb-3">{t("home.import")}</h2>
