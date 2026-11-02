@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.6.4"  # R2.5 FR-27：alimiter level=false 防止自动拉响度
+EXECUTOR_VERSION = "2.6.6"  # R2.5 FR-28：G07 QC 真峰解析兼容 ffmpeg summary 换行格式
 
 
 def canonical(obj) -> str:

@@ -103,9 +103,9 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
   }, [lib]);
 
   return (
-    <div onKeyDown={onKey} className="grid grid-cols-[220px_1fr_300px] gap-3 h-[640px]" data-testid="style-picker">
+    <div onKeyDown={onKey} className="grid grid-cols-[220px_1fr_300px] gap-3 h-[640px] overflow-hidden" data-testid="style-picker">
       {/* 左侧双轴 */}
-      <aside className="card p-3 overflow-y-auto text-sm">
+      <aside className="card p-3 overflow-y-auto text-sm min-h-0">
         <div className="flex gap-1 mb-3">
           <button className={`chip ${railTab === "family" ? "chip-on" : ""}`} onClick={() => setRailTab("family")}>语义族 9</button>
           <button className={`chip ${railTab === "collection" ? "chip-on" : ""}`} onClick={() => setRailTab("collection")}>来源集 10</button>
@@ -136,7 +136,7 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
       </aside>
 
       {/* 中部：搜索 + chips + 网格 */}
-      <section className="flex flex-col min-w-0">
+      <section className="flex flex-col min-w-0 min-h-0">
         <div className="flex gap-2 items-center mb-2">
           <input data-testid="style-search" className="flex-1" placeholder="搜索 风格/ID/关键词（支持同义词：水墨↔中国风）"
             value={q} onChange={(e) => setQ(e.target.value)} />
@@ -180,7 +180,7 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
       </section>
 
       {/* 右侧详情 */}
-      <aside className="card p-3 overflow-y-auto text-sm">
+      <aside className="card p-3 overflow-y-auto text-sm min-h-0">
         {detail ? (
           <>
             <div className="aspect-video bg-panel2 rounded mb-2 overflow-hidden">

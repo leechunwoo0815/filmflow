@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 
 from ..config import detect_chrome
 from ..engine.scene.compiler import compile_scene
-from ..models import Approval, Artifact, Job, Project, Run
+from ..models import Approval, Artifact, Job, NodeRun, Project, Run
 from . import audio as audio_svc
 from . import engines as engines_svc
 from . import jobs as jobs_svc
@@ -288,6 +288,12 @@ async def run_delivery(job_id: int) -> None:
             profile = ctx.profile
             if not ctx.imported:
                 ensure_final_ready(session, run, root, False, profile)
+                g07 = session.exec(select(NodeRun).where(
+                    NodeRun.run_id == run_id, NodeRun.node_id == "G07")).first()  # type: ignore[arg-type,union-attr]
+                if not g07 or g07.status not in ("succeeded", "cached"):
+                    raise RuntimeError(
+                        "E_DELIVERY_GATE: G07 未通过（需先完成交付打包/审批与 master QC），"
+                        "再生成交付包")
             task_p = root / "runs" / str(run_id) / "docs" / "task.json"
             task = json.loads(task_p.read_text(encoding="utf-8")) if task_p.exists() else {}
         hb = asyncio.create_task(_heartbeat(job_id))
@@ -305,6 +311,7 @@ async def run_delivery(job_id: int) -> None:
                 if (a.meta_json or {}).get("mix") and Path(a.path).exists()), None)
             stills = session.exec(select(Artifact).where(
                 Artifact.run_id == run_id, Artifact.node_id == "D02", Artifact.type == "PNG")).all()  # type: ignore[arg-type]
+            g07_a = _artifact(session, run_id, "G07", "MP4")
         video = Path(video_a.path) if video_a else root / "out/film/intermediate.mp4"
         mix = root / "card/mix.wav"
         if not mix.exists() and mix_a:
@@ -392,6 +399,9 @@ async def run_delivery(job_id: int) -> None:
                     "captions": {"file": captions.name, "source": source, **srt_meta},
                     "files": [{"name": p.name, "sha256": _file_sha(p), "bytes": p.stat().st_size}
                               for p in files],
+                    "g07Master": ({"sha256": g07_a.sha256, "path": g07_a.path,
+                                   "bytes": Path(g07_a.path).stat().st_size}
+                                  if g07_a else None),
                     "approvals": approvals,
                     "env": {"engine": engine_id, "engineSha": ctx.engine_sha,
                             "fontSha": ctx.font_sha, "chrome": chrome_ver,

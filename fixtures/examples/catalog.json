@@ -1,0 +1,25 @@
+{
+  "schema": "filmflow.examples/1",
+  "items": [
+    {
+      "id": "voice15",
+      "title": "15 秒口播 · 把重复交给工具",
+      "titleText": "把重复交给工具",
+      "seconds": 15,
+      "family": "print",
+      "description": "一个观点、三个短句；演示模板 → 场景列表 → 改一句 → draft 的最短路径。",
+      "copy": "很多工作不是难，是重复。把重复交给工具，人才有时间思考。今天就开始，先自动化一件小事。",
+      "audioPlaceholder": "voice"
+    },
+    {
+      "id": "product40",
+      "title": "40 秒产品 · 从痛点到行动",
+      "titleText": "素材不该藏在文件夹里",
+      "seconds": 40,
+      "family": "print",
+      "description": "痛点、方案、证据、行动，五场完整短片；用于 40 秒双版本交付实测。",
+      "copy": "每天找文件要花掉半小时。旧办法靠记忆和文件夹。FilmFlow 把素材、场景和交付放在一个本地工作台。一条 40 秒短片从文案走到双版本成片。现在就复制这个示例，换成你的产品。",
+      "audioPlaceholder": "voice"
+    }
+  ]
+}

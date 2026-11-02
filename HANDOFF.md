@@ -1,9 +1,9 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-02 · **R2.0 已验收；R2.5 FR-26/27/28 完成，FR-31 部分完成**
-> 当前代码基线：R2.5 代码 `64e6898`；文档基线见 `git log` 最新一条。
-> **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r2_5-plan.md`、PRD-002、ADR-0005。**
-> 上下文压缩后继续开发时：从 §6.1/§6.2 的未完成项开始，不要回滚或重做 R2.0/R2.5 已完成部分。
+> 更新时间：2026-11-02 · **R2.0 已验收；R2.5 FR-26/27/28/31 全部完成并通过实测**
+> 当前代码基线：R2.5 代码 `64e6898` + FR-31/G07 QC 未提交改动；文档基线见 `git log` 最新一条。
+> **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r2_5-plan.md`、PRD-002、ADR-0005/0007。**
+> 上下文压缩后继续开发时：从 §6.4 的 R2.5 总验收开始，不要回滚或重做 R2.0/R2.5 已完成部分。
 
 ---
 
@@ -24,8 +24,9 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 93 passed
+cd server && uv run pytest tests -q                       # 102 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
+uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
 uv run --project server python scripts/verify_r2_5s_incremental.py
 uv run --project server python scripts/verify_r2_preview.py
@@ -34,27 +35,27 @@ uv run --project server python scripts/verify_r2_recovery.py   # 会杀/重启 d
 uv run --project server python scripts/golden_run.py --project 5s
 uv run --project server python scripts/verify_r2_5_review.py
 uv run --project server python scripts/verify_r2_5_audio.py
+uv run --project server python scripts/verify_r2_5_onboarding.py
 uv run --project server python scripts/verify_r2_5_delivery.py
+uv run --project server python scripts/verify_r2_5_delivery_40s.py
+uv run --project server python scripts/verify_rumor_regression.py   # 干净 rumor 46/46
 ```
 
 ### 0.3 当前下一步（按优先级）
 
-1. **FR-31 收尾**（R2.5 唯一未完成 FR）：
-   - 模板音频占位（15/30/40s）；
-   - wizard 第 3 步用用户标题做预演（当前 StylePicker 只用风格自带缩略图）；
-   - 示例项目只读副本 + Studio 5 步引导；
-   - 10 分钟首片走查。
-2. **40s 交付实测**：FR-28 目前只跑通 5s；40s 9:16 变体、SRT、QC、zip 尚未实测。
-3. **G07 与交付包整合决策**：当前 G07 只产 master，交付包由 `/projects/:id/delivery` 独立生成；
-   PRD FR-28 要求 G07/交付页，需决定是否让 G07 触发 DeliveryService，或把交付页定义为执行体。
-4. 通过后再申请 R2.5 总验收；**不要开始 R3/R4**（时间轴/审片/音频 v2/资产库/批量/photo 引擎）。
+1. **R2.5 总验收**：逐项打勾 §6.4，附测试输出、产物路径/哈希、UI 截图/curl；全部已通过，
+   可直接向老板申请 R2.5 签收。
+2. 40s 交付已实测（190.0s，9 文件/QC 全绿）；干净 rumor 2.6.6 已 46/46。
+3. G07 与交付包的边界已定：G07 只做 master + 核心 QC；交付包是显式 post-run 作业，
+   必须等 G07 通过（[ADR-0007](docs/adr/ADR-0007-g07-qc-and-delivery.md)）。
+4. 签收前**不要开始 R3/R4**（时间轴/审片/音频 v2/资产库/批量/photo 引擎）。
 
 ### 0.4 不要做的事
 
 - 不要重写 RunEngine 的 caps / 门 / 三类边 / content_hash / 断点续跑；46 节点/93 边不变。
 - 不要新增 DAG 节点；R2.5 的审阅/音频/交付都在服务/页面层。
 - 不要把新项目回退 `legacy_entry`；只有 `meta.imported=true` 可走 v1 harness。
-- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 **2.6.4**）。
+- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 **2.6.6**）。
 - 不要用“页面能点”代替真实产物；完成申报必须附测试、产物路径/哈希、UI 截图/curl。
 - 不要跑 `verify_r2_recovery.py` 时同时使用工作台（它会 kill -9 并重启 dev.sh）。
 
@@ -77,9 +78,9 @@ uv run --project server python scripts/verify_r2_5_delivery.py
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **93 passed**（unit 74 / integration 12 / BDD 7） |
-| EXECUTOR_VERSION | **2.6.4**（`server/app/engine/cachekey.py`） |
-| UI E2E | 8 场景全绿（约 16s） |
+| 测试 | **102 passed**（unit 83 / integration 12 / BDD 7） |
+| EXECUTOR_VERSION | **2.6.6**（`server/app/engine/cachekey.py`；G07 master QC） |
+| UI E2E | 8 场景全绿（约 16s）；FR-31 冒烟另 4 组 |
 
 ### 1.2 R2.0（已验收，8 FR）
 
@@ -101,7 +102,7 @@ uv run --project server python scripts/verify_r2_5_delivery.py
 | FR-26 全场景静帧审阅 | **DONE** | D01 长场景 6 帧、D02 contact sheet、D03 逐场门禁、D04 review_diff、`/review` |
 | FR-27 音频工作台 v1 | **DONE** | Take/录音、waveform 49–51ms、手动对齐、许可、sidechain、Stems、G06 TP/同步 |
 | FR-28 交付 v1 | **DONE（5s）** | 9 文件、16:9+9:16、SRT、双封面、manifest/qc/rights/zip；5s 26.1s |
-| FR-31 新手引导 | **PARTIAL** | 3 模板、首页引导卡、`/help`；音频占位/wizard 标题预演/只读示例待补 |
+| FR-31 新手引导 | [DONE] | 3 模板+音频占位、只读示例/克隆、向导用户标题 3 候选预演、Studio 5 步引导、`/help`；`verify_r2_5_onboarding.py` + `e2e_onboarding.py`。 |
 
 ### 1.4 环境与验收项目
 
@@ -113,9 +114,11 @@ uv run --project server python scripts/verify_r2_5_delivery.py
 - R2.5 音频最终：`filmflow-projects/r2_5-audio-160`（project 151 / run 198）。
 - R2.5 交付：`filmflow-projects/r2_5-delivery-153`（project 142 / run 186；
   `out/deliveries/186/`）。
-- 干净 rumor：`filmflow-projects/rumor-clean-20261102`（project 115 / run 194；
-  `out/film/master.mp4` 39.5s）。
-- 模板冒烟：project 143 / run 187（root `filmflow-projects/模板冒烟-1`）。
+- 干净 rumor：`filmflow-projects/rumor-clean-20261102`（project 115 / **run 222**；
+  `out/film/master.mp4` 39.5s / 70,542,684B；2.6.6 复跑 **46/46**，90.6s）。
+- FR-31 验收：project 155 / run 202（模板 15s draft），project 156 / run 203（示例克隆）。
+- 40s 交付：`filmflow-projects/r2_5-delivery40-185`（project 174 / **run 223**，2.6.6 一次通过）；
+  旧证据 `r2_5-delivery40-177`（project 166 / run 213，G07 parser 修复前 retry）。
 
 ---
 
@@ -157,7 +160,9 @@ full F02 wall=108.48s；incremental F02 wall=14.15s (13.05%)
 ### 2.6 黄金与干净 rumor（FR-30）
 
 - 5s/15s/40s golden：6 帧 SSIM **1.000000** / pHash **0**。
-- 干净 rumor（run 194）：**46/46 succeeded**、0 failed/skipped；master **39.500s** H.264+AAC。
+- 干净 rumor（run 222，2.6.6）：**46/46 succeeded**、0 failed/skipped、90.6s；
+  master **39.500s / 70,542,684B** H.264+AAC；G07 QC imported 路径只查音轨。
+  历史 run 194 为 2.6.4 证据。
 - 本机无 whisper，G02 用 manual alignment（source=manual，ADR D7）。
 
 ---
@@ -196,29 +201,62 @@ PASS: R2.5 FR-27 音频工作台验收通过
 - 关键修复：G04 解码改临时文件（stdout 64KB 死锁）；G07 批准后回 idle 执行 package；
   G05 `alimiter=limit=0.7:level=false`（否则自动拉响度到 −13.7LUFS/+0.1dBTP）。
 
-### 3.3 FR-28 交付（5s）
+### 3.3 FR-28 交付（5s + 40s）
 
-`verify_r2_5_delivery.py`（project 142 / run 186）：
+**5s 回归**（project 173 / run 221，2026-11-02）：
 
 ```
-delivery job succeeded wall 26.1s
+G chain G05/G06/G07 = succeeded
+delivery job succeeded wall 26.2s
 QC {master16/9,duration,audio,lufs,truePeak,captions,covers}=true
 master16 1920×1080/24 + audio；master9 1080×1920/24 + audio，均 5.000s
-9 文件 + zip
 PASS: R2.5 FR-28 交付 v1 验收通过
 ```
 
-- 包：`out/deliveries/186/`：两个 master、`captions.zh.srt`、`cover_16x9.jpg`、`cover_9x16.jpg`、
+**40s 实测**（project 174 / run 223 / `filmflow-projects/r2_5-delivery40-185`，2.6.6 全新一次通过）：
+
+```
+run wall 305.4s  E05/F02/F04/G05/G06/G07 = succeeded
+G07 qc {duration:40.0,1920x1080,24fps,audio:true,lufs:-15.9,truePeak:-10.5}
+delivery job succeeded wall 190.0s
+qc {master16/9,duration,audio,lufs,truePeak,captions,covers}=true
+master16 1920×1080/24 + audio 40.000s 7,588,145B
+master9  1080×1920/24 + audio 40.000s 6,616,460B
+captions 5 cues / maxLineChars 16 / maxCharsPerSec 2.31 / source=manual
+covers 1920×1080 + 1080×1920；9 文件 + zip
+g07Master sha256=089419501e35acbb...（delivery manifest 可反查）
+PASS: R2.5 FR-28 40s 交付验收通过（run 305.4s / delivery 190.0s）
+```
+
+- **审批口径**：run 223 的 delivery manifest 记录 **7 条 run-local 审批**（A05/B08/D03/D05/E07/F06/G07）；
+  G03 因内容哈希与 run 213 相同走了既有 `inherit` 策略，没有本 Run 的 Approval 行。
+  DAG 实际是 **8 个人工门**（8+8 门），PRD 写的「9 条审批」与当前门数不一致；没有伪造第 9 条。
+  需要严格逐 Run 审计时，应在 R3 把 inherit 范围收窄到同 workflow 并把继承审批写进 manifest。
+- 包：`out/deliveries/<runId>/`：两个 master、`captions.zh.srt`、`cover_16x9.jpg`、`cover_9x16.jpg`、
   `manifest.json`、`qc.json`、`rights.json`、`FilmFlow-delivery.zip`。
 - 9:16 由 Scene DSL 重排（不裁切 16:9）；封面取中间场景 reveal 完成后的帧。
-- **40s 交付尚未实测**；这是 FR-28 剩余验收项。
+- G07 master QC：`E_QC_LUFS/TRUE_PEAK/DURATION/RESOLUTION/FPS/AUDIO`；LUFS −20 由单测
+  `test_master_qc.py` 证明阻断并给「重新混音到 −16」建议。
+- 复现：`verify_r2_5_delivery.py`（5s）与 `verify_r2_5_delivery_40s.py`
+  （全链或 `--project 174 --run 223 --root ...` 复用 G07 产物）。
 
-### 3.4 FR-31（部分）
+### 3.4 FR-31 新手引导（DONE）
 
-- 首页「做第一条片」3 模板（口播 15s / 观点 30s / 产品 40s）→ `POST /projects/from-template`
-  复用 draft/materialize；模板冒烟 project 143/run 187。
-- 空项目 5 步引导卡（可跳过）；`/help` 快捷键/Scene DSL/QA 错误。
-- 待补：模板音频占位、wizard 标题预演、示例只读副本、Studio 内引导、10 分钟走查。
+- 首页「做第一条片」3 模板（口播 15s / 观点 30s / 产品 40s）→ `POST /projects/from-template`。
+- 模板 materialize 写 `card/audio.placeholder.json`（kind/duration/source）；`GET /projects/:id/audio`
+  返回 `placeholder`；上传/录音后自动清除，不生成假音频。
+- `fixtures/examples/catalog.json` 只读示例（voice15/product40）；`GET /examples` +
+  `POST /examples/:id/clone` 复制为独立项目，路径全在工作区。
+- `GET /wizard/titles?copy=` 本地切 3 个候选标题；向导第 3 步用所选风格预览图叠加用户标题，
+  可切候选；`brief.title` 写入 materialize（项目名不再固定「向导草稿」）。
+- Studio 首次进入显示 5 步引导（场景列表/单帧/改一句/diff/draft），可跳过、header「引导」重看、
+  localStorage 记忆，不阻塞画布。
+- 验收（2026-11-02）：
+  - `verify_r2_5_onboarding.py`：project 155 / run 202；`audio.placeholder.json` 15s；
+    15s draft 预览 960×540/12.0/15.0s，墙钟 **38.2s**；上传后占位清除；示例 project 156/run 203。
+  - `e2e_onboarding.py`：首页 3 模板 + 2 只读示例；Studio 引导可跳过/重看/刷新不反弹；
+    向导标题预演使用用户文案（`很多工作不是难，是重复`），3 候选可切换。
+  - 修复 StylePicker 少 `min-h-0` 导致 640px 网格溢出压住标题预演的真实 UI bug。
 
 ---
 
@@ -271,7 +309,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 
 ### 4.6 缓存/锁（必须理解）
 
-- `EXECUTOR_VERSION=2.6.4`；改执行器必须升。
+- `EXECUTOR_VERSION=2.6.6`；改执行器必须升。
 - `DOC_NODES` 缓存含 `doc_snapshot_sha`；`PROFILE_NODES` 含 `renderProfilesSha`；
   `PROJECT_LOCAL_NODES={D02,E05,F02,F04,G01,G05,G07}` 含 `projectRoot`。
 - `chrome-queue=1`；`ffmpeg=1`；`port-8787=1`（F01/D02/E05/F02）。
@@ -301,7 +339,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 
 ## 5. 踩坑清单（按优先级，必须看）
 
-1. **EXECUTOR_VERSION**：改任何执行器行为必须升版；当前 2.6.4，否则缓存返回旧行为。
+1. **EXECUTOR_VERSION**：改任何执行器行为必须升版；当前 2.6.6，否则缓存返回旧行为。
 2. **task 快照回退**：B06 同文档缓存命中时不会写 `runs/<id>/docs/task.json`；`_task_path` 必须回退
    只读 `card/task.json`，否则 D01 空场景、D03/D04 失败。
 3. **timeline 持久化**：materialize/首次快照落 timeline doc；编辑 script 不得重建 timeline，
@@ -353,30 +391,33 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
    可跳过/重看，不阻塞老用户。
 5. **10 分钟走查**：新模板→改文案→音频占位→draft→审阅→交付，记录耗时与截图。
 
-### 6.2 40s 交付实测（FR-28 剩余）
+### 6.2 40s 交付实测（FR-28，已通过）
 
-- 需要一个 40s 且带音频/许可/alignment 的项目（可扩展模板 `product40` 的占位音频）。
-- 跑 G07 后 `POST /projects/:id/delivery`；预期 9:16 960 帧，数分钟；验证 9 文件/QC/zip。
-- 记录：16:9/9:16 master 时长、SRT 行宽/速度、封面尺寸、LUFS/TP、总耗时。
-- 当前 5s 已过（26.1s），40s 尚未跑；不要用 5s 外推冒充 40s 证据。
+- 40s 项目（project 174 / run 223）全链到 G07（305.4s），`POST /projects/:id/delivery` 成功；
+  delivery **190.0s**，9 文件 + zip，QC 全绿，两个 master 均 40.000s/带音轨。
+- 9:16 960 帧、SRT 5 cues（≤16 字/行、2.31 字/秒）、封面 1920×1080/1080×1920。
+- 证据与复现命令见 §3.3；`verify_r2_5_delivery_40s.py` 支持全链与 `--project/--run` 复用 G07。
+- 注意：run 223 manifest 有 7 条 run-local 审批（G03 继承），DAG 实际 8 个人工门；PRD「9 条审批」
+  与当前 8+8 门口径不一致，未伪造第 9 条（见 §3.3 审批口径）。
 
-### 6.3 G07 与交付包整合决策
+### 6.3 G07 与交付包整合决策（已定）
 
-- 现状：G07 只产 `out/film/master.mp4`；交付包由 `/projects/:id/delivery` 生成到
-  `out/deliveries/<runId>/`，两者独立。
-- 二选一：A) G07 在 F06/G06 后触发 DeliveryService（会增加 Run 时长，需锁/进度/失败策略）；
-  B) 明确交付页为 post-run 执行体，G07 只做 final 校验。选后者需在 PRD/ADR 记录。
-- 无论选哪个，manifest 必须能关联 G07 master 与 delivery 包。
+- 决策记录：[ADR-0007](docs/adr/ADR-0007-g07-qc-and-delivery.md)。
+- **G07**：DAG 内最终打包门，输出 master，并做核心 QC（时长/分辨率/fps/音轨/LUFS/TP）；
+  失败 `E_QC_*` 阻断并给修复建议；不渲染 9:16、不生成 zip。
+- **DeliveryService**：显式 post-run 作业（API/页面）；非导入项目必须已有 G07 `succeeded/cached`，
+  否则 `E_DELIVERY_GATE`；完整包 QC 失败则 Job 失败；manifest 记录 G07 master sha + 全部文件 sha。
+- 代价：改 G07 已升 `EXECUTOR_VERSION=2.6.6`；普通 Run 只多一次 ffprobe/ebur128。
 
 ### 6.4 R2.5 DoD（收尾时逐项打勾）
 
-- [ ] FR-26 全场景静帧/逐场门禁/diff（DONE）
-- [ ] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
-- [ ] FR-28 16:9+9:16+SRT+封面+QC+zip；**40s 实测**
-- [ ] FR-31 模板音频占位/wizard 标题预演/只读示例/Studio 引导
-- [ ] 93+ tests、E2E、干净 rumor 46/46 回归
-- [ ] 交付与 G07 关系有明确记录
-- [ ] 未开始 R3/R4
+- [x] FR-26 全场景静帧/逐场门禁/diff（DONE）
+- [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
+- [x] FR-28 16:9+9:16+SRT+封面+QC+zip；5s 26.2s / **40s 190.0s**
+- [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
+- [x] 102 tests、E2E、干净 rumor 46/46 回归（run 222，90.6s）
+- [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
+- [x] 未开始 R3/R4
 
 ---
 
@@ -427,7 +468,7 @@ curl -s http://127.0.0.1:7860/api/queue
 - 46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；边数 93。
 - Chrome 全局串行 1 个（`chrome-queue=1`）；ffmpeg 独占；预览不新开第二个浏览器。
 - 新项目禁止 `legacy_entry`；只有 `meta.imported=true` 可走 v1 harness。
-- 改执行器行为必须升 `EXECUTOR_VERSION`（2.6.4）。
+- 改执行器行为必须升 `EXECUTOR_VERSION`（2.6.6）。
 - 路径白名单/禁止路径穿越；FrameServer 只服务 `/engine` 与 `/project`。
 - 76MB 风格库/示例 mp4 不入 git；`vendor/fy-code-animation` 只查方法，不 import。
 - R2.5 只做 FR-26/27/28/31；R3/R4 不做。
@@ -437,9 +478,10 @@ curl -s http://127.0.0.1:7860/api/queue
 
 ## 9. 已知限制/风险（交接必须知道）
 
-1. **FR-31 仍 PARTIAL**：模板、引导卡、help 有；音频占位/wizard 标题预演/只读示例/Studio 引导未完成。
-2. **FR-28 只验证 5s**：40s 交付未实测；9:16 长片耗时和 QC 未标定。
-3. **G07 不产交付包**：交付包由 API/页面生成；是否整合待决策（§6.3）。
+1. **FR-31 已 DONE，但示例是仓库 fixture**：`fixtures/examples/` 只读源 + 克隆项目；不是可浏览的
+   预置数据库项目。模板音轨是占位文件，不会生成假音频。
+2. **FR-28 40s 已实测**：delivery 190.0s；比 5s（26.2s）慢主要来自 9:16 的 960 帧重渲。
+3. **G07 与交付边界**：G07 做 master + 核心 QC；交付包是显式 post-run 作业，必须等 G07 通过（ADR-0007）。
 4. **预览/档位 UI 未接**：API/服务可用；编辑器内预览按钮、档位切换 UI 留 R3。
 5. **单 API worker**：Job 恢复/孤儿清理假设单进程；多 worker 不支持。
 6. **whisper 缺失**：本机无 whisper CLI/model；G02 manual；R2.5 音频不伪装词级。
@@ -456,12 +498,12 @@ curl -s http://127.0.0.1:7860/api/queue
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **93 passed**。
+- [ ] `cd server && uv run pytest tests -q` → **102 passed**。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。
 - [ ] R2.5 review/audio/delivery verifier 全绿。
 - [ ] 打开 `/review?project=119&run=163`、`/audio?project=151`、`/delivery?project=142&run=186`。
-- [ ] 读 §5、§6、§9；确认下一步是 FR-31 收尾 + 40s 交付，不重做 R2.0/FR-26/27/28。
+- [ ] 读 §5、§6、§9；确认下一步是 R2.5 总验收，不重做 R2.0/FR-26/27/28/31。
 - [ ] 申报完成必须附：测试输出、产物路径+sha/时长、UI 截图/curl。
 
 ---

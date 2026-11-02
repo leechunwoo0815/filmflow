@@ -1347,6 +1347,77 @@ async def g06(ctx):
         "approximate": not sync_verified})
 
 
+async def _probe_av(ctx, path: Path) -> dict:
+    argv = ["ffprobe", "-v", "error", "-show_entries",
+            "stream=codec_type,width,height,r_frame_rate:format=duration", "-of", "json", str(path)]
+    res = await ctx["runner"].run(argv, timeout=60)
+    if not res.ok:
+        raise RuntimeError("ffprobe 失败")
+    data = json.loads("\n".join(res.stdout_tail))
+    video = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), {})
+    num, den = (video.get("r_frame_rate") or "0/1").split("/")
+    return {"duration": round(float((data.get("format") or {}).get("duration") or 0), 3),
+            "width": video.get("width"), "height": video.get("height"),
+            "fps": round(int(num) / max(1, int(den)), 3) if int(den) else 0,
+            "audio": any(s.get("codec_type") == "audio" for s in data.get("streams", []))}
+
+
+async def _measure_loudness(ctx, path: Path) -> dict:
+    res = await ctx["runner"].run(
+        ["ffmpeg", "-hide_banner", "-i", str(path), "-af", "ebur128=peak=true",
+         "-f", "null", "-"], timeout=300)
+    text = "\n".join(res.stderr_tail)
+    lufs = tp = None
+    for line in text.splitlines():
+        if "I:" in line and "LUFS" in line:
+            try:
+                lufs = float(line.split("I:")[1].split("LUFS")[0].strip())
+            except ValueError:
+                pass
+        if "True peak:" in line and "dBFS" in line:
+            try:
+                tp = float(line.split("True peak:")[1].split("dBFS")[0].strip())
+            except ValueError:
+                pass
+        if "Peak:" in line and "dBFS" in line and "True peak" not in line:
+            try:
+                tp = float(line.split("Peak:")[1].split("dBFS")[0].strip())
+            except ValueError:
+                pass
+    return {"lufs": round(lufs, 1) if lufs is not None else None,
+            "truePeak": round(tp, 1) if tp is not None else None}
+
+
+def _validate_master_qc(qc: dict, profile: dict, imported: bool) -> None:
+    if not qc["audio"]:
+        raise RuntimeError("E_QC_AUDIO: master 无音轨；修复：检查 G05 混音与 G07 输入")
+    if imported:
+        qc["policy"] = "imported"
+        return
+    expected = float(profile.get("duration") or 0)
+    if expected and abs(float(qc["duration"]) - expected) > 0.15:
+        raise RuntimeError(
+            f"E_QC_DURATION: master {qc['duration']}s ≠ profile {expected}s；"
+            "修复：重跑 F04 并核对 project.profile.json")
+    if (qc["width"], qc["height"]) != (profile.get("width"), profile.get("height")):
+        raise RuntimeError(
+            f"E_QC_RESOLUTION: master {qc['width']}×{qc['height']} ≠ "
+            f"{profile.get('width')}×{profile.get('height')}；修复：重跑 F02/F04 final")
+    if abs(float(qc["fps"]) - float(profile.get("fps") or qc["fps"])) > 0.01:
+        raise RuntimeError(
+            f"E_QC_FPS: master {qc['fps']}fps ≠ profile {profile.get('fps')}fps；"
+            "修复：重跑 F04 final")
+    if qc["lufs"] is None or qc["truePeak"] is None:
+        raise RuntimeError("E_QC_LUFS: 无法测量响度/真峰；修复：检查 G05 输出音轨")
+    if not -18.0 <= qc["lufs"] <= -14.0:
+        raise RuntimeError(
+            f"E_QC_LUFS: {qc['lufs']} LUFS 超出 -18..-14；修复：在 G05 重新混音到 -16 LUFS")
+    if qc["truePeak"] > -1.0:
+        raise RuntimeError(
+            f"E_QC_TRUE_PEAK: {qc['truePeak']} dBTP 超过 -1.0；"
+            "修复：在 G05 降低峰值（alimiter 留 1dB 余量）")
+
+
 @executor("package")
 async def g07(ctx):
     from ...models import Run
@@ -1368,9 +1439,14 @@ async def g07(ctx):
     from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], master, "MP4")
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "MP4", str(ap), sha)
+    qc = await _probe_av(ctx, master)
+    qc.update(await _measure_loudness(ctx, master))
+    _validate_master_qc(qc, _profile(ctx), bool(ctx.get("run_imported")))
+    _artifact_json(ctx, "qc_master.json", qc)
     approvals = ctx["session"].exec(select(Approval).where(Approval.run_id == ctx["run_id"])).all()  # type: ignore[arg-type]
     arts = ctx["session"].exec(select(Artifact).where(Artifact.run_id == ctx["run_id"])).all()  # type: ignore[arg-type]
     manifest = {"master": {"sha256": sha, "path": str(ap)},
+                "qc": qc,
                 "artifacts": [{"sha256": a.sha256, "type": a.type, "node": a.node_id} for a in arts],
                 "approvals": [{"gate": a.gate_id, "decision": a.decision, "author": a.author,
                                "content_hash": a.content_hash, "at": str(a.created_at)} for a in approvals]}

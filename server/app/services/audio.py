@@ -40,6 +40,29 @@ def load_manifest(root: str | Path) -> dict:
     return {"schema": "filmflow.audio/1", "takes": data.get("takes", [])}
 
 
+def placeholder_path(root: str | Path) -> Path:
+    return Path(root) / "card" / "audio.placeholder.json"
+
+
+def load_placeholder(root: str | Path) -> dict | None:
+    data = _read(placeholder_path(root))
+    return data or None
+
+
+def save_placeholder(root: str | Path, kind: str, duration: float, source: str = "") -> dict:
+    data = {"schema": "filmflow.audio-placeholder/1", "kind": kind,
+            "duration": round(float(duration or 0), 3), "source": source,
+            "note": "模板占位：录制或上传后替换；不会自动生成音频"}
+    _write(placeholder_path(root), data)
+    return data
+
+
+def clear_placeholder(root: str | Path, kind: str) -> None:
+    current = load_placeholder(root)
+    if current and current.get("kind") == kind:
+        placeholder_path(root).unlink(missing_ok=True)
+
+
 def _duration(path: Path) -> float:
     try:
         res = subprocess.run(
@@ -82,6 +105,7 @@ def import_take(root: str | Path, filename: str, data_b64: str, kind: str = "voi
             "bytes": wav.stat().st_size}
     takes.append(take)
     _write(manifest_path(root), manifest)
+    clear_placeholder(root, kind)
     return take
 
 

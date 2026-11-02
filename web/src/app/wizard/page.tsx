@@ -15,11 +15,14 @@ export default function Wizard() {
   const [profile, setProfile] = useState({ width: 1920, height: 1080, fps: 24, duration: 39.5 });
   const [pick, setPick] = useState<any>(null);
   const [voice, setVoice] = useState("自录口播");
+  const [titles, setTitles] = useState<string[]>([]);
+  const [title, setTitle] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const { t } = useLang();
   const router = useRouter();
   const createdRef = useRef(false);
+  const titleCopyRef = useRef("");
 
   const frames = Math.round(profile.duration * profile.fps);
   const sentences = copy.split(/(?<=[。！？；!?;])/).filter((s) => s.trim()).length;
@@ -32,13 +35,32 @@ export default function Wizard() {
       .then((d) => setDraftId(d.id)).catch((e) => setMsg(String(e)));
   }, []);
 
+  useEffect(() => {
+    if (step !== 3 || !copy.trim()) return;
+    api<{ items: string[] }>(`/wizard/titles?copy=${encodeURIComponent(copy)}`)
+      .then((r) => {
+        setTitles(r.items);
+        if (titleCopyRef.current !== copy) {
+          titleCopyRef.current = copy;
+          setTitle(r.items[0] || "");
+        } else {
+          setTitle((cur) => cur || r.items[0] || "");
+        }
+      }).catch((e) => setMsg(String(e)));
+  }, [step, copy]);
+
+  const pickTitle = (value: string) => {
+    setTitle(value);
+    save({ payload: { copy, profile, pick, voice, title: value, brief: { title: value } } });
+  };
+
   const save = async (patch: object) => {
     if (!draftId) return;
     await api(`/drafts/${draftId}`, { method: "PATCH", body: JSON.stringify(patch) });
   };
 
   const next = async () => {
-    await save({ step: step + 1, payload: { copy, profile, pick, voice } });
+    await save({ step: step + 1, payload: { copy, profile, pick, voice, title, brief: { title } } });
     setStep((s) => Math.min(5, s + 1));
   };
 
@@ -47,7 +69,7 @@ export default function Wizard() {
     if (!copy.trim()) { setMsg("第 1 步文案为空"); return; }
     setBusy(true);
     try {
-      await save({ step: 5, payload: { copy, profile, pick, voice } });
+      await save({ step: 5, payload: { copy, profile, pick, voice, title, brief: { title } } });
       const r = await api(`/drafts/${draftId}/materialize`, { method: "POST", body: "{}" });
       router.push(`/canvas?project=${r.project.id}&run=${r.run_id}`);
     } catch (e: any) { setMsg(e.message); } finally { setBusy(false); }
@@ -101,7 +123,30 @@ export default function Wizard() {
       {step === 3 && (
         <section>
           <h2 className="font-semibold mb-2">{t("wiz.styleTitle")}</h2>
-          <StylePicker script={copy} onPrimary={(p) => { setPick(p); save({ payload: { copy, profile, pick: p, voice } }); }} />
+          <StylePicker script={copy} onPrimary={(p) => { setPick(p); save({ payload: { copy, profile, pick: p, voice, title, brief: { title } } }); }} />
+          {pick && (
+            <div className="card p-3 mt-3" data-testid="title-preview">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-sm">标题预演 · 使用你的文案</h3>
+                <span className="text-dim text-xs">3 个候选，点击切换</span>
+              </div>
+              <div className="relative aspect-video max-h-72 overflow-hidden rounded bg-panel2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/styles/${pick.primary}/preview?variant=detail`} alt="风格预演"
+                  className="w-full h-full object-cover" />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/35">
+                  <div className="text-white text-2xl md:text-3xl font-bold text-center px-6 drop-shadow-lg"
+                    data-testid="wizard-title">{title}</div>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                {titles.map((value, i) => (
+                  <button key={value} className={`chip ${title === value ? "chip-on" : ""}`}
+                    data-testid={`title-choice-${i}`} onClick={() => pickTitle(value)}>{value}</button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="mt-3 flex justify-between">
             <button className="btn" onClick={() => setStep(2)}>上一步</button>
             <button className="btn-primary" disabled={!pick} onClick={next} data-testid="step3-next">
@@ -131,6 +176,7 @@ export default function Wizard() {
           <h2 className="font-semibold mb-2">{t("wiz.genTitle")}</h2>
           <ul className="text-sm space-y-1 text-dim">
             <li>{t("wiz.summaryCopy")}{copy.length} / {sentences}</li>
+            <li>标题：<span className="text-txt">{title}</span></li>
             <li>{t("wiz.summaryFrame")}{profile.width}×{profile.height} · {profile.fps}fps · {profile.duration}s = {frames}</li>
             <li>{t("wiz.summaryPrimary")}<span className="text-gold">{pick?.primary}</span>{pick?.alternates?.length ? ` · ${t("wiz.summaryAlt")} ${pick.alternates.join("/")}` : ""}</li>
             <li>{t("wiz.summaryVoice")}{voice}</li>

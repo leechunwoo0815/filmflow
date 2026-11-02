@@ -25,7 +25,20 @@ function CanvasInner() {
   const [selected, setSelected] = useState<any>(null);
   const [pendingGates, setPendingGates] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
   const esRef = useRef<EventSource | null>(null);
+
+  const guideParam = params.get("guide");
+  useEffect(() => {
+    if (!projectId) return;
+    const seen = window.localStorage.getItem("ff_studio_guide_seen") === "1";
+    setGuideOpen(guideParam === "1" || !seen);
+  }, [projectId, guideParam]);
+
+  const dismissGuide = () => {
+    setGuideOpen(false);
+    window.localStorage.setItem("ff_studio_guide_seen", "1");
+  };
 
   const load = useCallback(async () => {
     if (!runId) return;
@@ -103,6 +116,7 @@ function CanvasInner() {
           <a className="btn" href={`/review?project=${projectId}&run=${runId}`}>静帧审阅</a>
           <a className="btn" href={`/audio?project=${projectId}`}>音频</a>
           <a className="btn" href={`/delivery?project=${projectId}&run=${runId}`}>交付</a>
+          <button className="btn" data-testid="studio-guide-btn" onClick={() => setGuideOpen((v) => !v)}>引导</button>
           <button className="btn" data-testid="step-btn" onClick={() => act(`/runs/${runId}/step`)}>{t("cv.step")}</button>
           <button className="btn-amber" data-testid="run-btn" onClick={() => act(`/runs/${runId}/start`)}>{t("cv.run")}</button>
           <button className="btn" onClick={() => act(`/runs/${runId}/cancel`)}>{t("cv.cancel")}</button>
@@ -160,6 +174,23 @@ function CanvasInner() {
           ) : <p className="text-dim mt-6">{t("cv.clickNode")}</p>}
         </aside>
       </div>
+      {guideOpen && (
+        <div className="fixed bottom-4 right-4 z-50 w-80 card border-gold/40 p-3 text-sm shadow-xl"
+          data-testid="studio-guide">
+          <div className="flex items-center justify-between mb-2">
+            <b>第一次进 Studio？5 步出片</b>
+            <button className="btn" onClick={dismissGuide} data-testid="studio-guide-close">知道了</button>
+          </div>
+          <ol className="space-y-1.5">
+            <li><a className="text-blue" href={`/editor?project=${projectId}`}>1. 场景列表</a><span className="text-dim"> · 看每句文案对应哪一场</span></li>
+            <li><a className="text-blue" href={`/review?project=${projectId}&run=${runId}`}>2. 单帧预览</a><span className="text-dim"> · 逐场看静帧</span></li>
+            <li><a className="text-blue" href={`/editor?project=${projectId}`}>3. 改一句</a><span className="text-dim"> · 自动保存并标脏</span></li>
+            <li><a className="text-blue" href={`/review?project=${projectId}&run=${runId}`}>4. 看 diff</a><span className="text-dim"> · 只对比变化的场景</span></li>
+            <li><a className="text-blue" href={`/delivery?project=${projectId}&run=${runId}`}>5. 出 draft</a><span className="text-dim"> · 预览或交付</span></li>
+          </ol>
+          <p className="text-dim text-xs mt-2">可跳过；随时用顶部「引导」重看。</p>
+        </div>
+      )}
     </main>
   );
 }

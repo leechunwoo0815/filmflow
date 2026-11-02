@@ -8,6 +8,7 @@ type Segment = { text: string; start: number; end: number };
 type AudioData = {
   takes: Take[]; primary: Take | null; alignment: { segments: Segment[]; source?: string };
   license: any; licenseOk: boolean; licenseReason: string;
+  placeholder: { kind: string; duration: number; source: string; note?: string } | null;
 };
 
 function readBase64(file: Blob): Promise<string> {
@@ -141,6 +142,12 @@ function AudioInner() {
         </span>
       </header>
       {msg && <div className="text-sm text-gold mb-3">{msg}</div>}
+      {data?.placeholder && !data.takes.some((t) => t.kind === data.placeholder?.kind) && (
+        <div className="border border-gold/40 bg-gold/10 text-sm px-3 py-2 mb-3" data-testid="audio-placeholder">
+          音频占位：模板预留 {data.placeholder.duration}s {data.placeholder.kind} 轨（来源 {data.placeholder.source}）。
+          录制或导入后占位自动移除；占位不会生成假音频。
+        </div>
+      )}
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <div className="border border-line bg-panel p-3">
           <h2 className="font-semibold mb-2">口播 Take</h2>

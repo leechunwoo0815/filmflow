@@ -26,6 +26,7 @@ from ..services import environment as env_svc
 from ..services import engines as engines_svc
 from ..services import preview as preview_svc
 from ..services import audio as audio_svc
+from ..services import onboarding as onboarding_svc
 from ..services import delivery as delivery_svc
 from ..services import jobs as jobs_svc
 from ..services import project_docs as docs_svc
@@ -424,7 +425,12 @@ async def drafts_materialize(draft_id: int, session: Session = Depends(get_sessi
     if st.tokens_status != "complete" or st.engine_status != "available":
         raise ApiError(ErrorCode.E_ENGINE_UNAVAILABLE,
                        f"主风格 {primary} 不可生产（tokens={st.tokens_status}, engine={st.engine_status}）")
-    created = await projects_create({"name": d.name, "root": payload.get("root") or str(_default_project_root(d.name))},
+    project_name = (d.name or "").strip()
+    brief_title = str((payload.get("brief") or {}).get("title") or "").strip()
+    if brief_title and project_name in ("", "向导草稿"):
+        project_name = brief_title
+    created = await projects_create({"name": project_name or "第一条片",
+                                     "root": payload.get("root") or str(_default_project_root(project_name or "第一条片"))},
                                     session)
     proj = session.get(Project, created["project"]["id"])
     wf = session.get(Workflow, created["workflow_id"])
@@ -454,6 +460,12 @@ async def drafts_materialize(draft_id: int, session: Session = Depends(get_sessi
                                          "duration": payload.get("duration", 39.5)}
     profile.setdefault("frames", round(profile.get("duration", 39.5) * profile.get("fps", 24)))
     (proj_dir / "project.profile.json").write_text(json.dumps(profile, ensure_ascii=False, indent=1), encoding="utf-8")
+    placeholder = payload.get("audioPlaceholder")
+    if isinstance(placeholder, dict) and placeholder.get("kind"):
+        audio_svc.save_placeholder(
+            proj.root, str(placeholder["kind"]),
+            float(placeholder.get("duration") or profile.get("duration") or 0),
+            str(placeholder.get("source") or ""))
     # 初始化文档事实源：timeline 一旦落库，改文案不会重建时间轴（增量只脏目标场景）
     from ..services.project_docs import build_script_doc, build_timeline_doc
     profile_content = {"schema": docs_svc.SCHEMAS["profile"], **profile}
@@ -516,12 +528,7 @@ async def templates_list():
     return {"items": FIRST_TEMPLATES}
 
 
-@router.post("/projects/from-template")
-async def project_from_template(payload: dict, session: Session = Depends(get_session)):
-    tpl = next((t for t in FIRST_TEMPLATES if t["id"] == payload.get("templateId")), None)
-    if not tpl:
-        raise not_found("模板")
-    family = tpl.get("style_family") or "print"
+def _first_available_style(session: Session, family: str) -> Style:
     st = session.exec(select(Style).where(
         Style.family == family, Style.engine_status == "available",
         Style.tokens_status == "complete")).first()  # type: ignore[arg-type,union-attr]
@@ -529,19 +536,73 @@ async def project_from_template(payload: dict, session: Session = Depends(get_se
         st = session.exec(select(Style).where(Style.family == family)).first()  # type: ignore[arg-type,union-attr]
     if not st:
         raise ApiError(ErrorCode.E_STYLE_INCOMPLETE, f"没有可用的 {family} 风格")
-    root = _default_project_root(str(payload.get("name") or f"first-{tpl['id']}"))
-    profile = dict(tpl["profile"])
-    profile["frames"] = round(profile["duration"] * profile["fps"])
-    d = Draft(name=str(payload.get("name") or f"第一条片 · {tpl['title']}"), step=5,
-              payload_json={"root": str(root), "copy": tpl["copy"], "profile": profile,
-                            "pick": {"primary": st.id, "alternates": [], "reason": f"模板 {tpl['id']}"},
-                            "brief": {"title": tpl["title"]}})
+    return st
+
+
+async def _materialize_first(session: Session, *, name: str, copy: str, profile: dict,
+                             family: str, title: str, source: str,
+                             placeholder: str = "voice") -> dict:
+    """模板/示例共用：建草稿 → 项目 → 文档/占位 → Run。"""
+    st = _first_available_style(session, family)
+    root = _default_project_root(name)
+    profile = dict(profile)
+    profile.setdefault("frames", round(float(profile["duration"]) * int(profile["fps"])))
+    d = Draft(name=name, step=5, payload_json={
+        "root": str(root), "copy": copy, "profile": profile,
+        "pick": {"primary": st.id, "alternates": [], "reason": f"新手模板 {source}"},
+        "brief": {"title": title},
+        "audioPlaceholder": {"kind": placeholder, "duration": float(profile["duration"]),
+                             "source": source},
+    })
     session.add(d)
     session.commit()
     session.refresh(d)
     result = await drafts_materialize(d.id or 0, session)
-    result["template"] = tpl["id"]
+    result["template"] = source
     return result
+
+
+@router.post("/projects/from-template")
+async def project_from_template(payload: dict, session: Session = Depends(get_session)):
+    tpl = next((t for t in FIRST_TEMPLATES if t["id"] == payload.get("templateId")), None)
+    if not tpl:
+        raise not_found("模板")
+    return await _materialize_first(
+        session, name=str(payload.get("name") or f"第一条片 · {tpl['title']}"),
+        copy=tpl["copy"], profile=tpl["profile"], family=tpl.get("style_family") or "print",
+        title=tpl["title"], source=tpl["id"],
+        placeholder=tpl.get("audioPlaceholder") or "voice")
+
+
+# ---------- 只读示例项目（FR-31） ----------
+
+@router.get("/examples")
+async def examples_list():
+    items = [{k: v for k, v in x.items() if k != "copy"} | {"copyPreview": x["copy"][:120]}
+             for x in onboarding_svc.load_examples()]
+    return {"items": items}
+
+
+@router.post("/examples/{example_id}/clone")
+async def example_clone(example_id: str, payload: dict | None = None,
+                        session: Session = Depends(get_session)):
+    item = onboarding_svc.example(example_id)
+    if not item:
+        raise not_found("示例")
+    payload = payload or {}
+    result = await _materialize_first(
+        session, name=str(payload.get("name") or f"我的示例 · {item['title']}"),
+        copy=item["copy"], profile=onboarding_svc.example_profile(item),
+        family=str(item.get("family") or "print"),
+        title=str(item.get("titleText") or item["title"]), source=item["id"],
+        placeholder=str(item.get("audioPlaceholder") or "voice"))
+    result["example"] = item["id"]
+    return result
+
+
+@router.get("/wizard/titles")
+async def wizard_titles(copy: str = ""):
+    return {"items": onboarding_svc.title_candidates(copy), "source": "local"}
 
 
 # ---------- workflow / runs ----------
@@ -1068,7 +1129,8 @@ async def project_audio(project_id: int, session: Session = Depends(get_session)
     primary = audio_svc.primary_take(proj.root)
     return {"takes": manifest["takes"], "primary": primary,
             "alignment": audio_svc.load_alignment(proj.root),
-            "license": lic, "licenseOk": ok, "licenseReason": why}
+            "license": lic, "licenseOk": ok, "licenseReason": why,
+            "placeholder": audio_svc.load_placeholder(proj.root)}
 
 
 @router.post("/projects/{project_id}/audio/upload")

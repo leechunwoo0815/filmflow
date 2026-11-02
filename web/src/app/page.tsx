@@ -11,6 +11,7 @@ export default function Home() {
   const [lib, setLib] = useState<any>(null);
   const [env, setEnv] = useState<any>(null);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [examples, setExamples] = useState<any[]>([]);
   const [onboard, setOnboard] = useState(true);
   const [importRoot, setImportRoot] = useState("/Users/litianyu/cc-projects/ai-v/rumor-39s");
   const [msg, setMsg] = useState("");
@@ -21,6 +22,7 @@ export default function Home() {
     setLib(await api("/library/status"));
     setEnv(await api("/environment"));
     setTemplates((await api<{ items: any[] }>("/templates")).items);
+    setExamples((await api<{ items: any[] }>("/examples")).items);
   };
   useEffect(() => { load().catch((e) => setMsg(String(e))); }, []);
 
@@ -29,6 +31,13 @@ export default function Home() {
       const r = await api<any>("/projects/from-template", {
         method: "POST", body: JSON.stringify({ templateId }),
       });
+      router.push(`/canvas?project=${r.project.id}&run=${r.run_id}`);
+    } catch (e: any) { setMsg(e.message); }
+  };
+
+  const cloneExample = async (exampleId: string) => {
+    try {
+      const r = await api<any>(`/examples/${exampleId}/clone`, { method: "POST", body: "{}" });
       router.push(`/canvas?project=${r.project.id}&run=${r.run_id}`);
     } catch (e: any) { setMsg(e.message); }
   };
@@ -70,14 +79,34 @@ export default function Home() {
         </div>
         <div className="grid grid-cols-3 gap-3">
           {templates.map((tpl) => (
-            <div key={tpl.id} className="card p-4 flex flex-col">
+            <div key={tpl.id} className="card p-4 flex flex-col" data-testid={`template-${tpl.id}`}>
               <div className="flex items-baseline justify-between">
                 <div className="font-medium">{tpl.title}</div>
                 <span className="text-gold text-sm">{tpl.seconds}s</span>
               </div>
               <p className="text-dim text-sm mt-2 flex-1">{tpl.description}</p>
               <p className="text-xs text-dim mt-2 line-clamp-2">{tpl.copy}</p>
-              <button className="btn-primary mt-3" onClick={() => useTemplate(tpl.id)}>用此模板</button>
+              <button className="btn-primary mt-3" data-testid={`use-template-${tpl.id}`} onClick={() => useTemplate(tpl.id)}>用此模板</button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">示例项目（只读）</h2>
+          <span className="text-dim text-xs">仓库内只读源；复制后得到你自己的项目根，可随意改</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {examples.map((ex) => (
+            <div key={ex.id} className="card p-4 flex flex-col" data-testid={`example-${ex.id}`}>
+              <div className="flex items-baseline justify-between">
+                <div className="font-medium">{ex.title} <span className="badge border-line text-dim ml-1">只读</span></div>
+                <span className="text-gold text-sm">{ex.seconds}s</span>
+              </div>
+              <p className="text-dim text-sm mt-2 flex-1">{ex.description}</p>
+              <p className="text-xs text-dim mt-2 line-clamp-2">{ex.copyPreview}…</p>
+              <button className="btn-primary mt-3 self-start" onClick={() => cloneExample(ex.id)}>复制为我的项目</button>
             </div>
           ))}
         </div>
