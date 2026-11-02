@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useLang, LangToggle } from "@/lib/i18n";
 import { ThemeToggle } from "@/lib/theme";
+import DocsEditor from "@/components/DocsEditor";
 
 function EditorInner() {
   const { t } = useLang();
@@ -12,6 +13,13 @@ function EditorInner() {
   const [task, setTask] = useState<any>(null);
   const [msg, setMsg] = useState("");
   const [report, setReport] = useState<any>(null);
+  const [imported, setImported] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api(`/projects/${projectId}/docs/timeline`)
+      .then((d) => setImported(!!d.imported))
+      .catch(() => setImported(false));
+  }, [projectId]);
 
   useEffect(() => {
     api(`/projects/${projectId}/task`).then((r) => {
@@ -33,6 +41,8 @@ function EditorInner() {
     catch (e: any) { setMsg(e.message); }
   };
 
+  if (imported === null) return <main className="p-8 text-dim">加载中…</main>;
+  if (!imported) return <DocsEditor projectId={projectId} />;
   if (!task) return <main className="p-8 text-dim">加载中…</main>;
 
   const updScene = (i: number, k: string, v: any) => {

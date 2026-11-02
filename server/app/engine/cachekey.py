@@ -16,13 +16,15 @@ def canonical(obj) -> str:
 
 
 def node_cache_key(node_id: str, executor_version: str, params: dict,
-                   input_hashes: dict[str, str], caps: list[str]) -> str:
+                   input_hashes: dict[str, str], caps: list[str],
+                   doc_snapshot_sha: str = "") -> str:
     payload = {
         "node": node_id,
         "executorVersion": executor_version,
         "params": params,
         "inputs": dict(sorted(input_hashes.items())),
         "caps": sorted(caps),
+        "docSnapshotSha": doc_snapshot_sha,
     }
     return hashlib.sha256(canonical(payload).encode("utf-8")).hexdigest()
 

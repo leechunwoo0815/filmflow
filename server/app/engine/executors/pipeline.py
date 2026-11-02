@@ -8,7 +8,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from . import executor, _artifact_json, _project_file, _read_json, _upstream_json
+from . import executor, _artifact_json, _project_file, _read_json, _task_path, _upstream_json
 
 # ---------- 帧服务（F01，单例线程内嵌） ----------
 
@@ -170,7 +170,9 @@ def _engine_build(ctx) -> dict:
 
 
 def _profile(ctx) -> dict:
-    """project.profile.json 或 task.json 推导（规格 §1：无硬编码 948/1920/24）。"""
+    """Run 快照 profile 优先；否则 project.profile.json / task.json 推导。"""
+    if ctx.get("run_profile"):
+        return ctx["run_profile"]
     p = _project_file(ctx, "project.profile.json")
     if p.exists():
         return _read_json(p)
@@ -187,7 +189,7 @@ def _profile(ctx) -> dict:
 
 @executor("still-spec")
 async def d01(ctx):
-    task_p = _project_file(ctx, "card/task.json")
+    task_p = _task_path(ctx)
     task = _read_json(task_p) if task_p.exists() else {}
     scenes = task.get("scenes", [])
     picks = ctx["params"].get("scenes") or [s["id"] for s in scenes[:3]]
@@ -260,7 +262,7 @@ async def gate_noop(ctx):
 
 @executor("timeline-build")
 async def e01(ctx):
-    task = _project_file(ctx, "card/task.json")
+    task = _task_path(ctx)
     t = _read_json(task) if task.exists() else {}
     profile = _profile(ctx)
     fps = profile["fps"]

@@ -4,9 +4,13 @@ export async function api<T = any>(path: string, init?: RequestInit): Promise<T>
     ...init,
   });
   if (!res.ok) {
-    let msg = `${res.status}`;
-    try { msg = (await res.json())?.detail?.message || msg; } catch {}
-    throw new Error(msg);
+    let detail: any = {};
+    try { detail = (await res.json())?.detail || {}; } catch {}
+    const err: any = new Error(detail.message || `${res.status}`);
+    err.status = res.status;
+    err.code = detail.code;
+    err.details = detail.details;
+    throw err;
   }
   return res.json();
 }

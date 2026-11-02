@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm.attributes import flag_modified
 from sse_starlette.sse import EventSourceResponse
 from sqlmodel import Session, select
 
@@ -23,6 +24,7 @@ from ..models import (Approval, Artifact, AuditLog, Draft, Job, Metric, NodeRun,
                       Run, Style, StylePick, Workflow, WorkflowVersion, table_dict)
 from ..services import environment as env_svc
 from ..services import engines as engines_svc
+from ..services import project_docs as docs_svc
 from ..services import recommend as rec_svc
 from ..services import style_index as idx_svc
 
@@ -303,6 +305,7 @@ async def projects_import(payload: dict, session: Session = Depends(get_session)
         graph["params"]["D02"] = {"scenes": [f.get("id") for f in stills_frames
                                              if isinstance(f, dict) and f.get("id")][:3]}
     wf.graph_json = graph
+    flag_modified(wf, "graph_json")
     session.add(wf)
     session.commit()
     # 导入隐含 A05（风格已内嵌于 task.json）：携带批准 + decision 落盘
@@ -426,6 +429,7 @@ async def drafts_materialize(draft_id: int, session: Session = Depends(get_sessi
     graph["params"]["A02"] = {"brief": payload.get("brief", {})}
     graph["params"]["A04"] = {"script": (payload.get("copy") or "")[:4000], "brief": payload.get("brief", {})}
     wf.graph_json = graph
+    flag_modified(wf, "graph_json")
     session.add(wf)
     # style_decision.json 落盘 + A05 批准记录（materialize 带 A05 批准）
     proj_dir = Path(proj.root)
@@ -494,6 +498,7 @@ async def workflow_put(workflow_id: int, payload: dict, session: Session = Depen
         raise not_found("workflow")
     wf.version += 1
     wf.graph_json = payload.get("graph", wf.graph_json)
+    flag_modified(wf, "graph_json")
     session.add(wf)
     session.add(WorkflowVersion(workflow_id=wf.id, version=wf.version, graph_json=wf.graph_json))
     session.commit()
@@ -799,10 +804,15 @@ async def task_get(project_id: int, session: Session = Depends(get_session)):
 
 @router.put("/projects/{project_id}/task")
 async def task_put(project_id: int, payload: dict, session: Session = Depends(get_session)):
-    """保存任务卡（编辑器手填/导入）。phase 与 caps 一致性检查（E_PHASE_MISMATCH）。"""
+    """保存任务卡（仅 imported 项目可写）。新项目请通过文档 API 编辑。"""
     proj = session.get(Project, project_id)
     if not proj:
         raise not_found("project")
+    wfs = session.exec(select(Workflow).where(Workflow.project_id == project_id)).all()
+    imported = any((((w.graph_json or {}).get("meta") or {}).get("imported")) for w in wfs)
+    if not imported:
+        raise ApiError(ErrorCode.E_DOC_READONLY,
+                       "新项目的 card/task.json 是只读快照；请编辑 script/timeline 文档", status=409)
     task = payload.get("task") or {}
     phase = task.get("phase", "card")
     allowed = {"card": {"read", "write_plan", "logic_check"},
@@ -819,6 +829,105 @@ async def task_put(project_id: int, payload: dict, session: Session = Depends(ge
     tp.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
     audit(session, "task.save", proj.root, after={"phase": phase, "scenes": len(task.get("scenes", []))})
     return {"ok": True, "path": str(tp)}
+
+
+# ---------- 文档模型（FR-25） ----------
+
+def _project_or_404(session: Session, project_id: int) -> Project:
+    proj = session.get(Project, project_id)
+    if not proj:
+        raise not_found("项目")
+    return proj
+
+
+def _doc_impact(kind: str) -> dict:
+    from ..engine.edges import N, data_descendants
+    source = {"script": "A01", "timeline": "B02", "profile": "B04"}.get(kind)
+    nodes = sorted(data_descendants(source)) if source else []
+    return {"source": source, "nodes": nodes,
+            "gates": [n for n in nodes if N[n]["gate"] == "human"]}
+
+
+@router.get("/projects/{project_id}/docs")
+async def project_docs_list(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    return {"items": [docs_svc.doc_payload(session, project_id, proj.root, kind)
+                      for kind in docs_svc.DOC_KINDS]}
+
+
+@router.get("/projects/{project_id}/docs/{kind}")
+async def project_doc_get(project_id: int, kind: str, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    if kind not in docs_svc.DOC_KINDS:
+        raise ApiError(ErrorCode.E_VALIDATION, f"未知文档类型：{kind}")
+    return docs_svc.doc_payload(session, project_id, proj.root, kind)
+
+
+@router.put("/projects/{project_id}/docs/{kind}")
+async def project_doc_put(project_id: int, kind: str, payload: dict,
+                          session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    doc, diff = docs_svc.save_doc(session, project_id, kind, payload.get("content") or {},
+                                  int(payload.get("base_version", 0)),
+                                  payload.get("author", "local"))
+    audit(session, "doc.save", f"{project_id}:{kind}",
+          after={"version": doc.version, "diff": diff[:50]})
+    return {**docs_svc.doc_payload(session, project_id, proj.root, kind),
+            "diff": diff, "impact": _doc_impact(kind)}
+
+
+@router.get("/projects/{project_id}/docs/{kind}/versions")
+async def project_doc_versions(project_id: int, kind: str, session: Session = Depends(get_session)):
+    _project_or_404(session, project_id)
+    if kind not in docs_svc.DOC_KINDS:
+        raise ApiError(ErrorCode.E_VALIDATION, f"未知文档类型：{kind}")
+    doc = docs_svc.get_doc(session, project_id, kind)
+    if doc is None:
+        return {"kind": kind, "current_version": 0, "items": []}
+    return {"kind": kind, "current_version": doc.version, "items": docs_svc.list_versions(session, doc)}
+
+
+@router.post("/projects/{project_id}/docs/{kind}/restore")
+async def project_doc_restore(project_id: int, kind: str, payload: dict,
+                              session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    doc, diff = docs_svc.restore_doc(session, project_id, kind, int(payload.get("version", 0)),
+                                     payload.get("author", "local"))
+    audit(session, "doc.restore", f"{project_id}:{kind}",
+          after={"version": doc.version, "restored_from": payload.get("version")})
+    return {**docs_svc.doc_payload(session, project_id, proj.root, kind),
+            "diff": diff, "impact": _doc_impact(kind)}
+
+
+@router.post("/projects/{project_id}/docs/timeline/rebuild")
+async def project_timeline_rebuild(project_id: int, payload: dict,
+                                   session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    script = docs_svc.get_doc(session, project_id, "script")
+    script_content = script.content_json if script else docs_svc.default_doc(
+        session, project_id, proj.root, "script")
+    profile = docs_svc.get_doc(session, project_id, "profile")
+    profile_content = profile.content_json if profile else docs_svc.default_doc(
+        session, project_id, proj.root, "profile")
+    content = docs_svc.build_timeline_doc(script_content, profile_content)
+    current = docs_svc.get_doc(session, project_id, "timeline")
+    base = int(payload.get("base_version", current.version if current else 0))
+    doc, diff = docs_svc.save_doc(session, project_id, "timeline", content, base,
+                                  payload.get("author", "local"))
+    audit(session, "doc.rebuild", f"{project_id}:timeline", after={"version": doc.version})
+    return {**docs_svc.doc_payload(session, project_id, proj.root, "timeline"),
+            "diff": diff, "impact": _doc_impact("timeline")}
+
+
+@router.get("/projects/{project_id}/docs/{kind}/diff")
+async def project_doc_diff(project_id: int, kind: str, from_version: int, to_version: int,
+                           session: Session = Depends(get_session)):
+    _project_or_404(session, project_id)
+    doc = docs_svc.get_doc(session, project_id, kind)
+    if doc is None:
+        raise ApiError(ErrorCode.E_NOT_FOUND, "文档不存在", status=404)
+    return {"kind": kind, "from": from_version, "to": to_version,
+            "diff": docs_svc.version_diff(session, doc, from_version, to_version)}
 
 
 # ---------- jobs / audit / 事件 ----------

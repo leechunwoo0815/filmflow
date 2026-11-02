@@ -101,6 +101,13 @@ def test_cache_key_stable_and_sensitive():
     assert f == g
 
 
+def test_cache_key_includes_doc_snapshot():
+    a = node_cache_key("D01", "2.0.0", {}, {}, ["read"], "snap-a")
+    b = node_cache_key("D01", "2.0.0", {}, {}, ["read"], "snap-b")
+    assert a != b
+    assert node_cache_key("D01", "2.0.0", {}, {}, ["read"], "") != a
+
+
 def test_gate_content_hash_ignores_time_and_author():
     h1 = gate_content_hash("B08", {}, {"task": "x"})
     h2 = gate_content_hash("B08", {}, {"task": "x"})

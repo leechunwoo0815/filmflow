@@ -38,32 +38,53 @@ def _read_json(p: Path) -> dict:
     return json.loads(Path(p).read_text(encoding="utf-8"))
 
 
+def _run_doc_file(ctx, name: str) -> Path:
+    base = ctx.get("run_docs_dir")
+    return Path(base) / name if base else _project_file(ctx, "runs/__missing__") / name
+
+
+def _task_path(ctx) -> Path:
+    """运行时任务卡：优先 Run 快照；imported 项目才回退项目根。"""
+    p = _run_doc_file(ctx, "task.json")
+    if p.exists():
+        return p
+    if ctx.get("run_imported"):
+        return _project_file(ctx, "card/task.json")
+    return p
+
+
 # ---------- A 立项 ----------
 
 @executor("ingest-copy")
 async def a01(ctx):
-    src = Path(ctx["params"].get("path") or _project_file(ctx, "card/copy.txt"))
-    if not src.exists():
-        # 导入模式回退：task.json.source.copy → card/任务卡.md（作者卡片含文案全文）
-        task_p = _project_file(ctx, "card/task.json")
-        fallback = _read_json(task_p).get("source", {}).get("copy", "") if task_p.exists() else ""
-        card_md = _project_file(ctx, "card/任务卡.md")
-        if not fallback and card_md.exists():
-            src = card_md
-        elif fallback:
-            src = _project_file(ctx, "card/copy.txt")
-            src.parent.mkdir(parents=True, exist_ok=True)
-            src.write_text(fallback, encoding="utf-8")
-        else:
-            raise ValueError("card/copy.txt 不存在且 task.json 无 source.copy、无 任务卡.md")
-    raw = src.read_text(encoding="utf-8-sig")
-    import re
-    sentences = [s for s in re.split(r"(?<=[。！？；!?;])", raw) if s.strip()]
+    script_p = _run_doc_file(ctx, "script.doc.json")
+    script = _read_json(script_p) if script_p.exists() else {}
+    if script.get("text"):
+        raw = script["text"]
+        sentences = [s.get("text", "") for s in script.get("sentences", []) if s.get("text")]
+    else:
+        src = Path(ctx["params"].get("path") or _project_file(ctx, "card/copy.txt"))
+        if not src.exists():
+            # 导入模式回退：task.json.source.copy → card/任务卡.md（作者卡片含文案全文）
+            task_p = _project_file(ctx, "card/task.json")
+            fallback = _read_json(task_p).get("source", {}).get("copy", "") if task_p.exists() else ""
+            card_md = _project_file(ctx, "card/任务卡.md")
+            if not fallback and card_md.exists():
+                src = card_md
+            elif fallback:
+                src = _project_file(ctx, "card/copy.txt")
+                src.parent.mkdir(parents=True, exist_ok=True)
+                src.write_text(fallback, encoding="utf-8")
+            else:
+                raise ValueError("card/copy.txt 不存在且 task.json 无 source.copy、无 任务卡.md")
+        raw = src.read_text(encoding="utf-8-sig")
+        import re
+        sentences = [s for s in re.split(r"(?<=[。！？；!?;])", raw) if s.strip()]
     payload = {"text": raw, "chars": len(raw.replace("\n", "").replace(" ", "")),
                "sentences": sentences, "sentence_count": len(sentences),
                "sha256": __import__("hashlib").sha256(raw.encode()).hexdigest()}
     _artifact_json(ctx, "copy.json", payload)
-    # 同时写入项目 card/copy.txt（导入即复制）
+    # 同时写入项目 card/copy.txt（导入即复制 / 新项目导出）
     dst = _project_file(ctx, "card/copy.txt")
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_text(raw, encoding="utf-8")
@@ -157,8 +178,12 @@ async def a06(ctx):
 
 
 def _all_text_of(ctx) -> str:
-    """本片字集：文案 + 任务卡文字（C03 覆盖率检查用）。"""
+    """本片字集：Run 快照文档 + 任务卡 + 文案（C03 覆盖率检查用）。"""
     parts = []
+    for p in (_run_doc_file(ctx, "script.doc.json"), _run_doc_file(ctx, "timeline.doc.json"),
+              _run_doc_file(ctx, "task.json")):
+        if p.exists():
+            parts.append(p.read_text(encoding="utf-8", errors="replace"))
     for rel in ("card/copy.txt", "card/task.json"):
         p = _project_file(ctx, rel)
         if p.exists():
@@ -212,40 +237,48 @@ async def b01(ctx):
 
 @executor("scene-graph")
 async def b02(ctx):
-    """场景图：导入项目 → 直接用 task.json；新项目 → 编辑器草稿或句号模板。"""
-    task_p = _project_file(ctx, "card/task.json")
+    """场景图：imported 读快照 task.json；新项目读快照 timeline.doc，缺省则确定性构建。"""
+    task_p = _task_path(ctx)
     if task_p.exists():
         scenes = _read_json(task_p).get("scenes", [])
     else:
-        draft = _project_file(ctx, "card/scenes_draft.json")
-        scenes = _read_json(draft).get("scenes", []) if draft.exists() else []
+        timeline_p = _run_doc_file(ctx, "timeline.doc.json")
+        if timeline_p.exists():
+            scenes = _read_json(timeline_p).get("scenes", [])
+        else:
+            draft = _project_file(ctx, "card/scenes_draft.json")
+            scenes = _read_json(draft).get("scenes", []) if draft.exists() else []
         if not scenes:
-            u = _upstream_json(ctx, ["A01", "B01"])
-            budget = (u.get("B01") or {}).get("per_sentence") or []
-            n = max(4, min(6, len(budget)))
-            per = max(1, len(budget) // n)
-            scenes, t = [], 0.0
-            for i in range(n):
-                chunk = budget[i * per:(i + 1) * per] or [{"seconds": 2}]
-                dur = round(sum(c["seconds"] for c in chunk), 2)
-                scenes.append({"id": f"S{i+1:02d}", "start": t, "end": round(t + dur, 2),
-                               "time_basis": "planned", "meaning": "", "operation": "",
-                               "last_text_at": t, "read_seconds": dur})
-                t = round(t + dur, 2)
+            from ...services.project_docs import build_script_doc, build_timeline_doc
+            script_p = _run_doc_file(ctx, "script.doc.json")
+            script = _read_json(script_p) if script_p.exists() else {}
+            if not script.get("sentences"):
+                u = _upstream_json(ctx, ["A01"])
+                script = build_script_doc((u.get("A01") or {}).get("text", ""))
+            profile = ctx.get("run_profile") or {}
+            if not profile:
+                p = _project_file(ctx, "project.profile.json")
+                profile = _read_json(p) if p.exists() else {}
+            timeline = build_timeline_doc(script, profile)
+            timeline_p.parent.mkdir(parents=True, exist_ok=True)
+            timeline_p.write_text(json.dumps(timeline, ensure_ascii=False, indent=1), encoding="utf-8")
+            scenes = timeline["scenes"]
     _artifact_json(ctx, "scenes.json", {"scenes": scenes})
 
 
 @executor("event-table")
 async def b03(ctx):
-    task_p = _project_file(ctx, "card/task.json")
+    task_p = _task_path(ctx)
     if task_p.exists():
         events = _read_json(task_p).get("events", [])
     else:
-        u = _upstream_json(ctx, ["B02"])
-        events = []
-        for s in (u.get("B02") or {}).get("scenes", []):
-            events.append({"id": f"E{len(events)+1:02d}", "scene_id": s["id"], "at": s["start"],
-                           "time_basis": "planned", "role": "scene_start", "allow_snap": False})
+        timeline_p = _run_doc_file(ctx, "timeline.doc.json")
+        events = _read_json(timeline_p).get("events", []) if timeline_p.exists() else []
+        if not events:
+            u = _upstream_json(ctx, ["B02"])
+            for s in (u.get("B02") or {}).get("scenes", []):
+                events.append({"id": f"E{len(events)+1:02d}", "scene_id": s["id"], "at": s["start"],
+                               "time_basis": "planned", "role": "scene_start", "allow_snap": False})
     _artifact_json(ctx, "events.json", {"events": events})
 
 
@@ -277,41 +310,67 @@ async def b05(ctx):
 
 @executor("task-assemble")
 async def b06(ctx):
-    """组装 card/task.json。导入项目：以现有 task.json 为准（保留 phase/actions）。"""
-    task_p = _project_file(ctx, "card/task.json")
-    if task_p.exists() and ctx["params"].get("mode") == "import":
-        _artifact_json(ctx, "task.json", _read_json(task_p))
+    """组装任务卡：imported 复制快照；新项目写 Run 快照 + card 只读导出。"""
+    src_task = _task_path(ctx)
+    if src_task.exists() and ctx.get("run_imported"):
+        task = _read_json(src_task)
+        run_task = _run_doc_file(ctx, "task.json")
+        run_task.parent.mkdir(parents=True, exist_ok=True)
+        run_task.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
+        _artifact_json(ctx, "task.json", task)
         return
     u = _upstream_json(ctx, ["A01", "A02", "A06", "B01", "B02", "B03", "B04", "B05"])
-    scenes = (u.get("B02") or {}).get("scenes") or []
+    scenes = [dict(s) for s in ((u.get("B02") or {}).get("scenes") or [])]
     events = (u.get("B03") or {}).get("events") or []
-    duration = max((s.get("end", 0) for s in scenes), default=39.5)
-    fps = ctx["params"].get("fps", 24)
+    script = _read_json(_run_doc_file(ctx, "script.doc.json")) if _run_doc_file(ctx, "script.doc.json").exists() else {}
+    sentences = script.get("sentences") or []
+    for s in scenes:
+        span = s.get("source_span") or []
+        if not s.get("meaning") and span:
+            s["meaning"] = "".join(sentences[i].get("text", "") for i in span
+                                   if isinstance(i, int) and 0 <= i < len(sentences))
+        if not s.get("operation"):
+            s["operation"] = "Scene DSL 自动排版（source_span 见 script.doc）"
+    profile = ctx.get("run_profile") or {}
+    fps = ctx["params"].get("fps", profile.get("fps", 24))
+    width = ctx["params"].get("width", profile.get("width", 1920))
+    height = ctx["params"].get("height", profile.get("height", 1080))
+    duration = profile.get("duration") or max((s.get("end", 0) for s in scenes), default=39.5)
+    snapshot_p = _run_doc_file(ctx, "snapshot.json")
+    snapshot = _read_json(snapshot_p) if snapshot_p.exists() else {}
+    doc_versions = {k: (v or {}).get("version", 0) for k, v in (snapshot.get("docs") or {}).items()}
     task = {
         "schema_version": 1,
         "task_id": ctx["params"].get("task_id", Path(ctx["project_root"]).name),
         "phase": ctx["params"].get("phase", "card"),
         "actions": ["read", "write_plan", "logic_check"],
-        "fps": fps, "width": ctx["params"].get("width", 1920), "height": ctx["params"].get("height", 1080),
+        "fps": fps, "width": width, "height": height,
         "source": {"copy": (u.get("A01") or {}).get("text", "")[:200]},
         "style": u.get("A06") or {},
         "font": u.get("B05") or {},
         "voice": u.get("A07") or {},
         "scenes": scenes, "events": events,
         "film": {"duration": duration, "frames": round(duration * fps)},
+        "doc_version": doc_versions,
+        "doc_hash": ctx.get("doc_snapshot_sha", ""),
         "evidence": [],
     }
-    task_p.parent.mkdir(parents=True, exist_ok=True)
-    task_p.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
+    run_task = _run_doc_file(ctx, "task.json")
+    run_task.parent.mkdir(parents=True, exist_ok=True)
+    run_task.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
+    # card/task.json 是只读导出（validator/UI 兼容），运行时不再读取
+    card_task = _project_file(ctx, "card/task.json")
+    card_task.parent.mkdir(parents=True, exist_ok=True)
+    card_task.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
     _artifact_json(ctx, "task.json", task)
 
 
 @executor("task-validate")
 async def b07(ctx):
     """B07：调用 vendored validate_task.py（真实子进程）。"""
-    task_p = _project_file(ctx, "card/task.json")
+    task_p = _task_path(ctx)
     if not task_p.exists():
-        raise ValueError("card/task.json 不存在：必须先经任务卡编辑器或导入")
+        raise ValueError("Run 快照 task.json 不存在：必须先经 B06 组装或导入")
     tool = Path(__file__).resolve().parents[3] / "tools" / "validate_task.py"
     out = Path(ctx["workdir"]) / "validate_report.json"
     runner = ctx["runner"]
@@ -369,7 +428,8 @@ async def c02(ctx):
     ap, sha = store_file(ctx["project_root"], ttf, "TXT")
     register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "TXT", str(ap), sha,
              {"source": url, "bytes": ttf.stat().st_size})
-    _artifact_json(ctx, "font_fetch_report.json", {"source": url, "sha256": sha, "bytes": ttf.stat().st_size})
+    _artifact_json(ctx, "font_fetch_report.json", {"source": url, "sha256": sha,
+                                                   "bytes": ttf.stat().st_size, "artifact_path": str(ap)})
 
 
 @executor("font-subset")
@@ -378,7 +438,17 @@ async def c03(ctx):
     from fontTools.ttLib import TTFont
     from fontTools.varLib.instancer import instantiateVariableFont
     from fontTools.subset import Subsetter, Options
-    src_ttf = _project_file(ctx, "fonts/src/NotoSansSC[wght].ttf")
+    # C02 跨项目缓存命中时，源字体在旧项目的内容寻址产物里；优先读报告/DB 里的产物路径
+    c02 = (_upstream_json(ctx, ["C02"]).get("C02") or {})
+    src_path = c02.get("artifact_path")
+    if not src_path:
+        from sqlmodel import select
+        from ...models import Artifact
+        rows = ctx["session"].exec(select(Artifact).where(
+            Artifact.run_id == ctx["run_id"], Artifact.node_id == "C02",
+            Artifact.type == "TXT")).all()  # type: ignore[arg-type]
+        src_path = rows[-1].path if rows else None
+    src_ttf = Path(src_path or _project_file(ctx, "fonts/src/NotoSansSC[wght].ttf"))
     if not src_ttf.exists():
         raise RuntimeError("变量字体缺失：先运行 C02")
     all_text = _all_text_of(ctx)
@@ -439,8 +509,9 @@ async def c04(ctx):
 
 @executor("tokens-lock")
 async def c05(ctx):
-    u = _upstream_json(ctx, ["A06", "B04"])
-    lock = {"visual": u.get("A06") or {}, "layout": u.get("B04") or {}, "locked_at": ctx.get("now", "")}
+    u = _upstream_json(ctx, ["A06", "B04", "B05"])
+    lock = {"visual": u.get("A06") or {}, "layout": u.get("B04") or {},
+            "type_spec": u.get("B05") or {}, "locked_at": ctx.get("now", "")}
     _artifact_json(ctx, "tokens.lock.json", lock)
     dst = _project_file(ctx, "card/tokens.lock.json")
     dst.parent.mkdir(parents=True, exist_ok=True)

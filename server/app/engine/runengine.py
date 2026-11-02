@@ -11,19 +11,22 @@ from sqlmodel import Session, select
 from ..config import settings
 from ..db import engine
 from ..events import emit
-from ..models import Approval, Artifact, NodeRun, Run, Workflow
+from ..models import Approval, Artifact, NodeRun, Project, Run, Workflow
 from . import caps as caps_mod
 from .cachekey import EXECUTOR_VERSION, gate_content_hash, node_cache_key
 from .edges import N, UPSTREAM, data_descendants
 from .executors import REGISTRY
 from .locks import LockManager
 from .runner import ProcessRunner
+from .snapshot import ensure_run_snapshot
 
 ACTIVE: dict[int, asyncio.Task] = {}
 CANCELS: dict[int, asyncio.Event] = {}
 LOCK_MANAGER = LockManager()
 
 TERMINAL_OK = {"succeeded", "cached"}
+# 只读文档快照的节点：文档变化必须使这些节点缓存失效（FR-25）
+DOC_NODES = {"A01", "B02", "B03", "B06", "D01", "E01"}
 
 
 class EngineError(RuntimeError):
@@ -215,6 +218,7 @@ async def execute_node(run_id: int, node_id: str) -> dict:
         graph = _graph(wf)
         params = _node_params(graph, node_id)
         st = states[node_id]
+        snapshot = ensure_run_snapshot(session, run, project_root)
 
         if N[node_id]["gate"] == "human":
             # 人工门：审批有效性活同步；有真实执行体的门（如 G07 打包）在批准后照常执行
@@ -237,7 +241,9 @@ async def execute_node(run_id: int, node_id: str) -> dict:
             # 落到下方真实执行流程
 
         input_hashes = _upstream_hashes(session, run_id, node_id, states, project_root)
-        key = node_cache_key(node_id, EXECUTOR_VERSION, params, input_hashes, run.caps_json or [])
+        doc_sha = snapshot.get("doc_snapshot_sha", "") if node_id in DOC_NODES else ""
+        key = node_cache_key(node_id, EXECUTOR_VERSION, params, input_hashes,
+                             run.caps_json or [], doc_sha)
 
         # 缓存命中：同 workflow 任意 run 的同键成功记录（规格 §5.3）
         prev = session.exec(select(NodeRun).where(
@@ -288,6 +294,10 @@ async def execute_node(run_id: int, node_id: str) -> dict:
             "project_root": project_root, "emit": emit, "progress": progress,
             "runner": runner, "cancel_event": CANCELS.get(run_id),
             "lock_manager": LOCK_MANAGER, "now": _now().isoformat(),
+            "run_docs_dir": str(Path(project_root) / "runs" / str(run_id) / "docs"),
+            "doc_snapshot_sha": snapshot.get("doc_snapshot_sha", ""),
+            "run_imported": bool(snapshot.get("imported")),
+            "run_profile": snapshot.get("profile") or {},
         }
         try:
             fn = REGISTRY[N[node_id]["executor"]]
@@ -399,6 +409,13 @@ async def _run_loop(run_id: int) -> None:
 def start_run(run_id: int) -> None:
     if run_id in ACTIVE and not ACTIVE[run_id].done():
         return
+    with Session(engine) as session:
+        run = session.get(Run, run_id)
+        if run:
+            wf = session.get(Workflow, run.workflow_id)
+            project = session.get(Project, wf.project_id) if wf else None
+            if project:
+                ensure_run_snapshot(session, run, project.root)
     CANCELS[run_id] = asyncio.Event()
     ACTIVE[run_id] = asyncio.create_task(_run_loop(run_id))
 

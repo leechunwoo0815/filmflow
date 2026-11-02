@@ -187,9 +187,39 @@ class WorkflowVersion(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class ProjectDoc(SQLModel, table=True):
+    """可编辑文档事实源；Run 启动时快照到 runs/<id>/docs/（FR-25）。"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    kind: str = Field(index=True)                        # script|brief|timeline|profile|delivery|audio
+    version: int = 1
+    content_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    hash: str = ""
+    author: str = "local"
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+    __table_args__ = (Index("ix_project_doc_unique", "project_id", "kind", unique=True),)
+
+
+class DocRevision(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    doc_id: int = Field(foreign_key="projectdoc.id", index=True)
+    version: int
+    content_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    diff_json: list = Field(default_factory=list, sa_column=Column(JSON))
+    author: str = "local"
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class SchemaMigration(SQLModel, table=True):
+    version: int = Field(primary_key=True)
+    applied_at: datetime = Field(default_factory=utcnow)
+
+
 TABLES: list[type[SQLModel]] = [
     Project, Draft, Style, StylePreview, StylePick, Workflow, Run, NodeRun,
     Artifact, Metric, Event, Approval, AuditLog, Job, WorkflowVersion,
+    ProjectDoc, DocRevision, SchemaMigration,
 ]
 
 def table_dict(model: Any) -> dict:
