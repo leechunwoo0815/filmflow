@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.5.1"  # R2.5 FR-26：task 快照缺失回退；避免空 D01
+EXECUTOR_VERSION = "2.6.2"  # R2.5 FR-27：G06 解析 true peak
 
 
 def canonical(obj) -> str:

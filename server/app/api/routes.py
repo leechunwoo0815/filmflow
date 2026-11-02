@@ -25,6 +25,7 @@ from ..models import (Approval, Artifact, AuditLog, Draft, Job, Metric, NodeRun,
 from ..services import environment as env_svc
 from ..services import engines as engines_svc
 from ..services import preview as preview_svc
+from ..services import audio as audio_svc
 from ..services import jobs as jobs_svc
 from ..services import project_docs as docs_svc
 from ..services import render_profiles as profiles_svc
@@ -839,7 +840,13 @@ async def gate_decide(gate_id: str, payload: dict, session: Session = Depends(ge
     st = session.exec(select(NodeRun).where(
         NodeRun.run_id == run_id, NodeRun.node_id == gate_id)).first()  # type: ignore[arg-type]
     if st:
-        st.status = "succeeded" if decision == "approved" else "blocked"
+        if decision != "approved":
+            st.status = "blocked"
+        elif edges.N[gate_id]["executor"] in ("gate", "still-view"):
+            st.status = "succeeded"
+        else:
+            # G07 等有真实执行体的门：批准后回 idle，让调度器执行 package，不能跳过执行
+            st.status = "idle"
         session.add(st)
         if decision == "approved":
             run.caps_json = __import__("app.engine.caps", fromlist=["caps_after_approval"]).caps_after_approval(
@@ -935,6 +942,85 @@ async def gates_pending(run_id: int, session: Session = Depends(get_session)):
                 item["review"].update({"stills": stills, "contactSheet": contact, "diff": diff})
         out.append(item)
     return {"items": out}
+
+
+# ---------- 音频工作台（FR-27） ----------
+
+@router.get("/projects/{project_id}/audio")
+async def project_audio(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    manifest = audio_svc.load_manifest(proj.root)
+    lic = audio_svc.load_license(proj.root)
+    ok, why = audio_svc.license_ok(lic)
+    primary = audio_svc.primary_take(proj.root)
+    return {"takes": manifest["takes"], "primary": primary,
+            "alignment": audio_svc.load_alignment(proj.root),
+            "license": lic, "licenseOk": ok, "licenseReason": why}
+
+
+@router.post("/projects/{project_id}/audio/upload")
+async def project_audio_upload(project_id: int, payload: dict,
+                               session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    take = await asyncio.to_thread(
+        audio_svc.import_take, proj.root, str(payload.get("filename") or "take.wav"),
+        str(payload.get("data") or ""), str(payload.get("kind") or "voice"),
+        str(payload.get("sceneId") or ""), str(payload.get("name") or ""))
+    audit(session, "audio.upload", proj.root, after={"take": take["id"], "kind": take["kind"]})
+    return {"take": take, "primary": audio_svc.primary_take(proj.root)}
+
+
+@router.post("/projects/{project_id}/audio/primary")
+async def project_audio_primary(project_id: int, payload: dict,
+                                session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    take = audio_svc.set_primary(proj.root, str(payload.get("takeId") or ""))
+    audit(session, "audio.primary", proj.root, after={"take": take["id"]})
+    return {"primary": take}
+
+
+@router.get("/projects/{project_id}/audio/waveform")
+async def project_audio_waveform(project_id: int, takeId: str, w: int = 2000,
+                                 session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    return await asyncio.to_thread(audio_svc.waveform, proj.root, takeId, w)
+
+
+@router.get("/projects/{project_id}/audio/alignment")
+async def project_audio_alignment(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    return audio_svc.load_alignment(proj.root)
+
+
+@router.post("/projects/{project_id}/audio/alignment")
+async def project_audio_alignment_save(project_id: int, payload: dict,
+                                       session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    data = audio_svc.save_alignment(proj.root, payload.get("segments") or [],
+                                    str(payload.get("author") or "local"))
+    audit(session, "audio.alignment", proj.root, after={"segments": len(data["segments"])})
+    return data
+
+
+@router.get("/projects/{project_id}/audio/license")
+async def project_audio_license(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    lic = audio_svc.load_license(proj.root)
+    ok, why = audio_svc.license_ok(lic)
+    return {"license": lic, "ok": ok, "reason": why}
+
+
+@router.post("/projects/{project_id}/audio/license")
+async def project_audio_license_save(project_id: int, payload: dict,
+                                     session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    lic = audio_svc.save_license(proj.root, payload)
+    audit(session, "audio.license", proj.root, after=lic)
+    return {"license": lic, "ok": True, "reason": ""}
 
 
 # ---------- 静帧查看记录（D03 前置） ----------

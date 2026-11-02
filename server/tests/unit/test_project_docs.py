@@ -42,7 +42,7 @@ def test_script_doc_offsets_and_timeline_duration(tmp_path: Path):
     assert all(s["meaning"] == "" for s in timeline["scenes"])
     assert timeline["scenes"][0]["source_span"] == [0]
     assert timeline["scenes"][1]["source_span"] == [1]
-    assert timeline["scenes"][0]["last_text_at"] == timeline["scenes"][0]["start"]
+    assert timeline["scenes"][0]["start"] < timeline["scenes"][0]["last_text_at"] <= timeline["scenes"][0]["end"]
     assert timeline["frames"] == 120
 
 

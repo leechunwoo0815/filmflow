@@ -1126,9 +1126,12 @@ async def _ffprobe(ctx, path: Path) -> dict:
 
 @executor("voice-ingest")
 async def g01(ctx):
-    src = Path(ctx["params"].get("path") or _project_file(ctx, "card/voice_raw.wav"))
+    from ...services import audio as audio_svc
+    take = audio_svc.primary_take(ctx["project_root"], "voice")
+    src = Path(ctx["project_root"]) / take["file"] if take else Path(
+        ctx["params"].get("path") or _project_file(ctx, "card/voice_raw.wav"))
     if not src.exists():
-        raise RuntimeError("未上传口播音频（card/voice_raw.wav）")
+        raise RuntimeError("未上传口播音频（card/voice_raw.wav 或 audio Take）")
     dst = _project_file(ctx, "card/voice.wav")
     dst.parent.mkdir(parents=True, exist_ok=True)
     argv = ["ffmpeg", "-y", "-i", str(src), "-ac", "1", "-ar", "48000", str(dst)]
@@ -1137,7 +1140,8 @@ async def g01(ctx):
         raise RuntimeError("口播转码失败")
     from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], dst, "WAV")
-    art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha)
+    art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha,
+                 {"takeId": take.get("id") if take else None})
 
 
 @executor("audio-align")
@@ -1148,9 +1152,10 @@ async def g02(ctx):
     voice = _project_file(ctx, "card/voice.wav")
     if not voice.exists():
         raise RuntimeError("voice.wav 缺失")
-    manual = ctx["params"].get("manual_segments")
-    if (not cli or not model.exists()) and manual:
-        # 规格 §12：whisper 缺失回退手动打点（不静默——来源标记 manual）
+    from ...services import audio as audio_svc
+    manual = ctx["params"].get("manual_segments") or audio_svc.load_alignment(ctx["project_root"]).get("segments")
+    if manual:
+        # 手动对齐优先（source=manual）；whisper 缺失也走这里，不静默降级
         _artifact_json(ctx, "alignment.json",
                        {"source": "manual", "model": None, "segments": manual})
         return
@@ -1174,9 +1179,12 @@ async def g02(ctx):
 
 @executor("audio-beat")
 async def g04(ctx):
-    music = Path(ctx["params"].get("music_path") or _project_file(ctx, "card/music.wav"))
+    from ...services import audio as audio_svc
+    take = audio_svc.primary_take(ctx["project_root"], "music")
+    music = Path(ctx["params"].get("music_path") or
+                 (Path(ctx["project_root"]) / take["file"] if take else _project_file(ctx, "card/music.wav")))
     if not music.exists():
-        raise RuntimeError("音乐文件缺失（card/music.wav）")
+        raise RuntimeError("音乐文件缺失（card/music.wav 或音频工作台 music Take）")
     raw = await _decode_pcm(ctx, music)
     import numpy as np
     x = np.asarray(raw, dtype=float)
@@ -1190,19 +1198,12 @@ async def g04(ctx):
 
 
 async def _decode_pcm(ctx, path: Path, rate: int = 48000) -> list[float]:
-    import struct
-    argv = ["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(rate),
-            "-f", "f32le", "-"]
-    res = await ctx["runner"].run(argv, timeout=300)
-    if not res.ok:
-        raise RuntimeError("解码失败")
-    buf = b"".join(l.encode() if isinstance(l, str) else l for l in [])  # placeholder
-    # stdout 不经管道回传（runner 记 log），改用临时文件
+    # 解码到文件，不走 stdout 管道（大音频会写满 64KB 管道导致 ffmpeg 阻塞）
     tmp = Path(ctx["workdir"]) / "pcm.f32"
-    argv2 = ["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(rate),
-             "-f", "f32le", "-y", str(tmp)]
-    res2 = await ctx["runner"].run(argv2, timeout=300)
-    if not res2.ok or not tmp.exists():
+    argv = ["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(rate),
+            "-f", "f32le", "-y", str(tmp)]
+    res = await ctx["runner"].run(argv, timeout=300)
+    if not res.ok or not tmp.exists():
         raise RuntimeError("PCM 解码失败")
     import array
     a = array.array("f")
@@ -1210,24 +1211,78 @@ async def _decode_pcm(ctx, path: Path, rate: int = 48000) -> list[float]:
     return list(a)
 
 
+def _mix_filter(duration: float, music_db: float = -8.0) -> str:
+    d = f"{duration:.3f}"
+    fade_at = f"{max(0.0, duration - 1.0):.3f}"
+    fmt = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=mono"
+    return (f"[0:a]{fmt},apad=whole_dur={d},atrim=duration={d}[voice];"
+            f"[1:a]{fmt},highpass=f=80,atrim=duration={d},afade=t=out:st={fade_at}:d=1,"
+            f"volume={music_db}dB[music];"
+            "[music][voice]sidechaincompress=threshold=0.03:ratio=4:attack=80:release=350[ducked];"
+            "[voice][ducked]amix=inputs=2:duration=longest:normalize=0,"
+            "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.891[a]")
+
+
+async def _make_stem(ctx, src: Path, out: Path, duration: float, loop: bool = False,
+                     gain_db: float = 0.0) -> dict:
+    from ...services import artifacts as art
+    out.parent.mkdir(parents=True, exist_ok=True)
+    argv = ["ffmpeg", "-y"]
+    if loop:
+        argv += ["-stream_loop", "-1"]
+    argv += ["-i", str(src), "-af",
+             f"apad=whole_dur={duration:.3f},atrim=duration={duration:.3f},"
+             f"afade=t=out:st={max(0.0, duration - 1.0):.3f}:d=1"
+             + (f",volume={gain_db}dB" if gain_db else ""),
+             "-ar", "48000", "-ac", "1", str(out)]
+    res = await ctx["runner"].run(argv, timeout=180)
+    if not res.ok or not out.exists():
+        raise RuntimeError(f"Stem 生成失败：{out.name}\n" + "\n".join(res.stderr_tail[-5:]))
+    ap, sha = art.store_file(ctx["project_root"], out, "WAV")
+    art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha,
+                 {"stem": out.stem})
+    return {"path": str(ap), "sha256": sha, "duration": duration}
+
+
 @executor("audio-mix")
 async def g05(ctx):
+    from ...services import audio as audio_svc
+    from ...services.artifacts import store_file, register
     voice = _project_file(ctx, "card/voice.wav")
-    music = Path(ctx["params"].get("music_path") or _project_file(ctx, "card/music.wav"))
+    take = audio_svc.primary_take(ctx["project_root"], "music")
+    music = Path(ctx["params"].get("music_path") or
+                 (Path(ctx["project_root"]) / take["file"] if take else _project_file(ctx, "card/music.wav")))
+    if not voice.exists():
+        raise RuntimeError("voice.wav 缺失")
+    if not music.exists():
+        raise RuntimeError("音乐文件缺失（card/music.wav 或音频工作台 music Take）")
+    if not ctx.get("run_imported"):
+        ok, why = audio_svc.license_ok(audio_svc.load_license(ctx["project_root"]))
+        if not ok:
+            from ...errors import ApiError, ErrorCode
+            raise ApiError(ErrorCode.E_LICENSE_MISSING, why, status=409)
+    duration = float(_profile(ctx)["duration"])
+    music_db = float(ctx["params"].get("music_db", -8.0))
     out = _project_file(ctx, "card/mix.wav")
     out.parent.mkdir(parents=True, exist_ok=True)
-    duck = 10 ** (-12 / 20)  # −12dB
-    argv = ["ffmpeg", "-y", "-i", str(voice), "-i", str(music), "-filter_complex",
-            f"[1:a]highpass=f=80,volume={duck:.4f}[m];"
-            "[0:a][m]amix=inputs=2:duration=first:normalize=0,"
-            "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.891[a]",
-            "-map", "[a]", "-ar", "48000", "-ac", "1", str(out)]
+    argv = ["ffmpeg", "-y", "-i", str(voice), "-stream_loop", "-1", "-i", str(music),
+            "-filter_complex", _mix_filter(duration, music_db),
+            "-map", "[a]", "-t", f"{duration:.3f}", "-ar", "48000", "-ac", "1", str(out)]
     res = await ctx["runner"].run(argv, timeout=300)
-    if not res.ok:
+    if not res.ok or not out.exists():
         raise RuntimeError("混音失败：" + "\n".join(res.stderr_tail[-6:]))
-    from ...services import artifacts as art
-    ap, sha = art.store_file(ctx["project_root"], out, "WAV")
-    art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha)
+    ap, sha = store_file(ctx["project_root"], out, "WAV")
+    register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha,
+             {"mix": True, "duration": duration})
+    stems = _project_file(ctx, "card/stems")
+    manifest = {
+        "schema": "filmflow.stems/1", "duration": duration,
+        "voice": await _make_stem(ctx, voice, stems / "voice.wav", duration),
+        "music": await _make_stem(ctx, music, stems / "music.wav", duration, loop=True, gain_db=music_db),
+        "sfx": await _make_stem(ctx, music, stems / "sfx.wav", duration, loop=True, gain_db=-120.0),
+        "mix": {"path": str(ap), "sha256": sha, "duration": duration},
+    }
+    _artifact_json(ctx, "stems_manifest.json", manifest)
 
 
 @executor("audio-loudness")
@@ -1235,7 +1290,7 @@ async def g06(ctx):
     mix = _project_file(ctx, "card/mix.wav")
     if not mix.exists():
         raise RuntimeError("mix.wav 缺失")
-    res = await ctx["runner"].run(["ffmpeg", "-i", str(mix), "-af", "ebur128", "-f", "null", "-"], timeout=120)
+    res = await ctx["runner"].run(["ffmpeg", "-i", str(mix), "-af", "ebur128=peak=true", "-f", "null", "-"], timeout=120)
     lufs = tp = None
     for line in res.stderr_tail:
         if "I:" in line and "LUFS" in line:
@@ -1246,6 +1301,11 @@ async def g06(ctx):
         if "Peak:" in line and "dBFS" in line:
             try:
                 tp = float(line.split("Peak:")[1].split("dBFS")[0].strip())
+            except Exception:
+                pass
+        if "True peak:" in line and "dBFS" in line:
+            try:
+                tp = float(line.split("True peak:")[1].split("dBFS")[0].strip())
             except Exception:
                 pass
     if lufs is None:
@@ -1266,7 +1326,8 @@ async def g06(ctx):
     if segments and source in ("whisper", "manual"):
         task_p = _task_path(ctx)
         task = _read_json(task_p) if task_p.exists() else {}
-        last_times = [float(s["last_text_at"]) for s in (task.get("scenes") or [])
+        last_times = [float(s["last_text_at"]) + float(s.get("read_seconds") or 0)
+                      for s in (task.get("scenes") or [])
                       if s.get("last_text_at") is not None]
         if last_times:
             pairs = [min((abs(float(seg.get("end", 0)) - lt)
@@ -1276,7 +1337,9 @@ async def g06(ctx):
             if values:
                 dev = max(values)
                 sync_verified = True
-                basis = "alignment.segment.end vs scene.last_text_at"
+                basis = "alignment.segment.end vs scene.last_text_at+read_seconds"
+    if not ctx.get("run_imported") and sync_verified and dev is not None and dev > 0.15:
+        raise RuntimeError(f"音画同步偏差 {dev:.3f}s > 0.15s（{basis}）")
     _artifact_json(ctx, "audio_metrics.json", {
         "lufs": lufs, "true_peak": tp, "profile": "final", "policy": qa_policy("final"),
         "sync_dev_s": round(dev, 3) if dev is not None else None,

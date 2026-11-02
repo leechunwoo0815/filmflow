@@ -83,10 +83,12 @@ def build_timeline_doc(script: dict, profile: dict) -> dict:
     scenes, events, clips, t = [], [], [], 0.0
     for i, group in enumerate(groups):
         start, end = round(t, 3), round(t + durations[i], 3)
+        read = round(min(durations[i], max(0.8, reads[i])), 3)
+        last_text_at = round(max(start, end - read), 3)
         scenes.append({
             "id": f"S{i + 1:02d}", "start": start, "end": end, "time_basis": "planned",
             "meaning": "", "operation": "", "source_span": group,
-            "last_text_at": start, "read_seconds": round(reads[i], 2),
+            "last_text_at": last_text_at, "read_seconds": read,
             "camera": "", "transition": "",
         })
         events.append({"id": f"E{i + 1:02d}", "scene_id": f"S{i + 1:02d}", "at": start,
