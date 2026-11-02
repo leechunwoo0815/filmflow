@@ -7,8 +7,9 @@ import math
 import subprocess
 import threading
 from pathlib import Path
+from urllib.parse import quote
 
-from . import executor, _artifact_json, _project_file, _read_json, _task_path, _upstream_json
+from . import executor, _artifact_json, _project_file, _read_json, _run_doc_file, _task_path, _upstream_json
 
 # ---------- 帧服务（F01，单例线程内嵌） ----------
 
@@ -187,15 +188,64 @@ def _profile(ctx) -> dict:
 
 # ---------- D 静帧 ----------
 
+def _api_v2(build: dict) -> bool:
+    return str(build.get("api_version", "1.0")).startswith("2")
+
+
+def _entry(build: dict, name: str) -> str | None:
+    return (build.get("entry") or {}).get(name)
+
+
+def _legacy_entry(build: dict, name: str) -> str | None:
+    return (build.get("legacy_entry") or {}).get(name) or _entry(build, name)
+
+
+def _project_url(ctx, rel: str) -> str:
+    return f"http://127.0.0.1:8787/project/{rel}"
+
+
 @executor("still-spec")
 async def d01(ctx):
     task_p = _task_path(ctx)
     task = _read_json(task_p) if task_p.exists() else {}
     scenes = task.get("scenes", [])
-    picks = ctx["params"].get("scenes") or [s["id"] for s in scenes[:3]]
-    spec = {"profile": _profile(ctx), "tokens": _tokens_lock(ctx),
-            "scenes": [s for s in scenes if s["id"] in picks], "expect": {"size": [1920, 1080]}}
+    profile = _profile(ctx)
+    if ctx.get("run_imported"):
+        picks = ctx["params"].get("scenes") or [s["id"] for s in scenes[:3]]
+        spec = {"schema": "filmflow.still-spec/1", "profile": profile, "tokens": _tokens_lock(ctx),
+                "scenes": [s for s in scenes if s["id"] in picks],
+                "expect": {"size": [profile.get("width", 1920), profile.get("height", 1080)]}}
+        _artifact_json(ctx, "still_spec.json", spec)
+        return
+    build = _engine_build(ctx)
+    if not _api_v2(build):
+        from ...errors import ApiError, ErrorCode
+        raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 still_spec")
+    from ..scene.compiler import compile_scene
+    script_p = _run_doc_file(ctx, "script.doc.json")
+    script = _read_json(script_p) if script_p.exists() else {}
+    tokens = _tokens_lock(ctx)
+    picks = ctx["params"].get("scenes") or [s["id"] for s in scenes]
+    entries = []
+    for s in scenes:
+        if s["id"] not in picks:
+            continue
+        prog = compile_scene(s, script, tokens, profile, motion=False)
+        rel = f"scenes/{s['id']}.base.program.json"
+        dst = _project_file(ctx, rel)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(json.dumps(prog, ensure_ascii=False, indent=1), encoding="utf-8")
+        start = float(s.get("start", 0))
+        end = float(s.get("end", start + 1))
+        still_t = round(min(end, start + max(0.8, (end - start) * 0.5)), 3)
+        entries.append({**s, "program": _project_url(ctx, rel),
+                        "program_sha": prog["program_sha"], "times": [still_t]})
+    spec = {"schema": "filmflow.still-spec/2", "profile": profile, "tokens": tokens,
+            "scenes": entries}
     _artifact_json(ctx, "still_spec.json", spec)
+    dst = _project_file(ctx, "card/still_spec.json")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 @executor("chrome-still")
@@ -203,14 +253,34 @@ async def d02(ctx):
     u = _upstream_json(ctx, ["D01"])
     spec = u.get("D01") or {}
     build = _engine_build(ctx)
+    profile = _profile(ctx)
+    w, h = int(profile.get("width", 1920)), int(profile.get("height", 1080))
     ensure_frame_server(ctx)
     from ...services import artifacts as art
     stills = []
     for s in spec.get("scenes", []):
-        t = s.get("last_text_at", s.get("start", 0))
-        url = _engine_url(ctx, build, build["entry"]["still"], f"scene={s['id']}&t={t}")
+        if ctx.get("run_imported"):
+            t = s.get("last_text_at", s.get("start", 0))
+        else:
+            t = (s.get("times") or [s.get("last_text_at", s.get("start", 0))])[0]
+        if ctx.get("run_imported"):
+            entry = _legacy_entry(build, "still")
+            if not entry:
+                raise RuntimeError("imported 项目缺少 legacy_entry.still")
+            url = _engine_url(ctx, build, entry, f"scene={s['id']}&t={t}")
+        else:
+            if not _api_v2(build):
+                from ...errors import ApiError, ErrorCode
+                raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 still_spec")
+            entry = _entry(build, "still_spec")
+            if not entry:
+                from ...errors import ApiError, ErrorCode
+                raise ApiError(ErrorCode.E_PROGRAM_INVALID, "新项目 still_spec 入口未登记")
+            spec_url = _project_url(ctx, "card/still_spec.json")
+            url = _engine_url(ctx, build, entry,
+                              f"spec={quote(spec_url, safe='')}&scene={s['id']}&t={t}")
         out = _project_file(ctx, f"out/stills/{s['id']}_{t}.png")
-        await _chrome_screenshot(ctx, url, out, 1920, 1080, timeout=120)
+        await _chrome_screenshot(ctx, url, out, w, h, timeout=120)
         ap, sha = art.store_file(ctx["project_root"], out, "PNG")
         art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "PNG", str(ap), sha,
                      {"scene": s["id"], "t": t})
@@ -290,29 +360,96 @@ async def e03(ctx):
     build = _engine_build(ctx)
     contract = load_contract(build["engine_id"])
     u = _upstream_json(ctx, ["E01", "E02"])
-    binding = {"engine": build["engine_id"], "engine_sha": build["sha256"],
+    scenes = (u.get("E01") or {}).get("scenes", [])
+    cameras = (u.get("E02") or {}).get("cameras", [])
+    tokens = _tokens_lock(ctx)
+    binding = {"schema": "filmflow.timeline-binding/1",
+               "engine": build["engine_id"], "engine_sha": build["sha256"],
                "api_version": contract.get("api_version", "1.0"),
                "fps": (u.get("E01") or {}).get("fps", 24),
                "frames": (u.get("E01") or {}).get("frames", 0),
-               "scenes": (u.get("E01") or {}).get("scenes", []),
-               "events": (u.get("E01") or {}).get("events", []),
-               "cameras": (u.get("E02") or {}).get("cameras", []),
-               "tokens": _tokens_lock(ctx)}
+               "scenes": scenes, "events": (u.get("E01") or {}).get("events", []),
+               "cameras": cameras, "tokens": tokens}
+    if not ctx.get("run_imported"):
+        if not _api_v2(build):
+            from ...errors import ApiError, ErrorCode
+            raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 film_spec")
+        from ..scene.compiler import compile_scene
+        script_p = _run_doc_file(ctx, "script.doc.json")
+        script = _read_json(script_p) if script_p.exists() else {}
+        profile = _profile(ctx)
+        cams = {c.get("scene"): c for c in cameras}
+        programs = []
+        for s in scenes:
+            base = compile_scene(s, script, tokens, profile, motion=False)
+            motion = compile_scene(s, script, tokens, profile,
+                                   camera=cams.get(s["id"]), motion=True)
+            base_rel = f"scenes/{s['id']}.base.program.json"
+            motion_rel = f"scenes/{s['id']}.program.json"
+            for rel, prog in ((base_rel, base), (motion_rel, motion)):
+                dst = _project_file(ctx, rel)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text(json.dumps(prog, ensure_ascii=False, indent=1), encoding="utf-8")
+            programs.append({
+                "id": s["id"], "start": s.get("start", 0), "end": s.get("end", 0),
+                "base_program": _project_url(ctx, base_rel),
+                "base_program_sha": base["program_sha"],
+                "program": _project_url(ctx, motion_rel),
+                "program_sha": motion["program_sha"],
+            })
+        binding.update({"schema": "filmflow.timeline-binding/2", "programs": programs})
     _artifact_json(ctx, "timeline_binding.json", binding)
     dst = _project_file(ctx, "card/timeline_binding.json")
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_text(json.dumps(binding, ensure_ascii=False, indent=1), encoding="utf-8")
+    if binding.get("programs"):
+        dst2 = _project_file(ctx, "scenes/timeline_binding.json")
+        dst2.parent.mkdir(parents=True, exist_ok=True)
+        dst2.write_text(json.dumps(binding, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _transition_type(text) -> str:
+    t = str(text or "")
+    for key, value in (("硬切", "cut"), ("溶解", "dissolve"), ("擦", "wipe"), ("推", "push"),
+                       ("滑", "paper-slide"), ("墨", "ink-bleed"), ("故障", "glitch"),
+                       ("匹配", "match-shape")):
+        if key in t:
+            return value
+    return "match-shape"
 
 
 @executor("transitions")
 async def e04(ctx):
     u = _upstream_json(ctx, ["E03", "B03"])
-    scenes = (u.get("E03") or {}).get("scenes", [])
+    binding = u.get("E03") or {}
+    scenes = binding.get("scenes", [])
+    fps = binding.get("fps", 24) or 24
     out = []
     for a, b in zip(scenes, scenes[1:]):
-        out.append({"atFrame": round(b.get("start", 0) * 24), "type": "shape_match",
-                    "note": b.get("transition") or f"{a['id']}→{b['id']} 形状匹配（默认，需备注确认）"})
-    _artifact_json(ctx, "transitions.json", {"transitions": out})
+        start = float(b.get("start", 0))
+        out.append({"from": a["id"], "to": b["id"], "at": start,
+                    "atFrame": round(start * fps), "type": _transition_type(b.get("transition")),
+                    "duration": float(b.get("transition_duration", 0.5) or 0.5),
+                    "direction": "left", "params": {},
+                    "note": b.get("transition") or f"{a['id']}→{b['id']} 默认接缝"})
+    payload = {"schema": "filmflow.transitions/1", "transitions": out}
+    _artifact_json(ctx, "transitions.json", payload)
+    dst = _project_file(ctx, "scenes/transitions.json")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _film_spec_query(ctx, mode: str, profile: str, start: int, end: int, total: int,
+                     fps: int | None = None, scale: float | None = None) -> str:
+    binding = quote(_project_url(ctx, "scenes/timeline_binding.json"), safe="")
+    transitions = quote(_project_url(ctx, "scenes/transitions.json"), safe="")
+    q = (f"mode={mode}&profile={profile}&binding={binding}&transitions={transitions}"
+         f"&start={start}&end={end}&total={total}")
+    if fps:
+        q += f"&fps={fps}"
+    if scale:
+        q += f"&scale={scale}"
+    return q
 
 
 @executor("chrome-proxy")
@@ -323,7 +460,22 @@ async def e05(ctx):
     proxy_frames = round(profile["duration"] * 12)
     (_project_file(ctx, "out/proxy")).mkdir(parents=True, exist_ok=True)
     (_project_file(ctx, "out/DONE")).unlink(missing_ok=True)
-    url = _engine_url(ctx, build, build["entry"]["film"], f"mode=proxy&fps=12&scale=0.25&total={proxy_frames}")
+    if ctx.get("run_imported"):
+        entry = _legacy_entry(build, "film")
+        if not entry:
+            raise RuntimeError("imported 项目缺少 legacy_entry.film")
+        q = f"mode=proxy&fps=12&scale=0.25&total={proxy_frames}"
+    else:
+        if not _api_v2(build):
+            from ...errors import ApiError, ErrorCode
+            raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 film_spec")
+        entry = _entry(build, "film_spec")
+        if not entry:
+            from ...errors import ApiError, ErrorCode
+            raise ApiError(ErrorCode.E_PROGRAM_INVALID, "新项目 film_spec 入口未登记")
+        q = _film_spec_query(ctx, "proxy", "review", 0, proxy_frames, proxy_frames,
+                             fps=12, scale=0.25)
+    url = _engine_url(ctx, build, entry, q)
     chrome_argv = await _chrome_render_argv(ctx, url)
     import asyncio as _aio
     node_cancel = _aio.Event()
@@ -422,13 +574,29 @@ async def f02(ctx):
     frames_dir = _project_file(ctx, "out/frames")
     frames_dir.mkdir(parents=True, exist_ok=True)
     missing = [i for i in range(frames) if not (frames_dir / f"{i:04d}.png").exists()]
-    if not missing:
+    if not missing and ctx.get("run_imported"):
         _artifact_json(ctx, "render_note.json", {"note": "frames 齐全，无需重渲"})
         await ctx["progress"](1.0, f"resume: 0/{frames} 缺失")
         return
+    if not missing:
+        # v2 暂以全量重渲保证内容正确；Phase 4 用 render.manifest 做增量
+        missing = list(range(frames))
     (_project_file(ctx, "out/DONE")).unlink(missing_ok=True)
-    url = _engine_url(ctx, build, build["entry"]["film"],
-                      f"mode=render&start={missing[0]}&end={missing[-1] + 1}&total={frames}")
+    if ctx.get("run_imported"):
+        entry = _legacy_entry(build, "film")
+        if not entry:
+            raise RuntimeError("imported 项目缺少 legacy_entry.film")
+        q = f"mode=render&start={missing[0]}&end={missing[-1] + 1}&total={frames}"
+    else:
+        if not _api_v2(build):
+            from ...errors import ApiError, ErrorCode
+            raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 film_spec")
+        entry = _entry(build, "film_spec")
+        if not entry:
+            from ...errors import ApiError, ErrorCode
+            raise ApiError(ErrorCode.E_PROGRAM_INVALID, "新项目 film_spec 入口未登记")
+        q = _film_spec_query(ctx, "render", "final", missing[0], frames, frames)
+    url = _engine_url(ctx, build, entry, q)
     argv = await _chrome_render_argv(ctx, url)
     import asyncio as _aio
     node_cancel = _aio.Event()

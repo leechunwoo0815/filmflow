@@ -54,8 +54,9 @@ def validate_contract(contract: dict, pack_root: Path) -> None:
             base = legacy[e].split("?")[0]
             if not (pack_root / base).exists():
                 raise ApiError(ErrorCode.E_VALIDATION, f"legacy_entry 文件不存在：{base}")
-        if "still_spec" not in contract["entry"]:
-            raise ApiError(ErrorCode.E_VALIDATION, "Contract v2 entry 缺 still_spec")
+        for required in ("still_spec", "film_spec"):
+            if required not in contract["entry"]:
+                raise ApiError(ErrorCode.E_VALIDATION, f"Contract v2 entry 缺 {required}")
     for fx in contract.get("fixtures", []):
         p = pack_root / fx.split("?")[0]
         if not p.exists():

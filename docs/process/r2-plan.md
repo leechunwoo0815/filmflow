@@ -3,6 +3,7 @@
 > 2026-11-02 · 接手基线审计后制定 · 依据 `QODER_PROMPT.md`、`docs/prd/PRD-002-production-workbench.md`、`docs/adr/ADR-0005-v2-ratification.md`
 > 范围：FR-20/21/22/23/24/25/29/30。不做时间轴、审片、音频 v2、资产库、批量、photo 引擎。
 > 冻结项：46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；只加 3 条 data 边。
+> **进度（2026-11-02）**：Phase 0.1–3 已完成。5s 新项目 `风从纸上起。纸不动，风先动。` 已跑通 D02 参数化静帧与 E03–F06（120 帧 / 1920×1080 / 5.000s / F05 通过）。下一步 Phase 4 增量渲染。
 
 ---
 

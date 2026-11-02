@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Riso film_spec</title>
+<style>
+  html, body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<!-- 参数化逐帧渲染：timeline_binding.programs[] + transitions[] 驱动。
+     ?mode=render|proxy|preview&binding=&transitions=&start=&end=&total=&fps=&scale=&embed= -->
+<canvas id="gl" width="1920" height="1080" style="display:none"></canvas>
+<script src="../assets/riso-core.js"></script>
+<script src="../assets/scene-kit.js"></script>
+<script src="../assets/scene-render.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+const EMBED = q.get('embed');
+if (EMBED) {
+  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = EMBED;
+  document.head.appendChild(l);
+}
+const MODE = q.get('mode') || 'render';
+const BINDING = q.get('binding') || '';
+const TRANSITIONS = q.get('transitions') || '';
+const START = parseInt(q.get('start') || '0', 10);
+const END = parseInt(q.get('end') || '0', 10);
+const TOTAL = parseInt(q.get('total') || '0', 10);
+const SCALE = parseFloat(q.get('scale') || '1');
+
+function title(s) { document.title = s; }
+function fail(e) {
+  title('FILM_ERR ' + (e && e.message ? e.message : e));
+  // 让 F02 立即结束等待，再由缺帧检查报错（不要挂 1800s）
+  fetch('/done', { method: 'POST' }).catch(() => {});
+}
+
+function allText(programs) {
+  const out = [];
+  const walk = (layers) => (layers || []).forEach((l) => {
+    if (l.type === 'text') out.push(l.content || '');
+    if (l.type === 'component') {
+      const p = l.props || {};
+      if (p.text) out.push(p.text);
+      if (p.lines) out.push((p.lines || []).join(''));
+      if (p.labels) out.push((p.labels || []).join(''));
+      if (p.suffix) out.push(p.suffix);
+    }
+    if (l.type === 'group') walk(l.children);
+  });
+  programs.forEach((p) => walk(p.program.layers));
+  return out.join('') || '风';
+}
+
+async function loadJSON(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error('fetch ' + url + ' ' + r.status);
+  return await r.json();
+}
+
+async function boot() {
+  title('LOADING');
+  const binding = await loadJSON(BINDING);
+  const transitions = TRANSITIONS ? await loadJSON(TRANSITIONS).catch(() => ({ transitions: [] })) : { transitions: [] };
+  const programs = [];
+  for (const p of (binding.programs || [])) {
+    const prog = await loadJSON(p.program);
+    programs.push({ id: p.id, start: p.start, end: p.end, program: prog });
+  }
+  if (!programs.length) throw new Error('E_PROGRAM_INVALID: binding.programs 为空');
+  const W = programs[0].program.canvas.w || 1920;
+  const H = programs[0].program.canvas.h || 1080;
+  const FPS = programs[0].program.canvas.fps || 24;
+  const text = allText(programs);
+  if (document.fonts && document.fonts.load) {
+    await Promise.all([
+      document.fonts.load('900 120px "Noto Sans SC"', text),
+      document.fonts.load('500 40px "Noto Sans SC"', text),
+    ]);
+    await document.fonts.ready;
+  }
+  const trs = transitions.transitions || transitions || [];
+  if (MODE === 'preview') {
+    const t = parseFloat(q.get('t') || '0');
+    const canvas = SCENE_RENDER.renderFrameAt(programs, trs, t, { W, H });
+    window.__PREVIEW_PNG__ = canvas.toDataURL('image/png');
+    window.__PREVIEW_DONE__ = true;
+    title('PREVIEW_READY');
+    return;
+  }
+  if (MODE === 'proxy') {
+    const out = document.createElement('canvas');
+    out.width = Math.round(W * (SCALE || 0.25)); out.height = Math.round(H * (SCALE || 0.25));
+    const ctx = out.getContext('2d');
+    const total = TOTAL || Math.round((programs[programs.length - 1].end) * 12);
+    const step = FPS / 12;
+    for (let i = 0; i < total; i++) {
+      const t = (i * step) / FPS;
+      const canvas = SCENE_RENDER.renderFrameAt(programs, trs, t, { W, H });
+      ctx.clearRect(0, 0, out.width, out.height);
+      ctx.drawImage(canvas, 0, 0, out.width, out.height);
+      const data = out.toDataURL('image/png');
+      const r = await fetch('/pframe?i=' + i, { method: 'POST', body: data });
+      if (!r.ok) throw new Error('pframe ' + i + ' ' + r.status);
+      if (i % 12 === 0) title('PROXY ' + i + '/' + total);
+    }
+    await fetch('/done', { method: 'POST' });
+    title('PROXY_DONE');
+    return;
+  }
+  const total = TOTAL || Math.round((programs[programs.length - 1].end) * FPS);
+  const end = Math.min(END || total, total);
+  for (let i = START; i < end; i++) {
+    const canvas = SCENE_RENDER.renderFrameAt(programs, trs, i / FPS, { W, H });
+    const data = canvas.toDataURL('image/png');
+    const r = await fetch('/frame?i=' + i, { method: 'POST', body: data });
+    if (!r.ok) throw new Error('frame ' + i + ' ' + r.status);
+    if (i % 12 === 0) title('FRAME ' + i + '/' + total);
+  }
+  // 每次调用都发 DONE：F02 以 DONE 作为本段渲染结束信号（短片不再等 1800s）
+  await fetch('/done', { method: 'POST' });
+  title('DONE');
+}
+
+boot().catch(fail);
+</script>
+</body>
+</html>

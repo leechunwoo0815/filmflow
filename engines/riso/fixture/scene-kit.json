@@ -1,0 +1,17 @@
+{
+  "schema": "filmflow.scene-kit-fixture/1",
+  "components": [
+    {"name": "paper-card", "props": {"x": 80, "y": 100, "w": 1760, "h": 880}},
+    {"name": "headline", "props": {"text": "标题", "x": 160, "y": 520}},
+    {"name": "body-block", "props": {"lines": ["正文"], "x": 160, "y": 620}},
+    {"name": "stamp", "props": {"text": "已核", "x": 1500, "y": 760}},
+    {"name": "arrow-grow", "props": {"x1": 160, "y1": 760, "x2": 1200, "y2": 760}},
+    {"name": "hand-pointer", "props": {"x": 1400, "y": 700}},
+    {"name": "roller", "props": {"x": 200, "y": 820, "w": 900}},
+    {"name": "halftone-field", "props": {"x": 120, "y": 140, "w": 1680, "h": 800}},
+    {"name": "registration-cross", "props": {"x": 1768, "y": 128}},
+    {"name": "evidence-card", "props": {"x": 300, "y": 520}},
+    {"name": "chart-bar", "props": {"x": 300, "y": 500, "values": [0.3, 0.6, 0.9]}},
+    {"name": "count-up", "props": {"x": 500, "y": 700, "value": 100}}
+  ]
+}

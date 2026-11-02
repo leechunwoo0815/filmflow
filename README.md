@@ -14,7 +14,8 @@
 
 实测（rumor-39s 导入全链，Run #1）：46/46 节点 succeeded · 49 产物 · 9 条审批记录（含驳回→重批历史）· master.mp4 = 69.9MB · 三引擎可生产 61 条。
 
-> ⚠️ 以上是**导入参考片**的实测。新项目当前仍会渲染参考片内容（D02/E05/F02 走 rumor 原版 harness）；R2.0 参数化渲染链正在按 [docs/process/r2-plan.md](docs/process/r2-plan.md) 实施。
+> ⚠️ 以上是**导入参考片**的实测。R2.0 参数化链路正在按 [docs/process/r2-plan.md](docs/process/r2-plan.md) 实施：
+> Phase 1 边表/Contract v2、Phase 2 文档模型与 Run 快照、Phase 3 5s 新项目参数化静帧 + `film_spec` 逐帧渲染（120 帧 / 5.000s / F05 通过）已完成；增量渲染、预览、档位、崩溃恢复与黄金项目待做。
 
 ## 快速开始
 

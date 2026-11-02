@@ -109,7 +109,7 @@ void main() {
    * plates: [{canvas, off:[x,y]}] 1–3 版（缺省版传空 canvas，alpha=0）
    * opts: {canvas, W, H, paper:'#F4EEE2', inks:[hex×3], angles:[15,75,0], periods:[7,7,6.5], cam:{z,tx,ty}}
    */
-  function composite(plates, opts) {
+  function createCompositor(opts) {
     const W = opts.W || 1920, H = opts.H || 1080;
     const paper = hexToVec3(opts.paper || '#F4EEE2');
     const inks = (opts.inks && opts.inks.length >= 3 ? opts.inks : ['#3D5588', '#FF665E', '#FFB511']).map(hexToVec3);
@@ -137,26 +137,38 @@ void main() {
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     const U = (n) => gl.getUniformLocation(prog, n);
-    const cam = opts.cam || { z: 1, tx: 0, ty: 0 };
+    const textures = [0, 1, 2].map(() => gl.createTexture());
     for (let i = 0; i < 3; i++) {
-      const p = plates[i] || { canvas: makePlate(4, 4), off: [0, 0] };
-      const t = gl.createTexture();
       gl.activeTexture(gl.TEXTURE0 + i);
-      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.bindTexture(gl.TEXTURE_2D, textures[i]);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, p.canvas);
       gl.uniform1i(U(['uBlue', 'uOrange', 'uYellow'][i]), i);
-      gl.uniform2f(U(['uOffB', 'uOffO', 'uOffY'][i]), p.off[0], p.off[1]);
     }
-    gl.uniform2f(U('uRes'), W, H);
-    gl.uniform3f(U('uCam'), cam.z, cam.tx, cam.ty);
-    gl.viewport(0, 0, W, H);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-    gl.finish();
-    return canvas;
+    function draw(plates, cam) {
+      cam = cam || { z: 1, tx: 0, ty: 0 };
+      for (let i = 0; i < 3; i++) {
+        const p = plates[i] || { canvas: makePlate(4, 4), off: [0, 0] };
+        gl.activeTexture(gl.TEXTURE0 + i);
+        gl.bindTexture(gl.TEXTURE_2D, textures[i]);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, p.canvas);
+        gl.uniform2f(U(['uOffB', 'uOffO', 'uOffY'][i]), p.off[0], p.off[1]);
+      }
+      gl.uniform2f(U('uRes'), W, H);
+      gl.uniform3f(U('uCam'), cam.z, cam.tx, cam.ty);
+      gl.viewport(0, 0, W, H);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.finish();
+    }
+    return { canvas, gl, draw };
+  }
+
+  function composite(plates, opts) {
+    const c = createCompositor(opts);
+    c.draw(plates, opts.cam || { z: 1, tx: 0, ty: 0 });
+    return c.canvas;
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -195,5 +207,6 @@ void main() {
     ctx.fill();
   }
 
-  return { clamp, easeOut, easeInOut, lerp, seg, makePlate, composite, roundRect, ink, text, drawCross, hexToVec3 };
+  return { clamp, easeOut, easeInOut, lerp, seg, makePlate, createCompositor, composite,
+           roundRect, ink, text, drawCross, hexToVec3 };
 })();

@@ -188,7 +188,8 @@ def _all_text_of(ctx) -> str:
         p = _project_file(ctx, rel)
         if p.exists():
             parts.append(p.read_text(encoding="utf-8", errors="replace"))
-    return "".join(parts) or "风"
+    # 组件/图表固定字符（数字、单位、标点），避免程序化组件缺字
+    return "".join(parts) + "0123456789%.,:/-—·()（） " if parts else "风"
 
 
 @executor("voice-plan")
@@ -402,12 +403,31 @@ async def c01(ctx):
         raise RuntimeError("无法确定引擎包：主风格未选或其语义族无引擎")
     contract = eng.load_contract(engine_id)
     sha = eng.compute_pack_sha(engine_id)
+    api_version = str(contract.get("api_version", "1.0"))
+    if not ctx.get("run_imported") and not api_version.startswith("2"):
+        from ...errors import ApiError, ErrorCode
+        raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED,
+                       f"引擎 {engine_id} 是 Contract {api_version}，R2.0 新项目需要 2.x（film_spec）")
     missing_fx = [f for f in contract.get("fixtures", []) if not (eng.engines_root() / engine_id / f).exists()]
     if missing_fx:
         raise RuntimeError(f"引擎 fixture 缺失：{missing_fx}")
-    _artifact_json(ctx, "engine_build.json", {"engine_id": engine_id, "sha256": sha,
-                                              "entry": contract["entry"], "capabilities": contract["capabilities"],
-                                              "fixture_check": "structure"})
+    if api_version.startswith("2"):
+        from ..scene.components import COMPONENT_NAMES
+        caps = contract.get("capabilities") or {}
+        declared = set((caps.get("components") if isinstance(caps, dict) else []) or [])
+        if declared != set(COMPONENT_NAMES):
+            raise RuntimeError(f"Contract v2 组件声明与 scene-kit 不一致：{sorted(declared)}")
+        kit = eng.engines_root() / engine_id / "fixture/scene-kit.json"
+        if not kit.exists():
+            raise RuntimeError("scene-kit fixture 缺失：fixture/scene-kit.json")
+        kit_data = _read_json(kit)
+        if len(kit_data.get("components", [])) != 12:
+            raise RuntimeError("scene-kit fixture 必须覆盖 12 组件")
+    _artifact_json(ctx, "engine_build.json", {
+        "engine_id": engine_id, "sha256": sha, "api_version": api_version,
+        "scene_schema": contract.get("scene_schema"),
+        "entry": contract["entry"], "legacy_entry": contract.get("legacy_entry") or {},
+        "capabilities": contract["capabilities"], "fixture_check": "structure"})
 
 
 @executor("font-fetch")

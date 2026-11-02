@@ -8,9 +8,10 @@
     "still": "entry/still.html",
     "film": "entry/film.html",
     "still_spec": "entry/still_spec.html",
+    "film_spec": "entry/film_spec.html",
     "previs": "entry/previs.html",
     "preview": "entry/previs.html",
-    "proxy": "entry/film.html?mode=proxy"
+    "proxy": "entry/film_spec.html?mode=proxy"
   },
   "legacy_entry": {
     "still": "entry/still.html",
@@ -43,5 +44,5 @@
     "source": "rumor-39s（参考项目真帧）",
     "check": "C01 结构校验 + 预演渲染与基准 SSIM（M1 起启用渲染级校验）"
   },
-  "notes": "Contract v2：新项目走 entry.still_spec/film_spec（film_spec 随 R2.0 Phase 3 交付）；imported 项目走 legacy_entry.still/film（rumor-39s 原版）。所有入口共用 assets/riso-core.js 权威 shader。"
+  "notes": "Contract v2：新项目走 entry.still_spec/film_spec（Scene DSL + scene-kit 12 组件）；imported 项目走 legacy_entry.still/film（rumor-39s 原版）。所有入口共用 assets/riso-core.js 权威 shader。"
 }

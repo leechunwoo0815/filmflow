@@ -1,0 +1,123 @@
+"""Scene DSL 编译器：timeline/scene + script + tokens + profile → scene.program（纯函数）。"""
+from __future__ import annotations
+
+from copy import deepcopy
+
+from .canonical import content_hash
+from .schema import SCENE_SCHEMA, validate_program
+
+DEFAULT_PALETTE = ["#F4EEE2", "#3D5588", "#FF665E", "#FFB511"]
+
+
+def scene_text(scene: dict, script: dict) -> str:
+    sentences = script.get("sentences") or []
+    span = scene.get("source_span") or []
+    text = "".join(sentences[i].get("text", "") for i in span
+                   if isinstance(i, int) and 0 <= i < len(sentences))
+    return text or scene.get("meaning") or ""
+
+
+def _palette(tokens: dict) -> list[str]:
+    visual = tokens.get("visual") or {}
+    pal = [p for p in (visual.get("palette") or DEFAULT_PALETTE) if isinstance(p, str)]
+    return (pal + DEFAULT_PALETTE)[:4]
+
+
+def _screen(tokens: dict) -> tuple[list[float], list[float]]:
+    visual = tokens.get("visual") or {}
+    screen = visual.get("screen") or {}
+    angle = float(screen.get("angle", 15) or 15)
+    period = float(screen.get("period", 7) or 7)
+    return [angle, angle + 60, 0], [period, period, max(1.0, period - 0.5)]
+
+
+def _interp(pairs: list, t: float) -> float:
+    if not pairs:
+        return 0.0
+    if t <= pairs[0][0]:
+        return float(pairs[0][1])
+    for (t0, v0), (t1, v1) in zip(pairs, pairs[1:]):
+        if t <= t1:
+            p = (t - t0) / (t1 - t0) if t1 > t0 else 0.0
+            return float(v0) + (float(v1) - float(v0)) * p
+    return float(pairs[-1][1])
+
+
+def camera_from_e02(camera: dict | None, duration: float, w: int, h: int) -> dict:
+    if not camera:
+        return {"anchor": [w / 2, h / 2], "keyframes": [
+            {"t": 0.0, "zoom": 1.0, "x": 0, "y": 0, "rotate": 0, "ease": "linear"},
+            {"t": round(duration, 3), "zoom": 1.03, "x": 0, "y": 0, "rotate": 0, "ease": "linear"}]}
+    zoom = camera.get("zoom") or [[0, 1.0], [duration, 1.03]]
+    pan = camera.get("pan") or [[0, 0], [duration, 0]]
+    times = sorted({0.0, round(duration, 3)} | {round(float(t), 3) for t, _ in zoom + pan})
+    kfs = [{"t": t, "zoom": round(_interp(zoom, t), 4), "x": round(_interp(pan, t), 2),
+            "y": 0, "rotate": 0, "ease": "linear"} for t in times]
+    return {"anchor": camera.get("anchor") or [w / 2, h / 2], "keyframes": kfs}
+
+
+def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
+                  camera: dict | None = None, motion: bool = False) -> dict:
+    w = int(profile.get("width") or 1920)
+    h = int(profile.get("height") or 1080)
+    fps = int(profile.get("fps") or 24)
+    duration = round(float(scene.get("end", 0)) - float(scene.get("start", 0)), 3)
+    if duration <= 0:
+        raise ValueError(f"场景 {scene.get('id')} duration <=0")
+    text = scene_text(scene, script)
+    pal = _palette(tokens)
+    angles, periods = _screen(tokens)
+    type_spec = tokens.get("type_spec") or {}
+    family = type_spec.get("family") or "Noto Sans SC"
+    title_range = type_spec.get("title_range") or [72, 120]
+    base_size = 132 if len(text) <= 10 else 112 if len(text) <= 18 else 92
+    size = max(int(title_range[0]), min(int(title_range[1]), base_size))
+    line_height = type_spec.get("line_height", 1.35)
+    spacing = type_spec.get("letter_spacing", 0)
+    span = scene.get("source_span") or []
+    layers = [
+        {"id": "L_card", "type": "component", "z": 0,
+         "component": "paper-card",
+         "props": {"x": 60, "y": 80, "w": w - 120, "h": h - 160, "radius": 8,
+                   "paper": pal[0], "ink": pal[1], "grain": 0.08}},
+        {"id": "L_rule", "type": "shape", "z": 8,
+         "shape": "rect", "box": [160, 700, 520, 10], "fill": pal[2], "alpha": 0.9},
+        {"id": "L_title", "type": "text", "z": 10, "content": text,
+         "box": [160, 320, w - 320, 360],
+         "style": {"font": family, "weight": 900, "size": size,
+                   "lineHeight": line_height, "letterSpacing": spacing,
+                   "color": pal[0], "align": "left", "maxWidth": w - 320},
+         "reveal": {"type": "mask-reveal", "at": 0.15, "duration": 0.6, "ease": "easeOut"},
+         "in": {"at": 0.0, "type": "cut"},
+         "out": {"at": round(max(0.0, duration - 0.4), 3), "type": "fade", "duration": 0.4}},
+        {"id": "L_cross", "type": "component", "z": 50,
+         "component": "registration-cross",
+         "props": {"x": w - 152, "y": 128, "size": 1.0, "color": pal[1]}},
+    ]
+    program = {
+        "schema": SCENE_SCHEMA,
+        "id": scene.get("id"),
+        "duration": duration,
+        "canvas": {"w": w, "h": h, "fps": fps, "background": "paper",
+                    "paper": pal[0], "inks": pal[1:4], "angles": angles, "periods": periods},
+        "layers": layers,
+        "audioCues": [],
+        "meta": {"operation": scene.get("operation", ""), "source_span": span,
+                 "text": text, "compiler_version": "1.0.0"},
+    }
+    if motion:
+        program["camera"] = camera_from_e02(camera, duration, w, h)
+    errors = validate_program(program)
+    if errors:
+        raise ValueError("E_PROGRAM_INVALID: " + "; ".join(errors))
+    program["program_sha"] = content_hash(program)
+    return program
+
+
+def static_program(program: dict) -> dict:
+    """去掉 camera/transitions 后的静态部分（base/motion 一致性测试用）。"""
+    p = deepcopy(program)
+    p.pop("camera", None)
+    p.pop("transitions", None)
+    p.pop("program_sha", None)
+    return p

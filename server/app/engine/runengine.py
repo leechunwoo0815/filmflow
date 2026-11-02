@@ -217,6 +217,9 @@ async def execute_node(run_id: int, node_id: str) -> dict:
         project_root = _project_root(session, run)
         graph = _graph(wf)
         params = _node_params(graph, node_id)
+        if node_id == "B06":
+            # task_id 的默认值依赖项目根；必须进缓存键，否则会跨项目复用任务卡
+            params = {**params, "task_id": params.get("task_id") or Path(project_root).name}
         st = states[node_id]
         snapshot = ensure_run_snapshot(session, run, project_root)
 
