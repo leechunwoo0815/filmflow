@@ -1,7 +1,7 @@
 # FilmFlow · Agent 接手入口
 
 > 给 Qoder / 任何新 Agent：先读这三份，再动手。
-> 1. [`HANDOFF.md`](HANDOFF.md) —— **R2.0 当前状态、Phase 0.1–8 记录、证据、坑、R2.0 验收结论、接手检查表**。
+> 1. [`HANDOFF.md`](HANDOFF.md) —— **R2.0 验收 + R2.5 当前状态、证据、坑、剩余工作、接手检查表**。
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
 > 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（76 MB 库不入库）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
@@ -10,7 +10,7 @@
 
 ## 这个仓库是什么
 
-FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 341 风格库 / 3 引擎（riso · code-video · ink）。参考片 rumor-39s 已跑通 46/46；R2.0 已交付 5s/15s/40s 参数化出片、快照、增量、预览、档位、恢复与黄金回归；R2.5 已交付全场景静帧审阅。结论见 `docs/process/r2-acceptance.md` / `r2_5-plan.md`。
+FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 341 风格库 / 3 引擎（riso · code-video · ink）。参考片 rumor-39s 已跑通 46/46；R2.0 已交付 5s/15s/40s 参数化出片、快照、增量、预览、档位、恢复与黄金回归；R2.5 已交付审阅/音频/交付，FR-31 部分。结论见 `docs/process/r2-acceptance.md` / `r2_5-plan.md`。
 
 ## 硬约束（不要违反）
 
@@ -30,19 +30,19 @@ FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 
 - 自检：`python3 vendor/fy-code-animation/scripts/doctor.py --root "$(cat vendor/style-library.path)"`
 - **不要**把 76 MB 库（尤其 `示例/` 的 61 MB mp4）提交进 git；**不要**把技能目录加进 Python 包路径。
 
-## R2.0 开工范围（已裁决）
+## 范围与当前进度（已裁决）
 
 只做 FR-20/21/22/23/24/25/29/30；R3 时间轴/审片/音频 v2/交付矩阵等 R2.0 验收后再开。
 R2.0：FR-20/21/22/23/24/25/29/30 全部；R2.5：FR-26/27/28 完成，FR-31 部分（模板/引导/帮助）。
 第一验收：5 秒新项目全链出**用户文案**；改 S03 只渲 S03+邻接；单帧 p50 ≤2s；kill -9 后 ≤60s 恢复；rumor-39s 仍 46/46。
-预览验收：F02 运行中附加预览 p50 1.31s / p95 1.44s；5s 片段 12.7s；缓存 5ms（见 HANDOFF §2.4）。
-档位验收：D02 review/draft、E05 720p/24、F02 only-final、切档不重跑、draft vs final SSIM 0.9987（HANDOFF §2.5）。
-恢复验收：F02 中 kill -9，22.3s 恢复、frames=120、单 Job attempts=1（HANDOFF §2.6）。
-审阅验收：D03 逐场门禁、contact sheet、改 S03 diff 只标 S03（HANDOFF §2.8）。
-音频验收：waveform 51ms、手动对齐、许可、Stems 5s、LUFS/TP/同步（HANDOFF §2.9）。
-交付验收：9 文件、QC 全绿、9:16 1080×1920、zip（HANDOFF §2.10）。
-黄金验收：5s/15s/40s 6 帧 SSIM 1.0；干净 rumor 46/46、master 39.5s（HANDOFF §2.7）。
-详见 `docs/prd/PRD-002-production-workbench.md` §7.2 / §8.1–8.8 与 `HANDOFF.md` §6。
+预览验收：F02 运行中附加预览 p50 1.50s / p95 1.92s；5s 片段 13.2s；缓存 5ms（HANDOFF §2.3）。
+档位验收：D02 review/draft、E05 720p/24、F02 only-final、切档不重跑、draft vs final SSIM 0.9987（HANDOFF §2.4）。
+恢复验收：F02 中 kill -9，22.3s 恢复、frames=120、单 Job attempts=1（HANDOFF §2.5）。
+审阅验收：D03 逐场门禁、contact sheet、改 S03 diff 只标 S03（HANDOFF §3.1）。
+音频验收：waveform 49ms、手动对齐、许可、Stems 5s、LUFS -16/TP -10.5（HANDOFF §3.2）。
+交付验收：9 文件、QC 全绿、9:16 1080×1920、zip（HANDOFF §3.3）。
+黄金验收：5s/15s/40s 6 帧 SSIM 1.0；干净 rumor 46/46、master 39.5s（HANDOFF §2.6）。
+下一步：FR-31 收尾（模板音频占位/wizard 标题预演/只读示例/Studio 引导）+ 40s 交付实测；不要开始 R3。详见 `HANDOFF.md` §6。
 
 ## 先跑什么
 

@@ -4,7 +4,7 @@
 > 配套文件：`AGENTS.md`、`HANDOFF.md`、`docs/prd/PRD-002-production-workbench.md`、`docs/adr/ADR-0005-v2-ratification.md`、`vendor/README.md`。
 >
 > **2026-11-02 状态更新：R2.0 全部完成，R2.5 FR-26/27/28 已完成、FR-31 部分**（tag `r2_5-review`/`r2_5-audio`/`r2_5-delivery`；93 tests）。
-> 本文件的 Phase 0–4 内容保留为历史。新 Agent 先读 `HANDOFF.md` §0/§1/§6，下一步收尾 FR-31 与 40s 交付实测；不要重做已完成的 R2.0/FR-26。
+> 本文件的 Phase 0–4 内容保留为历史。新 Agent 先读 `HANDOFF.md` §0/§1/§6，下一步收尾 FR-31 与 40s 交付实测；不要重做已完成的 R2.0/FR-26/27/28。
 
 ---
 
