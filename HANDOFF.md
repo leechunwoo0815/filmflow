@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-02 · R2.0 Phase 0.1–6 已完成
-> 当前基线：Phase 6 代码 `426aa20` / tag `r2-profiles`；交接文档提交见 `git log` 最新一条。
+> 更新时间：2026-11-02 · R2.0 Phase 0.1–7 已完成
+> 当前基线：Phase 7 代码 `f5d5de1` / tag `r2-jobs`；交接文档提交见 `git log` 最新一条。
 > 本文是**唯一权威接手入口**；规格 `../filmflow-web-agent-prompt.md` 仍是宪法，v2 需求以
 > `docs/prd/PRD-002-production-workbench.md` + `docs/adr/ADR-0005-v2-ratification.md` 为准。
 > **先读本文 §0、§1、§6，再读 `AGENTS.md`、PRD-002、ADR-0005、`vendor/README.md`。**
@@ -24,7 +24,7 @@ curl -s http://127.0.0.1:7860/api/health
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 71 passed
+cd server && uv run pytest tests -q                       # 78 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景
 uv run --project server python scripts/smoke_m1.py         # API 冒烟：46 节点 / 93 边
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量验收
@@ -35,17 +35,17 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 
 ### 0.3 当前下一步
 
-**从 Phase 7（持久化 Job + 崩溃恢复 / FR-29）开始，不要重做 Phase 1–6。**
-Phase 6 档位已完成并通过验收（见 §2.5 / §6.2）：D02 review/draft 全场景静帧、E05 720p/24 代理、
-F02 only-final + `E_FINAL_REQUIRED`、Preview draft/review、切档不重跑 final。下一步按 §6.3 做
-Job 表/租约/心跳/启动恢复/孤儿清理；档位 UI 与 40s 计时留 Phase 8/R3（当前 API/服务已可用）。
+**从 Phase 8（黄金项目与视觉回归 / FR-30）开始，不要重做 Phase 1–7。**
+Phase 7 已完成并通过验收（见 §2.6 / §6.3）：Job 表/租约/心跳/启动恢复/队列 API/孤儿清理；
+kill -9 后 F02 22.3s 恢复、frames=120、单 Job attempts=1。下一步按 §6.4 做 5s/15s/40s 黄金项目、
+SSIM/pHash 回归、BDD 与干净 rumor 46/46；档位/预览 UI 留 R3。
 
 ### 0.4 不要做的事
 
 - 不要重写 RunEngine 的 caps / 门 / 三类边 / content_hash / 断点续跑。
 - 不要新增 DAG 节点；46 节点/7 阶段/93 边不变。
 - 不要把新项目回退到 `legacy_entry`；只有 `meta.imported=true` 的旧项目可走 v1 harness。
-- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 `2.3.1`）。
+- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 `2.4.0`）。
 - 不要把 76MB 风格库/示例 mp4 提交进 git；不要把 `vendor/fy-code-animation` import 进服务端。
 - 不要调用在线生成模型、上传文件、开第二个 Chrome。
 - 不要用“页面能点”代替真实产物；所有完成申报必须附测试输出 + 产物路径/sha/时长 + curl/截图。
@@ -58,16 +58,17 @@ Job 表/租约/心跳/启动恢复/孤儿清理；档位 UI 与 40s 计时留 Ph
 
 | 项 | 值 |
 |---|---|
-| Phase 6 代码 | `426aa20`（tag `r2-profiles`）；当前 HEAD 以 `git log` 为准 |
+| Phase 7 代码 | `f5d5de1`（tag `r2-jobs`）；当前 HEAD 以 `git log` 为准 |
 | Phase 1 tag | `r2-edge-fix` → `4f9e381` |
 | Phase 3 tag | `r2-scene-dsl` → `53e6462` |
 | Phase 4 tag | `r2-incremental` → `07b5237` |
 | Phase 5 tag | `r2-preview` → `25ff0d9` |
 | Phase 6 tag | `r2-profiles` → `426aa20` |
-| 测试 | **71 passed**（unit 56 / integration 12 / BDD 3） |
+| Phase 7 tag | `r2-jobs` → `f5d5de1` |
+| 测试 | **78 passed**（unit 63 / integration 12 / BDD 3） |
 | UI E2E | 8 场景 / 9 检查全绿（约 16–20s） |
 | API 冒烟 | 46 节点 / **93 边**通过 |
-| EXECUTOR_VERSION | **2.3.1**（`server/app/engine/cachekey.py`） |
+| EXECUTOR_VERSION | **2.4.0**（`server/app/engine/cachekey.py`） |
 
 ### 1.2 R2.0 八个 FR 的真实状态
 
@@ -79,7 +80,7 @@ Job 表/租约/心跳/启动恢复/孤儿清理；档位 UI 与 40s 计时留 Ph
 | FR-23 PreviewService | [DONE，UI 待接] | CDP 附加 F02 Chrome；单帧/片段/整片 job、PREVIEW 水印、500MB 缓存、latest-wins。F02 运行中 p50 1.25s/p95 1.31s，5s 片段 12.7s，缓存 5ms，不写 `out/frames`、不产生 Artifact/Approval。预览 UI 留 R3。 |
 | FR-24 draft/review/final | [DONE，UI 待接] | `render.profile.json` + API；D02 review/draft 静帧；E05 720p/24 代理；F02 只跑 final 且 manifest 写 `profileSpec`；F05/G07 `E_FINAL_REQUIRED`；Preview draft/review；切档不重跑 final。 |
 | FR-25 文档模型/快照 | [DONE] | ProjectDoc/DocRevision、409、版本/diff/回滚、Run 快照、新项目 task.json 只读、DocsEditor 自动保存/撤销/影响预估。 |
-| FR-29 持久化 Job/恢复 | [TODO] | `Job` 表仍未写入；`ACTIVE/CANCELS` 仍是内存态；无启动恢复/孤儿清理。 |
+| FR-29 持久化 Job/恢复 | [DONE，单进程] | Job 表/租约/心跳/尝试次数/队列 API/启动恢复/孤儿清理；kill -9 后 F02 22.3s 恢复。预览 Job 不自动重试。 |
 | FR-30 黄金项目 | [TODO] | 无 `fixtures/golden/`、`golden_run.py`、SSIM/pHash 回归、BDD 新场景。 |
 
 **重要诚实项**：
@@ -139,7 +140,7 @@ PASS: R2.0 Phase 4 5s 增量验收通过
 ### 2.3 回归
 
 ```bash
-cd server && uv run pytest tests -q                       # 71 passed
+cd server && uv run pytest tests -q                       # 78 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # 8 场景
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
 ```
@@ -189,12 +190,31 @@ PASS: R2.0 Phase 6 档位验收通过
 - `verify_r2_preview.py` 最终回归仍通过（attached p50 1.31s / p95 1.44s，5s 片段 12.7s）。
 - `G07`/`F05` 的 `E_FINAL_REQUIRED` 由单测覆盖（缺 manifest / profile=review / Run 不匹配）。
 
-## 3. R2.0 Phase 0.1–6 实施记录
+### 2.6 Phase 7 崩溃恢复验收（脚本可复现）
+
+`scripts/verify_r2_recovery.py` 实测（2026-11-02，project 102 / run 134 /
+`filmflow-projects/r2-recovery-120`）：
+
+```
+api restarted in 3.6s; waiting F02 recover
+F02 recovered after 22.3s
+F05=succeeded frames=120 jobs=[(24, 'failed', 1)]
+PASS: R2.0 Phase 7 崩溃恢复验收通过
+```
+
+- F02 运行中 kill -9 API；重启后单 Job attempts=1（崩溃只在恢复时计数），`out/frames` 补到 120 帧，
+  F05 成功；无 `ff-F02-<run>` Chrome 残留。
+- 单测覆盖：schema v3 ALTER、租约/心跳、retry_wait 复用同一 Job、attempts≥3 失败、
+  preview Job 重启标 `E_JOB_INTERRUPTED`、队列优先级排序。
+- 连续运行时 `verify_r2_5s_incremental` / `verify_r2_preview` / `verify_r2_profiles` 仍通过
+  （预览 attached p50 1.50s / p95 1.92s，5s 片段 13.2s）。
+
+## 3. R2.0 Phase 0.1–7 实施记录
 
 ### Phase 0.1 · 基线修复（提交 `4f9e381` 的一部分）
 
 - `server/tests/conftest.py`：session 级 autouse `init_db()`，修复 BDD 在干净库首跑
-  `no such table: style`；现在干净环境首跑全绿（当前 71 项）。
+  `no such table: style`；现在干净环境首跑全绿（当前 78 项）。
 - `dev.sh`：macOS 自带 bash 3.2 不支持 `wait -n`，改为 `kill -0` 轮询；否则脚本启动即退出。
 - 文档同步测试计数。
 
@@ -320,6 +340,22 @@ PASS: R2.0 Phase 6 档位验收通过
 - G06 改为真实口径：`alignment.segment.end vs scene.last_text_at`，输出 `sync_verified/sync_basis/
   approximate`；无对齐时不再伪报 `sync_dev_s=0`（G05/G06 完整修复仍属 R2.5）。
 
+### Phase 7 · 持久化 Job / 崩溃恢复（tag `r2-jobs`）
+
+- `Job` 表扩展（schema v3 幂等 ALTER）：priority/run_id/parent_id/attempts/max_attempts/
+  lease_until/heartbeat_at/started_at/updated_at/cancel_requested/progress/eta/error_code/error_msg/lease_owner。
+- RunEngine：每个 Run 落一个 `kind=run` Job；启动 running、5s 心跳、30s 租约；门等待/needs_changes
+  停 `retry_wait` 并复用（不重复建 Job、不计崩溃 attempts）；成功/失败/取消落终态。
+- 启动恢复 `services/jobs.py:recover`：中断的 run Job → queued（attempts+1，≥3 失败）；
+  中断/排队的 preview Job → failed `E_JOB_INTERRUPTED`；无 Job 的幽灵 running Run → blocked；
+  恢复后 `main.lifespan` 自动 `start_run`。
+- 孤儿清理：`ps` 精确匹配 `/tmp/ff-` Chrome 与项目 out/frames|proxy ffmpeg；清理 >1h 的 profile。
+  Chrome profile 改 `/tmp/ff-{node}-{run_id}`，避免并发 Run 共用。
+- 队列 API：`GET /jobs`、`GET /queue`、`POST /jobs/:id/cancel|retry`；
+  优先级 preview 100 / interactive 80 / batch 40 / delivery 20。
+- PreviewService：segment/film Job 落库（priority 100），进度镜像；CDP 竞态回退临时 Chrome/429。
+- EXECUTOR_VERSION 2.4.0；78 tests。
+
 ---
 
 ## 4. 当前 v2 架构（必须理解）
@@ -368,7 +404,7 @@ docs(当前) + tokens/font/engine
 
 ### 4.3 缓存
 
-- `EXECUTOR_VERSION=2.3.1`，任何执行器行为变化必须升。
+- `EXECUTOR_VERSION=2.4.0`，任何执行器行为变化必须升。
 - 节点缓存键 = version + params + 上游产物 sha + caps + `doc_snapshot_sha`（DOC_NODES）。
   `PROFILE_NODES` 额外加入 `renderProfilesSha`；改 `render.profile.json` 不会复用旧档位产物。
 - 场景 manifest hash = program + tokens lock + engine sha + **C02 源字体** + profile + 邻接 transitions。
@@ -399,6 +435,7 @@ docs(当前) + tokens/font/engine
 | Run 快照 | `server/app/engine/snapshot.py` |
 | 预览服务 | `server/app/services/preview.py`；API 在 `routes.py` 的 `preview/*` |
 | 渲染档位 | `server/app/services/render_profiles.py`、项目 `render.profile.json` |
+| 持久化 Job/恢复 | `server/app/services/jobs.py`、`main.py` lifespan、`runengine.py` |
 | 文档模型/API | `server/app/services/project_docs.py`、`server/app/api/routes.py` |
 | 引擎页 | `engines/riso/entry/{still_spec,film_spec}.html`、`assets/{scene-kit,scene-render,riso-core}.js` |
 | 编辑器 | `web/src/app/editor/page.tsx`、`web/src/components/DocsEditor.tsx` |
@@ -408,7 +445,7 @@ docs(当前) + tokens/font/engine
 
 ## 5. R2.0 新增踩坑（按优先级）
 
-1. **`EXECUTOR_VERSION`**：改任何执行器行为不升版 = 缓存返回旧行为。当前 `2.3.1`。
+1. **`EXECUTOR_VERSION`**：改任何执行器行为不升版 = 缓存返回旧行为。当前 `2.4.0`。
 2. **doc 快照**：A01/B02/B03/B06/D01/E01/E03 的缓存键必须含 `doc_snapshot_sha`；新增读文档的
    执行器要加入 `DOC_NODES`，否则改文档不失效。
 3. **字体 hash**：manifest `font_sha` 用 **C02 源字体**，不要用 C04 子集 CSS（随文案变化会让
@@ -473,6 +510,22 @@ docs(当前) + tokens/font/engine
     program），并避开转场帧。draft mp4 是 crf28，H.264 会把抽帧 SSIM 拉到 ~0.95；原始 PNG 为 0.9987。
 34. **验收脚本时序**：门可能在缓存/继承下直接 succeeded，`wait_status(want=...)` 会永久等 pending；
     脚本应先看状态，只对仍 pending 的门签字。`smoke_m1.py` 与 Phase 4/5/6 verifier 已按此修。
+35. **attempts 语义**：`attempts` 只在启动恢复遇到中断 Job 时 +1；`start_job` 不得自增，
+    否则每个门批准重启都会消耗重试预算。≥max_attempts → Job failed + Run failed。
+36. **门等待复用 Job**：Run 因等门/needs_changes 退出时 Job 停 `retry_wait`（不是 failed），
+    门批准 `start_run` 复用同一 Job；不要每次重启都新建 Job。
+37. **启动恢复边界**：单进程假设。恢复会杀掉 `/tmp/ff-*` Chrome/项目 ffmpeg，并重启中断 Run；
+    不要同时跑两个 API worker，否则会互相杀进程/抢 8787。
+38. **Job 迁移**：`create_all` 不会给旧表补列；`db._migrate_job_table` 用幂等 ALTER + schema v3。
+    新增 Job 字段必须同时改模型、迁移和 `test_jobs`。
+39. **preview Job 不自动重试**：预览参数在内存，重启后统一标 `E_JOB_INTERRUPTED`；用户重新请求。
+    Run Job 才自动恢复。
+40. **Chrome profile**：渲染 profile 用 `/tmp/ff-{node}-{run_id}`；预览 CDP 附加可能遇到 F02
+    区间结束，服务会先等 0.4s：F02 已空闲改临时 Chrome，仍忙返回 429。
+41. **队列优先级是元数据**：`GET /queue` 排序 preview>interactive>batch>delivery；真正的抢占仍由
+    PreviewService 的 `_INTERACTIVE` 帧间让位实现，不要以为改 priority 就会抢占 RunEngine。
+42. **恢复验收**：`verify_r2_recovery.py` 会杀/重启 `dev.sh`；不要在有人正在用工作台时跑。
+    恢复时间从 kill -9 计，实测 22.3s（API 重启 3.6s）。
 
 ---
 
@@ -505,7 +558,7 @@ docs(当前) + tokens/font/engine
    - `POST /api/projects/:id/preview/segment` `{sceneId,start,end,profile}` → `{jobId}`；
    - `POST /api/projects/:id/preview/film` `{profile:"draft"|"review"}` → `{jobId}`；
    - `GET/DELETE /api/preview/jobs/:id`；`GET /api/projects/:id/preview/cache`。
-   - 预览 job 内存字典即可（Phase 7 再接 Job 表）；取消只在帧边界。
+   - 预览 job 内存字典 + Phase 7 已落 Job 表（priority=100）；取消只在帧边界。
 5. 防抖/优先级：
    - 同项目/同 scene 的新 still 请求取消旧请求（latest wins）；250ms 防抖。
    - F02 运行中，预览通过 CDP 页并发生成，不抢 `chrome-queue`；若 9222 不可用，最多等 3s，
@@ -533,7 +586,7 @@ docs(当前) + tokens/font/engine
 - 注意：G05 `amix duration=first` 属 R2.5；G06 已在 Phase 6 改为真实口径并输出
   `sync_verified/approximate`（无对齐不伪报 0），但尚未设硬阈值/失败门，Phase 8 标定。
 
-### 6.3 Phase 7 · 持久化 Job + 崩溃恢复（FR-29）——下一步
+### 6.3 Phase 7 · 持久化 Job + 崩溃恢复（FR-29）——[DONE]
 
 - 扩展 `Job`：priority/attempts/lease_until/heartbeat_at/parent_id/cancel_requested/progress/eta/
   error_code/error_msg；迁移用 `schema_migrations`（SQLite 幂等）。
@@ -546,7 +599,7 @@ docs(当前) + tokens/font/engine
   run_id/job_id，避免并发 Run 共用 `/tmp/ff-F02`。
 - 测试：F02 kill -9 → 重启 ≤60s 回 running；连续 3 次崩溃；无孤儿 Chrome；帧数正确。
 
-### 6.4 Phase 8 · 黄金项目与视觉回归（FR-30）
+### 6.4 Phase 8 · 黄金项目与视觉回归（FR-30）——下一步
 
 - `fixtures/golden/5s|15s|40s/`：文案、风格、profile、期望静帧/关键帧、manifest。
 - `scripts/golden_run.py`：建项目 → F06 → 6 帧 SSIM/pHash + program 文字断言 → 报告。
@@ -564,12 +617,13 @@ docs(当前) + tokens/font/engine
 
 ```bash
 ./dev.sh                                                   # API 7860 + Web 3000
-cd server && uv run pytest tests -q                        # 71 passed
+cd server && uv run pytest tests -q                        # 78 passed
 cd .. && uv run --project server python scripts/e2e_ui.py   # UI 8 场景
 uv run --project server python scripts/smoke_m1.py          # 46 / 93
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量
 uv run --project server python scripts/verify_r2_preview.py         # Phase 5 预览验收
 uv run --project server python scripts/verify_r2_profiles.py        # Phase 6 档位验收
+uv run --project server python scripts/verify_r2_recovery.py        # Phase 7 kill -9 恢复验收
 uv run --project server python scripts/drive_run.py <run> <project>  # 旧全链驱动
 ```
 
@@ -618,14 +672,14 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
    Phase 6 的单帧新增 `motion=true`，用于与 final 同刻对比（默认仍是 D01 base program）。
 4. **FR-24 已完成但无档位 UI**：API `GET/PUT /render-profile` 与预览/交付链路可用；页面顶部切档、
    「预计 X 分钟 / 复用 Y 帧」留 R3。draft mp4 crf28 抽帧 vs final SSIM ~0.95，原始 PNG 0.9987。
-5. **Job 未落库**：kill -9 只能人工 resume；无租约/心跳/孤儿清理。
+5. **Job 已落库但单进程**：Job/租约/心跳/恢复/孤儿清理已完成；只支持单个 API worker，不支持多 worker 抢占同一 Run。预览 Job 重启后不自动重试。
 6. **黄金项目/视觉回归未建**：组件 fixture 只有 schema/JSON，未做 SSIM/pHash。
 7. **非 riso 新项目被 C01 阻断**：ink/code-video 仍是 Contract 1.0，R2.0 不支持新项目；
    UI 仍可能选到这些风格，C01 会报 `E_ENGINE_API_UNSUPPORTED`。若要做，需先升它们的 Contract v2。
 8. **音频 G 链不参与 5s 验收**：G01 无口播会失败；R2.0 A–F 验收不要求 G；R2.5 做音频。
 9. **DocsEditor 只做了 script/时间轴只读**：时间轴拖拽/审片/音频 UI 是 R3。
-10. **DB 迁移是 create_all + schema 1/2 记录**：若 Phase 7 加 Job 字段，需要真正的 SQLite ALTER
-    幂等迁移，不要只 create_all。
+10. **DB 迁移是 create_all + 幂等 ALTER**：Job 已有 schema v3 `_migrate_job_table`；后续加字段仍需
+    同时改模型、迁移与 `test_jobs`，不要只 create_all。
 11. **Chrome 进程语义**：`chrome-queue` 串行的是渲染操作；A04 previs 的常驻浏览器可能空闲存在。
     F02 运行中预览必须 CDP 附加 9222（已实现）；F02 空闲时可临时启动一个 Chrome，但不得常驻第二个浏览器。
 12. **跨项目缓存**：已修 C02/C03/B06/E03/E04 的已知路径；新增执行器若读项目相对文件，先检查
@@ -640,12 +694,13 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh` 起服务；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **71 passed**（干净库首跑）。
+- [ ] `cd server && uv run pytest tests -q` → **78 passed**（干净库首跑）。
 - [ ] `uv run --project server python scripts/e2e_ui.py` → 8 场景全绿。
 - [ ] `uv run --project server python scripts/smoke_m1.py` → 46 节点 / 93 边。
 - [ ] `uv run --project server python scripts/verify_r2_5s_incremental.py` → PASS（66/54）。
 - [ ] `uv run --project server python scripts/verify_r2_preview.py` → PASS（attached p50/p95、片段 ≤20s、缓存 ≤300ms）。
 - [ ] `uv run --project server python scripts/verify_r2_profiles.py` → PASS（D02 双静帧、E05 720p、F02 final、切档不重跑）。
+- [ ] `uv run --project server python scripts/verify_r2_recovery.py` → PASS（F02 中 kill -9，≤60s 恢复、frames=120）。
 - [ ] 打开 run #1 画布，确认 46 绿 + 审批历史；`out/film/master.mp4` 39.5s。
 - [ ] 读本文 §5/§6/§9；确认从 Phase 6 开始，不重做 Phase 1–5。
 - [ ] 任何“完成”申报附：测试输出、真实产物路径+sha/时长、UI 截图（如涉及）、API curl。

@@ -3,7 +3,7 @@
 > 2026-11-02 · 接手基线审计后制定 · 依据 `QODER_PROMPT.md`、`docs/prd/PRD-002-production-workbench.md`、`docs/adr/ADR-0005-v2-ratification.md`
 > 范围：FR-20/21/22/23/24/25/29/30。不做时间轴、审片、音频 v2、资产库、批量、photo 引擎。
 > 冻结项：46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；只加 3 条 data 边。
-> **进度（2026-11-02）**：Phase 0.1–6 已完成。5s 新项目已跑通参数化静帧与 E03–F06；改 S02 文案后新 Run 只渲 66/120 帧（S01 复用，0..53 帧哈希不变），40s 规划单测 204/948=21.5% ≤25%。Phase 5 预览（attached p50 1.31s/p95 1.44s，片段 12.7s，缓存 5ms）与 Phase 6 档位（D02 review/draft、E05 720p/24、F02 only-final、切档不重跑）已完成。下一步 Phase 7 恢复；证据与坑见 `HANDOFF.md` §2.4/§2.5/§6.3。
+> **进度（2026-11-02）**：Phase 0.1–7 已完成。5s 新项目已跑通参数化静帧与 E03–F06；改 S02 文案后新 Run 只渲 66/120 帧（S01 复用，0..53 帧哈希不变），40s 规划单测 204/948=21.5% ≤25%。Phase 5 预览（attached p50 1.31s/p95 1.44s，片段 12.7s，缓存 5ms）与 Phase 6 档位（D02 review/draft、E05 720p/24、F02 only-final、切档不重跑）与 Phase 7 恢复（kill -9 后 22.3s、attempts=1）已完成。下一步 Phase 8 黄金项目；证据与坑见 `HANDOFF.md` §2.4–2.6/§6.4。
 
 ---
 
@@ -161,7 +161,7 @@
 - 顺手修正 G05 `amix duration=first` 与 G06 伪同步（若 golden 含 G；否则明确标注 `approximate`，留给 R2.5）。
 - 测试：40s draft/review/final 耗时；G07 拒绝 review 交付。
 
-### Phase 7 · 持久化 Job + 崩溃恢复（FR-29，4–5d）
+### Phase 7 · 持久化 Job + 崩溃恢复（FR-29，4–5d）——[DONE] tag `r2-jobs`
 - `Job` 扩展：priority/attempts/lease_until/heartbeat_at/parent_id/cancel_requested/progress/eta/error。
 - 状态机 + 租约 30s/心跳 5s；启动扫描过期租约 → queued；Run/Job 状态落库。
 - 队列 API `/jobs`、`/queue`、`cancel`、`retry`；孤儿清理 `/tmp/ff-chrome-*`、8787 无主服务、孤立 ffmpeg；Chrome profile 带 run_id/job_id。
@@ -231,7 +231,7 @@
 3. Phase 2：文档模型与快照。
 4. Phase 3：Scene DSL + film_spec + 12 组件，打 `r2-scene-dsl`。
 5. Phase 4：增量，打 `r2-incremental`。
-6. Phase 5（预览）/Phase 6（档位）已完成；Phase 7–8：恢复、黄金；全部验收后再申请 R2.5。
+6. Phase 5（预览）/Phase 6（档位）/Phase 7（恢复）已完成；Phase 8：黄金；全部验收后再申请 R2.5。
 
 **第一个失败测试**（Phase 1 之前）：
 `server/tests/unit/test_dag_core.py::test_edge_table_has_r2_repairs` —— 断言 93 边、E04 出边、C05 含 B05、拓扑无环；先红后绿。
