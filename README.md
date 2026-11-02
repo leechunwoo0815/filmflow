@@ -39,13 +39,13 @@ uv run --project server python scripts/drive_run.py <run> <project>   # 全链�
 | 文档 | 说明 |
 |---|---|
 | **[HANDOFF.md](HANDOFF.md)** | **接手入口（交接文档：状态/坑/缺口/路线图）** |
-|---|---|
 | `../filmflow-web-agent-prompt.md` | 技术规格（§4.8 边表 / §19 裁决表为宪法） |
-| `../filmflow-prd.md` | PRD（FR-1~14 / US-01~10 / 风险） |
+| `../filmflow-prd.md` | v1 PRD（FR-1~14 / US-01~10 / 风险） |
+| **[docs/prd/PRD-002-production-workbench.md](docs/prd/PRD-002-production-workbench.md)** | **v2 补充 PRD（30 FR / 场景 DSL / 两级执行 / 交付矩阵 / R2–R4 路线图）** |
 | `docs/tech-plan.md` | §18 九项技术方案 |
 | `docs/process/` | SDLC / Feature 拆分 / 测试策略 |
 | `bdd/features/` | 16 个中文 Gherkin 特性文件（自动化 3 场景 + 手动验收拆分） |
-| `docs/adr/` | ADR-0001 技术栈 · ADR-0002 实测矩阵 · ADR-0003 embed 上限 |
+| `docs/adr/` | ADR-0001 技术栈 · ADR-0002 实测矩阵 · ADR-0003 embed 上限 · ADR-0004 白天主题 |
 
 ## 已知边界（诚实清单）
 

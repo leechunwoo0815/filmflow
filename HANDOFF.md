@@ -2,6 +2,7 @@
 
 > 写于 2026-11-02 · 交接人：开发 Agent（v0.1.3）· 接手人：下一位 Agent / 编辑器
 > 本文件是**唯一权威的接手入口**。规格（`../filmflow-web-agent-prompt.md`）是宪法，但**已经落后于实现**的地方以本文 §9 为准。
+> **深化需求**：v2 补充 PRD 见 [docs/prd/PRD-002-production-workbench.md](docs/prd/PRD-002-production-workbench.md)（30 FR / 场景 DSL / 两级执行 / R2–R4 路线图）。
 
 ---
 
@@ -224,6 +225,7 @@ uv run --project server python scripts/drive_run.py <run_id> <project_id> --time
 ## 10. 深化路线图（资深视频创作者视角，按生产力价值排序）
 
 > 原则：**不动已稳定的执行/门/缓存内核**（它是可靠底座），所有扩展围绕"创作循环"与"交付闭环"。
+> 详细需求、验收标准与 6 个待裁决决策见 [docs/prd/PRD-002-production-workbench.md](docs/prd/PRD-002-production-workbench.md)（本节的展开版）。
 
 ### P0-1 参数化渲染链（让新项目真出片）
 1. `D02`：项目有 `still_spec.json` → 改走 `entry.still_spec`（需把 spec 作为 URL 可访问的 artifact，如 `http://127.0.0.1:8787/project/artifacts/...json`）。
