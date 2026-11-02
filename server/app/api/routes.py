@@ -166,17 +166,28 @@ async def style_detail(style_id: str, session: Session = Depends(get_session)):
 async def style_preview(style_id: str, variant: str = "thumb"):
     from sqlmodel import select
     from ..models import StylePreview
+    from fastapi.responses import FileResponse, Response
     with Session(engine) as session:
+        st = session.get(Style, style_id)
+        # ① 预演缓存优先
         rows = session.exec(select(StylePreview).where(
             StylePreview.style_id == style_id, StylePreview.variant == variant)).all()
-        if rows:
-            p = Path(rows[-1].path)
+        for r in reversed(rows):
+            p = Path(r.path)
             if p.exists():
-                from fastapi.responses import FileResponse
                 return FileResponse(p, media_type="image/png")
+        # ② 自带封面（规格 §3.2：193 条封面直接展示）——同目录同名 jpg / covers/
+        if st and st.has_cover:
+            md = Path(st.path)
+            for cand in (md.with_suffix(".jpg"), md.with_suffix(".jpeg"),
+                         md.parent / "covers" / f"{md.stem}.jpg"):
+                if cand.exists():
+                    return FileResponse(cand, media_type="image/jpeg")
+    # ③ 占位（不伪装）
     from ..services import previs as pv
-    reason = "待补标" if (session.get(Style, style_id) or Style()).tokens_status != "complete" else "failed"
-    from fastapi.responses import Response
+    with Session(engine) as session:
+        st2 = session.get(Style, style_id)
+        reason = "待补标" if (st2 and st2.tokens_status != "complete") else "无预演"
     return Response(content=pv.placeholder_png(reason), media_type="image/png")
 
 

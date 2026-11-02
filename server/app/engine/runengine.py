@@ -296,6 +296,7 @@ async def execute_node(run_id: int, node_id: str) -> dict:
                 result = await result
             st.status = "succeeded"
             st.progress = 1.0
+            st.message = ""   # 成功即清空历史失败信息（重试后 UI 不再显示旧错误）
             emit("node.succeeded", run_id, node_id, lock_waits=lock_waits)
             if node_id == "A04":
                 _auto_approve_a05(session, run, wf, states, project_root)
