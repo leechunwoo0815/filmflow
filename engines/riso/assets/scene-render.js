@@ -140,11 +140,12 @@ const SCENE_RENDER = (() => {
   function renderProgram(program, t, opts) {
     const W = (opts && opts.W) || (program.canvas && program.canvas.w) || 1920;
     const H = (opts && opts.H) || (program.canvas && program.canvas.h) || 1080;
+    const scale = (opts && opts.scale) || 1;
     const plates = [RISO.makePlate(W, H), RISO.makePlate(W, H), RISO.makePlate(W, H)];
     const cam = cameraAt(program.camera, t);
     plates.forEach((canvas) => {
       const ctx = canvas.getContext('2d');
-      ctx.setTransform(cam.z, 0, 0, cam.z, cam.tx, cam.ty);
+      ctx.setTransform(cam.z * scale, 0, 0, cam.z * scale, cam.tx * scale, cam.ty * scale);
     });
     const duration = program.duration || 1;
     (program.layers || []).slice().sort((a, b) => (a.z || 0) - (b.z || 0)).forEach((layer) => {
@@ -156,23 +157,23 @@ const SCENE_RENDER = (() => {
   }
 
   const compositors = new Map();
-  function getCompositor(program, slot, W, H) {
+  function getCompositor(program, slot, W, H, scale) {
     const c = program.canvas || {};
-    const key = JSON.stringify([slot, W, H, c.paper, c.inks, c.angles, c.periods]);
+    const key = JSON.stringify([slot, W, H, scale, c.paper, c.inks, c.angles, c.periods]);
     if (!compositors.has(key)) {
       const canvas = document.createElement('canvas');
       canvas.width = W; canvas.height = H;
       compositors.set(key, RISO.createCompositor({
         canvas, W, H, paper: c.paper, inks: c.inks,
-        angles: c.angles, periods: c.periods,
+        angles: c.angles, periods: c.periods, screenScale: scale || 1,
       }));
     }
     return compositors.get(key);
   }
 
-  function drawInto(program, t, slot, W, H) {
-    const r = renderProgram(program, t, { W, H });
-    const comp = getCompositor(program, slot, W, H);
+  function drawInto(program, t, slot, W, H, scale) {
+    const r = renderProgram(program, t, { W, H, scale });
+    const comp = getCompositor(program, slot, W, H, scale);
     comp.draw(r.plates, { z: 1, tx: 0, ty: 0 });
     return comp.canvas;
   }
@@ -250,11 +251,12 @@ const SCENE_RENDER = (() => {
   function renderFrameAt(programs, transitions, t, opts) {
     const W = (opts && opts.W) || 1920;
     const H = (opts && opts.H) || 1080;
+    const scale = (opts && opts.scale) || 1;
     const cur = (programs || []).find((p) => t >= p.start && t < p.end) || programs[programs.length - 1];
     if (!cur) return null;
     const out = document.createElement('canvas');
     out.width = W; out.height = H;
-    const curCanvas = drawInto(cur.program, Math.max(0, t - cur.start), 0, W, H);
+    const curCanvas = drawInto(cur.program, Math.max(0, t - cur.start), 0, W, H, scale);
     const tr = (transitions || []).find((x) => x.to === cur.id && t >= x.at &&
       t < x.at + (x.duration || 0.5));
     if (!tr) {
@@ -266,7 +268,7 @@ const SCENE_RENDER = (() => {
       out.getContext('2d').drawImage(curCanvas, 0, 0);
       return out;
     }
-    const prevCanvas = drawInto(prev.program, Math.max(0, t - prev.start), 1, W, H);
+    const prevCanvas = drawInto(prev.program, Math.max(0, t - prev.start), 1, W, H, scale);
     drawTransition(out, prevCanvas, curCanvas, tr.type, seg(t, tr.at, tr.at + (tr.duration || 0.5)), W, H);
     return out;
   }

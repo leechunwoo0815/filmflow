@@ -20,6 +20,7 @@ precision highp float;
 uniform sampler2D uBlue, uOrange, uYellow;
 uniform vec2 uRes, uOffB, uOffO, uOffY;
 uniform vec3 uCam;
+uniform float uScreenScale;
 out vec4 outColor;
 
 const vec3 PAPER  = vec3(${paper});
@@ -61,25 +62,27 @@ void main() {
   float dY = texture(uYellow, uvY).a;
 
   vec2 q = (p - uCam.yz) / uCam.x;
+  // 降采样预览：网点/纹理频率跟随输出比例，与 final 归一化后一致
+  vec2 qs = q / max(uScreenScale, 0.0001);
 
-  float fib = hash21(floor(q * vec2(1.0, 2.0)) + 17.0);
-  float mot = hash21(floor(q / 90.0) + 3.0);
+  float fib = hash21(floor(qs * vec2(1.0, 2.0)) + 17.0);
+  float mot = hash21(floor(qs / 90.0) + 3.0);
   vec3 paper = PAPER * (1.0 + (fib - 0.5) * 0.020 + (mot - 0.5) * 0.012);
 
   float dust = 0.0;
-  dust += step(length(q - vec2(268, 946)), 2.4);
-  dust += step(length(q - vec2(1332, 171)), 1.8);
-  dust += step(length(q - vec2(612, 1030)), 1.4);
+  dust += step(length(qs - vec2(268, 946)), 2.4);
+  dust += step(length(qs - vec2(1332, 171)), 1.8);
+  dust += step(length(qs - vec2(612, 1030)), 1.4);
 
   vec3 col = paper;
-  float covB = plateCov(dB, q, ${f1(angles[0])}, ${f1(periods[0])});
-  float covO = plateCov(dO, q, ${f1(angles[1])}, ${f1(periods[1])});
-  float covY = plateCov(dY, q, ${f1(angles[2])}, ${f1(periods[2])});
+  float covB = plateCov(dB, q, ${f1(angles[0])}, ${f1(periods[0])} * uScreenScale);
+  float covO = plateCov(dO, q, ${f1(angles[1])}, ${f1(periods[1])} * uScreenScale);
+  float covY = plateCov(dY, q, ${f1(angles[2])}, ${f1(periods[2])} * uScreenScale);
 
-  float grain = 0.945 + 0.055 * hash21(floor(q * 1.3) + 9.0);
+  float grain = 0.945 + 0.055 * hash21(floor(qs * 1.3) + 9.0);
   covB *= grain; covO *= grain; covY *= grain;
-  if (dB > 0.92 && hash21(floor(q * 2.2) + 31.0) < 0.010) covB = 0.22;
-  if (dO > 0.92 && hash21(floor(q * 2.2) + 71.0) < 0.008) covO = 0.22;
+  if (dB > 0.92 && hash21(floor(qs * 2.2) + 31.0) < 0.010) covB = 0.22;
+  if (dO > 0.92 && hash21(floor(qs * 2.2) + 71.0) < 0.008) covO = 0.22;
 
   col = applyInk(col, INK_B, covB);
   col = applyInk(col, INK_O, covO);
@@ -115,6 +118,7 @@ void main() {
     const inks = (opts.inks && opts.inks.length >= 3 ? opts.inks : ['#3D5588', '#FF665E', '#FFB511']).map(hexToVec3);
     const angles = opts.angles || [15, 75, 0];
     const periods = opts.periods || [7, 7, 6.5];
+    const screenScale = opts.screenScale || 1;
     const canvas = opts.canvas || document.getElementById('gl');
     const gl = canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true, premultipliedAlpha: false });
     function compile(type, src) {
@@ -158,6 +162,7 @@ void main() {
       }
       gl.uniform2f(U('uRes'), W, H);
       gl.uniform3f(U('uCam'), cam.z, cam.tx, cam.ty);
+      gl.uniform1f(U('uScreenScale'), screenScale);
       gl.viewport(0, 0, W, H);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       gl.finish();

@@ -224,6 +224,20 @@ def _upstream_json(ctx, names: list[str]) -> dict:
     return out
 
 
+def _upstream_file(ctx, node_id: str, type_: str, fallback: Path) -> Path:
+    """上游文件产物优先：跨项目缓存命中时文件留在旧项目，项目内路径可能不存在。"""
+    from ...models import Artifact
+    from sqlmodel import select
+    rows = ctx["session"].exec(select(Artifact).where(
+        Artifact.run_id == ctx["run_id"], Artifact.node_id == node_id,
+        Artifact.type == type_)).all()  # type: ignore[arg-type]
+    for r in reversed(rows):
+        p = Path(r.path)
+        if p.exists():
+            return p
+    return fallback
+
+
 @executor("duration-budget")
 async def b01(ctx):
     u = _upstream_json(ctx, ["A01", "A07"])
@@ -433,17 +447,35 @@ async def c01(ctx):
 @executor("font-fetch")
 async def c02(ctx):
     """获取 Noto Sans SC 变量字体（Google Fonts 官方仓，含 CJK+拉丁+希腊全子集）。"""
-    import urllib.request
+    import shutil
+    from ...config import settings
     url = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf"
     d = _project_file(ctx, "fonts/src")
     d.mkdir(parents=True, exist_ok=True)
     ttf = d / "NotoSansSC[wght].ttf"
+    cache = settings.home / "cache" / "fonts" / "NotoSansSC[wght].ttf"
+    min_bytes = 5_000_000
+    if not ttf.exists() and cache.exists() and cache.stat().st_size >= min_bytes:
+        shutil.copyfile(cache, ttf)
     if not ttf.exists():
-        import subprocess
-        res = subprocess.run(["curl", "-L", "--fail", "-o", str(ttf), url],
-                             capture_output=True, text=True, timeout=600)
-        if res.returncode != 0 or not ttf.exists() or ttf.stat().st_size < 5_000_000:
-            raise RuntimeError("变量字体下载失败：" + res.stderr[-200:])
+        # 本地既有 C02 产物（内容寻址，跨项目）优先，避免无网环境阻塞
+        from ...models import Artifact
+        from sqlmodel import select
+        rows = ctx["session"].exec(select(Artifact).where(
+            Artifact.node_id == "C02", Artifact.type == "TXT").order_by(Artifact.id.desc())).all()  # type: ignore[arg-type]
+        for r in rows:
+            p = Path(r.path)
+            if p.exists() and p.stat().st_size >= min_bytes:
+                shutil.copyfile(p, ttf)
+                break
+    if not ttf.exists():
+        res = await ctx["runner"].run(
+            ["curl", "-L", "--fail", "--max-time", "120", "-o", str(ttf), url], timeout=180)
+        if not res.ok or not ttf.exists() or ttf.stat().st_size < min_bytes:
+            raise RuntimeError("变量字体下载失败：" + "\n".join(res.stderr_tail[-3:]))
+    if not cache.exists() or cache.stat().st_size < min_bytes:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ttf, cache)
     from ...services.artifacts import store_file, register
     ap, sha = store_file(ctx["project_root"], ttf, "TXT")
     register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "TXT", str(ap), sha,

@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from sqlalchemy.orm.attributes import flag_modified
 from sse_starlette.sse import EventSourceResponse
 from sqlmodel import Session, select
@@ -24,6 +24,7 @@ from ..models import (Approval, Artifact, AuditLog, Draft, Job, Metric, NodeRun,
                       Run, Style, StylePick, Workflow, WorkflowVersion, table_dict)
 from ..services import environment as env_svc
 from ..services import engines as engines_svc
+from ..services import preview as preview_svc
 from ..services import project_docs as docs_svc
 from ..services import recommend as rec_svc
 from ..services import style_index as idx_svc
@@ -642,6 +643,94 @@ async def run_render_manifest(run_id: int, session: Session = Depends(get_sessio
     if not p.exists():
         raise not_found("render manifest")
     return json.loads(p.read_text(encoding="utf-8"))
+
+
+# ---------- 预览（FR-23） ----------
+
+@router.post("/projects/{project_id}/preview/still")
+async def project_preview_still(project_id: int, payload: dict,
+                                session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    scene_id = str(payload.get("sceneId") or payload.get("scene_id") or "")
+    if not scene_id:
+        raise ApiError(ErrorCode.E_VALIDATION, "sceneId 必填")
+    t = payload.get("time")
+    res = await preview_svc.render_still(
+        session, project_id, scene_id,
+        t=float(t) if t is not None else None,
+        profile=str(payload.get("profile") or "draft"),
+        watermark=bool(payload.get("watermark", True)),
+        debounce=bool(payload.get("debounce", True)))
+    return Response(content=res.png, media_type="image/png", headers={
+        "X-Preview-Cache": "hit" if res.cached else "miss",
+        "X-Preview-Ms": str(res.ms),
+        "X-Preview-Scene-Hash": res.scene_hash[:16],
+        "X-Preview-Watermark": "1" if payload.get("watermark", True) else "0",
+        "X-Preview-Chrome": res.chrome,
+    })
+
+
+@router.post("/projects/{project_id}/preview/segment", status_code=202)
+async def project_preview_segment(project_id: int, payload: dict,
+                                  session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    scene_id = str(payload.get("sceneId") or payload.get("scene_id") or "")
+    if not scene_id:
+        raise ApiError(ErrorCode.E_VALIDATION, "sceneId 必填")
+    start, end = payload.get("start"), payload.get("end")
+    if start is None or end is None:
+        raise ApiError(ErrorCode.E_VALIDATION, "start/end 必填（秒）")
+    job = preview_svc.create_segment_job(
+        session, project_id, scene_id, float(start), float(end),
+        profile=str(payload.get("profile") or "draft"),
+        watermark=bool(payload.get("watermark", True)))
+    audit(session, "preview.segment", f"project:{project_id}",
+          after={"job": job.id, "scene": scene_id, "start": job.start, "end": job.end})
+    return preview_svc.job_payload(job)
+
+
+@router.post("/projects/{project_id}/preview/film", status_code=202)
+async def project_preview_film(project_id: int, payload: dict,
+                               session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    job = preview_svc.create_film_job(
+        session, project_id, profile=str(payload.get("profile") or "draft"),
+        watermark=bool(payload.get("watermark", True)))
+    audit(session, "preview.film", f"project:{project_id}",
+          after={"job": job.id, "profile": job.profile})
+    return preview_svc.job_payload(job)
+
+
+@router.get("/preview/jobs/{job_id}")
+async def preview_job_status(job_id: str):
+    return preview_svc.job_payload(preview_svc.get_job(job_id))
+
+
+@router.delete("/preview/jobs/{job_id}")
+async def preview_job_cancel(job_id: str):
+    return preview_svc.cancel_job(job_id)
+
+
+@router.get("/preview/jobs/{job_id}/file")
+async def preview_job_file(job_id: str, session: Session = Depends(get_session)):
+    job = preview_svc.get_job(job_id)
+    if job.status != "succeeded" or not job.path:
+        raise ApiError(ErrorCode.E_CONFLICT, f"预览任务未完成：{job.status}", status=409)
+    proj = _project_or_404(session, job.project_id)
+    base = (Path(proj.root).resolve() / "out" / "preview")
+    p = Path(job.path).resolve()
+    if not p.is_relative_to(base) or not p.exists():
+        raise not_found("预览文件")
+    return FileResponse(p, media_type="video/mp4", filename=p.name)
+
+
+@router.get("/projects/{project_id}/preview/cache")
+async def project_preview_cache(project_id: int, session: Session = Depends(get_session)):
+    _project_or_404(session, project_id)
+    return preview_svc.PreviewCache(project_id).stats()
 
 
 @router.get("/artifacts/{artifact_id}/file")

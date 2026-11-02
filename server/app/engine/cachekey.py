@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.1.2"  # 执行器行为变更时递增（R2.0 Phase 4 增量渲染）
+EXECUTOR_VERSION = "2.2.0"  # R2.0 Phase 5：F02 Chrome 暴露 CDP 9222 供 PreviewService 附加
 
 
 def canonical(obj) -> str:

@@ -9,7 +9,8 @@ import threading
 from pathlib import Path
 from urllib.parse import quote
 
-from . import executor, _artifact_json, _project_file, _read_json, _run_doc_file, _task_path, _upstream_json
+from . import (executor, _artifact_json, _project_file, _read_json, _run_doc_file,
+               _task_path, _upstream_file, _upstream_json)
 
 # ---------- 帧服务（F01，单例线程内嵌） ----------
 
@@ -515,14 +516,17 @@ async def e05(ctx):
     await ctx["progress"](1.0, f"proxy {have}/{proxy_frames}")
 
 
-async def _chrome_render_argv(ctx, url: str) -> list[str]:
+async def _chrome_render_argv(ctx, url: str, debug_port: int | None = None) -> list[str]:
     from ...config import detect_chrome
     chrome = detect_chrome()
     if not chrome:
         from ...errors import ApiError, ErrorCode
         raise ApiError(ErrorCode.E_ENV_MISSING, "未找到 Chrome")
-    return [chrome, "--headless=new", "--disable-gpu", "--enable-unsafe-swiftshader",
-            f"--user-data-dir=/tmp/ff-{ctx['node_id']}", "--window-size=1920,1080", "--hide-scrollbars", url]
+    argv = [chrome, "--headless=new", "--disable-gpu", "--enable-unsafe-swiftshader",
+            f"--user-data-dir=/tmp/ff-{ctx['node_id']}", "--window-size=1920,1080", "--hide-scrollbars"]
+    if debug_port:
+        argv += [f"--remote-debugging-port={debug_port}", "--remote-debugging-address=127.0.0.1"]
+    return argv + [url]
 
 
 @executor("motion-qa")
@@ -577,7 +581,8 @@ async def _run_chrome_range(ctx, url: str, frames_dir: Path, start: int, end: in
     import asyncio as _aio
     import time as _time
     (_project_file(ctx, "out/DONE")).unlink(missing_ok=True)
-    argv = await _chrome_render_argv(ctx, url)
+    # F02 暴露 CDP 9222：PreviewService 在同一个 Chrome 的临时 page 出预览，不新开浏览器
+    argv = await _chrome_render_argv(ctx, url, debug_port=9222 if ctx["node_id"] == "F02" else None)
     node_cancel = _aio.Event()
     run_cancel = ctx["cancel_event"]
     t0 = _time.monotonic()
@@ -853,7 +858,8 @@ async def f04(ctx):
 async def f05(ctx):
     import httpx  # noqa: F401
     profile = _profile(ctx)
-    mp4 = _project_file(ctx, "out/film/intermediate.mp4")
+    # F04 可能跨项目缓存命中：mp4 在旧项目内容寻址目录，项目内路径不存在
+    mp4 = _upstream_file(ctx, "F04", "MP4", _project_file(ctx, "out/film/intermediate.mp4"))
     ff = await _ffprobe(ctx, mp4)
     expect_frames = profile["frames"] or round(profile["duration"] * profile["fps"])
     if abs(ff["frames"] - expect_frames) > 1:
@@ -1041,7 +1047,7 @@ async def g06(ctx):
 
 @executor("package")
 async def g07(ctx):
-    video = _project_file(ctx, "out/film/intermediate.mp4")
+    video = _upstream_file(ctx, "F04", "MP4", _project_file(ctx, "out/film/intermediate.mp4"))
     mix = _project_file(ctx, "card/mix.wav")
     master = _project_file(ctx, "out/film/master.mp4")
     master.parent.mkdir(parents=True, exist_ok=True)
