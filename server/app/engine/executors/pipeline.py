@@ -1220,7 +1220,7 @@ def _mix_filter(duration: float, music_db: float = -8.0) -> str:
             f"volume={music_db}dB[music];"
             "[music][voice]sidechaincompress=threshold=0.03:ratio=4:attack=80:release=350[ducked];"
             "[voice][ducked]amix=inputs=2:duration=longest:normalize=0,"
-            "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.891[a]")
+            "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.7:level=false[a]")
 
 
 async def _make_stem(ctx, src: Path, out: Path, duration: float, loop: bool = False,

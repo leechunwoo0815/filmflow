@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.6.2"  # R2.5 FR-27：G06 解析 true peak
+EXECUTOR_VERSION = "2.6.4"  # R2.5 FR-27：alimiter level=false 防止自动拉响度
 
 
 def canonical(obj) -> str:
