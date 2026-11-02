@@ -84,16 +84,27 @@ def test_run_snapshot_new_project_is_immutable(tmp_path: Path):
     (root / "card" / "copy.txt").write_text("风从纸上起。纸不动，风先动。", encoding="utf-8")
     (root / "project.profile.json").write_text(json.dumps(
         {"width": 1920, "height": 1080, "fps": 24, "duration": 5.0}), encoding="utf-8")
+    (root / "render.profile.json").write_text(json.dumps({
+        "schema": "filmflow.render-profile/1",
+        "draft": {"width": 640, "height": 360, "fps": 10, "crf": 30, "preset": "fast"},
+    }), encoding="utf-8")
     with Session(engine) as s:
         run = s.get(Run, run_id)
         snap = ensure_run_snapshot(s, run, str(root))
         sha = snap["doc_snapshot_sha"]
         assert snap["imported"] is False
+        assert snap["render_profiles"]["draft"]["width"] == 640
+        assert snap["render_profiles"]["final"]["width"] == 1920
         assert (root / "runs" / str(run_id) / "docs" / "script.doc.json").exists()
         assert (root / "runs" / str(run_id) / "docs" / "timeline.doc.json").exists()
         (root / "card" / "copy.txt").write_text("改过的文案。", encoding="utf-8")
+        (root / "render.profile.json").write_text(json.dumps({
+            "schema": "filmflow.render-profile/1",
+            "draft": {"width": 320, "height": 180, "fps": 8},
+        }), encoding="utf-8")
         again = ensure_run_snapshot(s, run, str(root))
         assert again["doc_snapshot_sha"] == sha
+        assert again["render_profiles"]["draft"]["width"] == 640
         assert again["docs"]["script"]["content"]["text"].startswith("风从纸上起")
 
 

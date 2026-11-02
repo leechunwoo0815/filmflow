@@ -188,6 +188,15 @@ def _profile(ctx) -> dict:
     return {"width": 1920, "height": 1080, "fps": 24, "duration": 39.5, "frames": 948}
 
 
+def _profiles(ctx) -> dict:
+    """Run 快照档位优先；旧快照回退项目 render.profile.json / 默认值。"""
+    from ...services.render_profiles import resolve
+    prof = ctx.get("run_render_profiles") or {}
+    if prof.get("draft") and prof.get("review") and prof.get("final"):
+        return prof
+    return resolve(ctx["project_root"], _profile(ctx), allow_low_final=bool(ctx.get("run_imported")))
+
+
 # ---------- D 静帧 ----------
 
 def _api_v2(build: dict) -> bool:
@@ -259,7 +268,9 @@ async def d02(ctx):
     w, h = int(profile.get("width", 1920)), int(profile.get("height", 1080))
     ensure_frame_server(ctx)
     from ...services import artifacts as art
+    profiles = _profiles(ctx)
     stills = []
+    total = max(len(spec.get("scenes", [])) * (1 if ctx.get("run_imported") else 2), 1)
     for s in spec.get("scenes", []):
         if ctx.get("run_imported"):
             t = s.get("last_text_at", s.get("start", 0))
@@ -270,6 +281,12 @@ async def d02(ctx):
             if not entry:
                 raise RuntimeError("imported 项目缺少 legacy_entry.still")
             url = _engine_url(ctx, build, entry, f"scene={s['id']}&t={t}")
+            out = _project_file(ctx, f"out/stills/{s['id']}_{t}.png")
+            await _chrome_screenshot(ctx, url, out, w, h, timeout=120)
+            ap, sha = art.store_file(ctx["project_root"], out, "PNG")
+            art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "PNG",
+                         str(ap), sha, {"scene": s["id"], "t": t, "profile": "legacy"})
+            stills.append(str(ap))
         else:
             if not _api_v2(build):
                 from ...errors import ApiError, ErrorCode
@@ -281,14 +298,25 @@ async def d02(ctx):
             spec_url = _project_url(ctx, "card/still_spec.json")
             url = _engine_url(ctx, build, entry,
                               f"spec={quote(spec_url, safe='')}&scene={s['id']}&t={t}")
-        out = _project_file(ctx, f"out/stills/{s['id']}_{t}.png")
-        await _chrome_screenshot(ctx, url, out, w, h, timeout=120)
-        ap, sha = art.store_file(ctx["project_root"], out, "PNG")
-        art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "PNG", str(ap), sha,
-                     {"scene": s["id"], "t": t})
-        stills.append(str(ap))
-        await ctx["progress"](len(stills) / max(len(spec.get("scenes", [])), 1), f"still {s['id']}")
-    _artifact_json(ctx, "stills_manifest.json", {"stills": stills})
+            native = _project_file(ctx, f"out/stills/{s['id']}_{t}_native.png")
+            await _chrome_screenshot(ctx, url, native, w, h, timeout=120)
+            from PIL import Image
+            img = Image.open(native)
+            for pname in ("review", "draft"):
+                spec_p = profiles[pname]
+                dst = _project_file(ctx, f"out/stills/{s['id']}_{t}_{pname}.png")
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                img.resize((int(spec_p["width"]), int(spec_p["height"])), Image.LANCZOS).save(dst)
+                ap, sha = art.store_file(ctx["project_root"], dst, "PNG")
+                art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"],
+                             "PNG", str(ap), sha,
+                             {"scene": s["id"], "t": t, "profile": pname,
+                              "width": int(spec_p["width"]), "height": int(spec_p["height"])})
+                stills.append(str(ap))
+            native.unlink(missing_ok=True)
+        await ctx["progress"](len(stills) / total, f"still {s['id']}")
+    _artifact_json(ctx, "stills_manifest.json", {"stills": stills, "profiles": {
+        k: profiles[k] for k in ("review", "draft")}})
 
 
 @executor("still-view")
@@ -307,21 +335,41 @@ async def d04(ctx):
     from PIL import Image
     from ...models import Artifact
     from sqlmodel import select
+    profiles = _profiles(ctx)
+    base = _profile(ctx)
     rows = ctx["session"].exec(select(Artifact).where(
         Artifact.run_id == ctx["run_id"], Artifact.node_id == "D02")).all()  # type: ignore[arg-type]
     rows = [r for r in rows if r.type == "PNG"]   # 只检图像产物（清单 JSON 排除）
     metrics = []
+    seen: dict[str, set[str]] = {"review": set(), "draft": set(), "legacy": set()}
     for r in rows:
+        meta = r.meta_json or {}
+        pname = meta.get("profile") or "legacy"
+        spec = profiles.get(pname) if pname in ("review", "draft") else base
+        expected = (int(spec.get("width", 1920)), int(spec.get("height", 1080)))
         img = Image.open(BytesIO(Path(r.path).read_bytes()))
         w, h = img.size
         g = np.asarray(img.convert("L"), dtype=float)
-        metrics.append({"artifact": r.sha256[:12], "size": [w, h], "lum_mean": round(float(g.mean()), 2),
+        metrics.append({"artifact": r.sha256[:12], "profile": pname, "scene": meta.get("scene"),
+                        "size": [w, h], "expected": list(expected),
+                        "lum_mean": round(float(g.mean()), 2),
                         "lum_min": float(g.min()), "black": bool(g.mean() < 8)})
-        if (w, h) != (1920, 1080):
-            raise RuntimeError(f"静帧尺寸错误 {w}x{h} ≠ 1920×1080")
+        if (w, h) != expected:
+            raise RuntimeError(f"静帧尺寸错误 {w}x{h} ≠ {expected[0]}×{expected[1]}（{pname}）")
         if g.mean() < 40:
             raise RuntimeError(f"静帧过暗 lum_mean={g.mean():.1f} < 40")
-    _artifact_json(ctx, "still_metrics.json", {"frames": metrics})
+        if meta.get("scene"):
+            seen.setdefault(pname, set()).add(str(meta["scene"]))
+    if not ctx.get("run_imported"):
+        task = (_upstream_json(ctx, ["B06"]).get("B06") or {})
+        scenes = [s.get("id") for s in (task.get("scenes") or []) if s.get("id")]
+        for pname in ("review", "draft"):
+            missing = sorted(set(scenes) - seen.get(pname, set()))
+            if missing:
+                raise RuntimeError(f"D02 {pname} 静帧缺场景：{missing}")
+    _artifact_json(ctx, "still_metrics.json", {
+        "frames": metrics, "coverage": {k: sorted(v) for k, v in seen.items()},
+        "profiles": {k: profiles[k] for k in ("review", "draft", "final")}})
 
 
 @executor("gate")
@@ -443,7 +491,9 @@ async def e04(ctx):
 
 
 def _film_spec_query(ctx, mode: str, profile: str, start: int, end: int, total: int,
-                     fps: int | None = None, scale: float | None = None) -> str:
+                     fps: int | None = None, scale: float | None = None,
+                     out_w: int | None = None, out_h: int | None = None,
+                     proxy_fps: int | None = None) -> str:
     binding = quote(_project_url(ctx, "scenes/timeline_binding.json"), safe="")
     transitions = quote(_project_url(ctx, "scenes/transitions.json"), safe="")
     q = (f"mode={mode}&profile={profile}&binding={binding}&transitions={transitions}"
@@ -452,6 +502,12 @@ def _film_spec_query(ctx, mode: str, profile: str, start: int, end: int, total: 
         q += f"&fps={fps}"
     if scale:
         q += f"&scale={scale}"
+    if out_w:
+        q += f"&outW={out_w}"
+    if out_h:
+        q += f"&outH={out_h}"
+    if proxy_fps:
+        q += f"&proxy_fps={proxy_fps}"
     return q
 
 
@@ -460,13 +516,19 @@ async def e05(ctx):
     build = _engine_build(ctx)
     ensure_frame_server(ctx)
     profile = _profile(ctx)
-    proxy_frames = round(profile["duration"] * 12)
-    (_project_file(ctx, "out/proxy")).mkdir(parents=True, exist_ok=True)
+    profiles = _profiles(ctx)
+    review = profiles["review"]
+    proxy_frames = round(profile["duration"] * int(review["fps"]))
+    proxy_dir = _project_file(ctx, "out/proxy")
+    proxy_dir.mkdir(parents=True, exist_ok=True)
+    for p in proxy_dir.glob("*.png"):
+        p.unlink(missing_ok=True)
     (_project_file(ctx, "out/DONE")).unlink(missing_ok=True)
     if ctx.get("run_imported"):
         entry = _legacy_entry(build, "film")
         if not entry:
             raise RuntimeError("imported 项目缺少 legacy_entry.film")
+        proxy_frames = round(profile["duration"] * 12)
         q = f"mode=proxy&fps=12&scale=0.25&total={proxy_frames}"
     else:
         if not _api_v2(build):
@@ -477,7 +539,8 @@ async def e05(ctx):
             from ...errors import ApiError, ErrorCode
             raise ApiError(ErrorCode.E_PROGRAM_INVALID, "新项目 film_spec 入口未登记")
         q = _film_spec_query(ctx, "proxy", "review", 0, proxy_frames, proxy_frames,
-                             fps=12, scale=0.25)
+                             fps=int(review["fps"]), out_w=int(review["width"]),
+                             out_h=int(review["height"]), proxy_fps=int(review["fps"]))
     url = _engine_url(ctx, build, entry, q)
     chrome_argv = await _chrome_render_argv(ctx, url)
     import asyncio as _aio
@@ -533,6 +596,13 @@ async def _chrome_render_argv(ctx, url: str, debug_port: int | None = None) -> l
 async def e06(ctx):
     import numpy as np
     from PIL import Image
+    profiles = _profiles(ctx)
+    review = profiles["review"]
+    legacy = bool(ctx.get("run_imported"))
+    fps = 12 if legacy else int(review["fps"])
+    profile_label = "legacy" if legacy else "review"
+    policy = {"missing": True, "black": True, "dups": True, "motion": True,
+              "sync": True, "ssim": False, "lufs": False}
     proxy_dir = _project_file(ctx, "out/proxy")
     files = sorted(proxy_dir.glob("*.png"))
     if len(files) < 12:
@@ -546,7 +616,7 @@ async def e06(ctx):
             diffs.append(float(np.abs(g - prev).mean()))
         prev = g
     threshold_cut = 8.0
-    static_thr, static_len = 0.20, 6
+    static_thr, static_len = 0.20, max(1, round(0.5 * fps))
     cut_spikes = [{"frame": i + 1, "diff": round(v, 2), "hasTransition": False} for i, v in enumerate(diffs) if v > threshold_cut]
     static_runs = []
     run_start = None
@@ -559,7 +629,8 @@ async def e06(ctx):
                 static_runs.append({"from": run_start, "to": i, "intentionalHold": False})
             run_start = None
     p95 = float(np.percentile(diffs, 95))
-    report = {"medium": "proxy", "pacing": "medium",
+    report = {"medium": "proxy", "profile": profile_label, "fps": fps,
+              "policy": policy, "pacing": "medium",
               "thresholds_used": {"static_len": static_len, "static_diff": static_thr, "cut": threshold_cut},
               "frameDiff": {"mean": round(sum(diffs) / len(diffs), 3), "p95": round(p95, 2), "max": round(max(diffs), 2)},
               "cutSpikes": cut_spikes, "staticRuns": static_runs,
@@ -656,6 +727,7 @@ async def _f02_legacy(ctx, build: dict, profile: dict, frames: int, frames_dir: 
 
 async def _f02_v2(ctx, build: dict, profile: dict, frames: int, frames_dir: Path) -> None:
     from ..render_manifest import build_manifest, build_plan, dirty_ranges, plan_dirty
+    final_spec = _profiles(ctx)["final"]
     up = _upstream_json(ctx, ["E03", "E04"])
     binding = up.get("E03") or {}
     if not binding.get("programs"):
@@ -701,7 +773,7 @@ async def _f02_v2(ctx, build: dict, profile: dict, frames: int, frames_dir: Path
             p.unlink()
     ranges = dirty_ranges(plan, frames)
     if not ranges:
-        manifest = build_manifest(ctx["run_id"], "final", profile, plan, [])
+        manifest = build_manifest(ctx["run_id"], "final", profile, plan, [], final_spec)
         _write_manifest(ctx, manifest, artifact=True)
         for s in plan:
             _upsert_scene_state(ctx, s, "done", s.get("ms", 0))
@@ -723,7 +795,7 @@ async def _f02_v2(ctx, build: dict, profile: dict, frames: int, frames_dir: Path
             if all((frames_dir / f"{i:04d}.png").exists() for i in range(ext_start, ext_end)):
                 s["status"] = "done"
                 s["ms"] = sum(ms for a, b, ms in completed if not (b <= ext_start or a >= ext_end))
-        manifest = build_manifest(ctx["run_id"], "final", profile, plan, completed)
+        manifest = build_manifest(ctx["run_id"], "final", profile, plan, completed, final_spec)
         _write_manifest(ctx, manifest)
         for s in plan:
             _upsert_scene_state(ctx, s, s["status"], s.get("ms", 0))
@@ -732,7 +804,7 @@ async def _f02_v2(ctx, build: dict, profile: dict, frames: int, frames_dir: Path
             if s["status"] != "done":
                 _upsert_scene_state(ctx, s, "failed", s.get("ms", 0))
         raise RuntimeError("E_SCENE_FAILED: " + "; ".join(f"{a}-{b}: {e}" for a, b, e in failures))
-    manifest = build_manifest(ctx["run_id"], "final", profile, plan, completed)
+    manifest = build_manifest(ctx["run_id"], "final", profile, plan, completed, final_spec)
     _write_manifest(ctx, manifest, artifact=True)
     for s in plan:
         _upsert_scene_state(ctx, s, s["status"], s.get("ms", 0))
@@ -765,11 +837,14 @@ async def f02(ctx):
 async def f03(ctx):
     import numpy as np
     from PIL import Image
+    from ...services.render_profiles import qa_policy
     profile = _profile(ctx)
     frames = profile["frames"] or round(profile["duration"] * profile["fps"])
     frames_dir = _project_file(ctx, "out/frames")
     manifest_p = _project_file(ctx, "renders/final/manifest.json")
     manifest = _read_json(manifest_p) if manifest_p.exists() else {}
+    profile_name = manifest.get("profile") or "final"
+    policy = qa_policy(profile_name)
     scenes = manifest.get("scenes") or []
     scene_by_frame = {}
     stats = {}
@@ -799,7 +874,7 @@ async def f03(ctx):
             if sid and sid in stats:
                 stats[sid]["black"] += 1
         h = hashlib.sha256(g.tobytes()).hexdigest()
-        if h == prev_hash:
+        if policy["dups"] and h == prev_hash:
             dups += 1
             if sid and sid in stats:
                 stats[sid]["dups"] += 1
@@ -830,7 +905,8 @@ async def f03(ctx):
     ratio = dups / max(frames, 1)
     # 规格 §6.2：重复帧=警告（有意停顿的影片必然有重复；§4.6 的 <0.1% 硬门与其冲突，按 §6.2 执行）
     dup_warning = ratio >= 0.001
-    _artifact_json(ctx, "frame_report.json", {"frames": frames, "missing": [], "black": [],
+    _artifact_json(ctx, "frame_report.json", {"frames": frames, "profile": profile_name,
+                                              "policy": policy, "missing": [], "black": [],
                                               "dups": dups, "dup_ratio": round(ratio, 4),
                                               "dup_warning": dup_warning,
                                               "scene_report": scene_report})
@@ -839,11 +915,13 @@ async def f03(ctx):
 @executor("ffmpeg-encode")
 async def f04(ctx):
     profile = _profile(ctx)
+    final = _profiles(ctx)["final"]
     fps = profile["fps"]
     out = _project_file(ctx, "out/film/intermediate.mp4")
     out.parent.mkdir(parents=True, exist_ok=True)
     argv = ["ffmpeg", "-y", "-framerate", str(fps), "-i", str(_project_file(ctx, "out/frames/%04d.png")),
-            "-c:v", "libx264", "-crf", str(ctx["params"].get("crf", 17)), "-preset", "medium",
+            "-c:v", "libx264", "-crf", str(ctx["params"].get("crf", final["crf"])),
+            "-preset", str(ctx["params"].get("preset", final["preset"])),
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)]
     res = await ctx["runner"].run(argv, timeout=600,
                                   on_progress=None)
@@ -857,7 +935,12 @@ async def f04(ctx):
 @executor("video-qa")
 async def f05(ctx):
     import httpx  # noqa: F401
+    from ...models import Run
+    from ...services.render_profiles import ensure_final_ready
     profile = _profile(ctx)
+    if not ctx.get("run_imported"):
+        run = ctx["session"].get(Run, ctx["run_id"])
+        ensure_final_ready(ctx["session"], run, ctx["project_root"], False, profile)
     # F04 可能跨项目缓存命中：mp4 在旧项目内容寻址目录，项目内路径不存在
     mp4 = _upstream_file(ctx, "F04", "MP4", _project_file(ctx, "out/film/intermediate.mp4"))
     ff = await _ffprobe(ctx, mp4)
@@ -1047,6 +1130,11 @@ async def g06(ctx):
 
 @executor("package")
 async def g07(ctx):
+    from ...models import Run
+    from ...services.render_profiles import ensure_final_ready
+    if not ctx.get("run_imported"):
+        run = ctx["session"].get(Run, ctx["run_id"])
+        ensure_final_ready(ctx["session"], run, ctx["project_root"], False, _profile(ctx))
     video = _upstream_file(ctx, "F04", "MP4", _project_file(ctx, "out/film/intermediate.mp4"))
     mix = _project_file(ctx, "card/mix.wav")
     master = _project_file(ctx, "out/film/master.mp4")

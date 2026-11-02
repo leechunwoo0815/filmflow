@@ -126,12 +126,13 @@ def dirty_ranges(plan: list[dict], frames: int) -> list[tuple[int, int]]:
 
 
 def build_manifest(run_id: int, profile_name: str, profile: dict, plan: list[dict],
-                   ranges: list[tuple[int, int]]) -> dict:
+                   ranges: list[tuple[int, int]], profile_spec: dict | None = None) -> dict:
     frames = int(profile.get("frames") or 0)
     # ranges 可能是 (start,end) 或 (start,end,ms)
     rendered = sum(int(r[1]) - int(r[0]) for r in ranges)
     return {
         "schema": MANIFEST_SCHEMA, "run_id": run_id, "profile": profile_name,
+        "profileSpec": dict(profile_spec or {}),
         "fps": int(profile.get("fps") or 24), "frames": frames,
         "scenes": [{"id": s["id"], "hash": s["hash"], "range": s["range"],
                     "status": s["status"], "ms": s.get("ms", 0)} for s in plan],

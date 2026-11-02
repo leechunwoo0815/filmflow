@@ -26,17 +26,14 @@ from ..errors import ApiError, ErrorCode, not_found
 from ..models import Artifact, Project, Run, Style, Workflow
 from . import engines as engines_svc
 from . import project_docs as docs_svc
+from . import render_profiles as render_profiles_svc
 from ..engine.cachekey import file_sha256
 from ..engine.render_manifest import scene_hash
 from ..engine.scene.canonical import content_hash
 from ..engine.scene.compiler import compile_scene
 
-RENDERER_VER = "preview-1.4.0"  # 单帧 PNG；片段 full-res JPEG→Lanczos
-PREVIEW_PROFILES = {
-    "draft": {"width": 960, "height": 540, "fps": 12, "crf": 28, "preset": "ultrafast"},
-    "review": {"width": 1280, "height": 720, "fps": 24, "crf": 22, "preset": "fast"},
-    "final": {"width": 1920, "height": 1080, "fps": 24, "crf": 17, "preset": "medium"},
-}
+RENDERER_VER = "preview-1.5.0"  # 档位来自 render.profile.json；out spec 进缓存键
+PREVIEW_PROFILES = render_profiles_svc.DEFAULT_PROFILES
 CACHE_LIMIT_BYTES = 500 * 1024 * 1024
 HTML_PATH = Path(__file__).resolve().parents[3] / "engines/riso/entry/film_spec.html"
 
@@ -65,6 +62,7 @@ class PreviewContext:
     font_css: str
     font_sha: str
     imported: bool
+    profiles: dict = field(default_factory=dict)
     run_id: int | None = None
 
 
@@ -201,11 +199,12 @@ def resolve_context(session: Session, project_id: int) -> PreviewContext:
             font_sha = file_sha256(str(ttf))
         elif font_css:
             font_sha = content_hash(font_css)
+    profiles = render_profiles_svc.resolve(str(root), profile, allow_low_final=imported)
     return PreviewContext(
         project_id=project_id, root=root, profile=profile, script=script, timeline=timeline,
         scenes=scenes, transitions=_default_transitions(scenes), tokens=tokens,
         tokens_sha=content_hash(tokens), engine_id=engine_id, engine_sha=engine_sha,
-        font_css=font_css, font_sha=font_sha, imported=imported,
+        font_css=font_css, font_sha=font_sha, imported=imported, profiles=profiles,
         run_id=run.id if run else None)
 
 
@@ -241,11 +240,11 @@ def _programs_sha(programs: list[dict]) -> str:
     return content_hash([p["program"]["program_sha"] for p in programs])
 
 
-def _output_profile(name: str) -> dict:
-    prof = PREVIEW_PROFILES.get(name)
+def _output_profile(name: str, ctx: PreviewContext | None = None) -> dict:
+    prof = (ctx.profiles if ctx else {}).get(name) or PREVIEW_PROFILES.get(name)
     if not prof:
         raise ApiError(ErrorCode.E_VALIDATION, f"未知预览档位：{name}")
-    return prof
+    return {k: prof[k] for k in ("width", "height", "fps", "crf", "preset")}
 
 
 def _clamp_time(scene: dict, t: float | None, fps: int) -> float:
@@ -512,19 +511,20 @@ class StillResult:
 
 
 def _still_key(scene_key: str, t: float, profile: str, out: dict, wm: bool) -> str:
-    raw = f"{scene_key}|{t:.4f}|{profile}|{out['width']}x{out['height']}|{RENDERER_VER}|{int(wm)}"
+    raw = (f"{scene_key}|{t:.4f}|{profile}|{content_hash(out)}|"
+           f"{RENDERER_VER}|{int(wm)}")
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
 async def render_still(session: Session, project_id: int, scene_id: str, t: float | None = None,
                        profile: str = "draft", watermark: bool = True,
-                       debounce: bool = True) -> StillResult:
+                       debounce: bool = True, motion: bool = False) -> StillResult:
     t0 = time.monotonic()
     ctx = resolve_context(session, project_id)
-    out = _output_profile(profile)
+    out = _output_profile(profile, ctx)
     scene = _scene_by_id(ctx, scene_id)
     at = _clamp_time(scene, t, ctx.profile["fps"])
-    programs = build_programs(ctx, motion=False, scene_id=scene_id)
+    programs = build_programs(ctx, motion=motion, scene_id=scene_id)
     shash = scene_hash(programs[0]["program"], ctx.tokens_sha, ctx.engine_sha,
                        ctx.font_sha, ctx.profile, [], scene_id)
     cache = PreviewCache(project_id)
@@ -628,8 +628,8 @@ def _new_job(project_id: int, kind: str, profile: str, **kw) -> PreviewJob:
 def create_segment_job(session: Session, project_id: int, scene_id: str, start: float,
                        end: float, profile: str = "draft",
                        watermark: bool = True) -> PreviewJob:
-    _output_profile(profile)
     ctx = resolve_context(session, project_id)
+    _output_profile(profile, ctx)
     scene = _scene_by_id(ctx, scene_id)
     if start < 0 or end > ctx.profile["duration"] + 1e-3 or end <= start:
         raise ApiError(ErrorCode.E_VALIDATION,
@@ -642,8 +642,8 @@ def create_segment_job(session: Session, project_id: int, scene_id: str, start: 
 
 def create_film_job(session: Session, project_id: int, profile: str = "draft",
                     watermark: bool = True) -> PreviewJob:
-    _output_profile(profile)
     ctx = resolve_context(session, project_id)
+    _output_profile(profile, ctx)
     job = _new_job(project_id, "film", profile,
                    start=0.0, end=round(ctx.profile["duration"], 3))
     job.task = asyncio.create_task(_run_job(job, watermark))
@@ -748,7 +748,7 @@ async def _run_job(job: PreviewJob, watermark: bool) -> None:
         job.status = "running"
         with Session(db_engine) as session:
             ctx = resolve_context(session, job.project_id)
-        out = _output_profile(job.profile)
+        out = _output_profile(job.profile, ctx)
         if job.kind == "segment":
             start = float(job.start or 0)
             end = float(job.end or 0)

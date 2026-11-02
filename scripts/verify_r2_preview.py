@@ -60,10 +60,11 @@ def _decision_loop(run_id: int, project_id: int, until: tuple[str, ...] = ("F06"
         pending = _pending(run_id)
         if "B08" in pending:
             c.post("/gates/B08/decide", json={"run_id": run_id, "decision": "approved", "author": "verify"})
-        if "D03" in pending and st.get("D03") != "succeeded" and not viewed:
-            for i in range(3):
-                c.post(f"/projects/{project_id}/stills/viewed", json={"scene": f"S0{i + 1}", "t": 0})
-            viewed = True
+        if "D03" in pending and st.get("D02") in ("succeeded", "cached"):
+            if not viewed:
+                for i in range(3):
+                    c.post(f"/projects/{project_id}/stills/viewed", json={"scene": f"S0{i + 1}", "t": 0})
+                viewed = True
             c.post("/gates/D03/decide", json={"run_id": run_id, "decision": "approved", "author": "verify"})
         for gate in ("D05", "E07", "F06"):
             if gate in pending:
@@ -190,10 +191,11 @@ def main() -> int:
         pending = _pending(run2)
         if "B08" in pending:
             c.post("/gates/B08/decide", json={"run_id": run2, "decision": "approved", "author": "verify"})
-        if "D03" in pending and st.get("D03") != "succeeded" and not viewed2:
-            for i in range(3):
-                c.post(f"/projects/{pid}/stills/viewed", json={"scene": f"S0{i + 1}", "t": 0})
-            viewed2 = True
+        if "D03" in pending and st.get("D02") in ("succeeded", "cached"):
+            if not viewed2:
+                for i in range(3):
+                    c.post(f"/projects/{pid}/stills/viewed", json={"scene": f"S0{i + 1}", "t": 0})
+                viewed2 = True
             c.post("/gates/D03/decide", json={"run_id": run2, "decision": "approved", "author": "verify"})
         for gate in ("D05", "E07", "F06"):
             if gate in pending:

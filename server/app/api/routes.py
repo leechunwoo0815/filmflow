@@ -26,6 +26,7 @@ from ..services import environment as env_svc
 from ..services import engines as engines_svc
 from ..services import preview as preview_svc
 from ..services import project_docs as docs_svc
+from ..services import render_profiles as profiles_svc
 from ..services import recommend as rec_svc
 from ..services import style_index as idx_svc
 
@@ -661,7 +662,8 @@ async def project_preview_still(project_id: int, payload: dict,
         t=float(t) if t is not None else None,
         profile=str(payload.get("profile") or "draft"),
         watermark=bool(payload.get("watermark", True)),
-        debounce=bool(payload.get("debounce", True)))
+        debounce=bool(payload.get("debounce", True)),
+        motion=bool(payload.get("motion", False)))
     return Response(content=res.png, media_type="image/png", headers={
         "X-Preview-Cache": "hit" if res.cached else "miss",
         "X-Preview-Ms": str(res.ms),
@@ -733,6 +735,30 @@ async def project_preview_cache(project_id: int, session: Session = Depends(get_
     return preview_svc.PreviewCache(project_id).stats()
 
 
+# ---------- 渲染档位（FR-24） ----------
+
+@router.get("/projects/{project_id}/render-profile")
+async def project_render_profile(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    imported = docs_svc.is_imported(session, project_id)
+    return profiles_svc.resolve(proj.root, _project_profile(proj.root),
+                                allow_low_final=imported)
+
+
+@router.put("/projects/{project_id}/render-profile")
+async def project_render_profile_update(project_id: int, payload: dict,
+                                        session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    root = Path(proj.root).resolve()
+    _require_workspace_root(root)
+    imported = docs_svc.is_imported(session, project_id)
+    resolved = profiles_svc.save(root, payload, _project_profile(root),
+                                 allow_low_final=imported)
+    audit(session, "render.profile", f"project:{project_id}",
+          after={k: resolved[k] for k in ("draft", "review", "final")})
+    return resolved
+
+
 @router.get("/artifacts/{artifact_id}/file")
 async def artifact_file(artifact_id: int, session: Session = Depends(get_session)):
     a = session.get(Artifact, artifact_id)
@@ -766,6 +792,11 @@ async def gate_decide(gate_id: str, payload: dict, session: Session = Depends(ge
     decision = payload.get("decision")
     if decision not in ("approved", "rejected"):
         raise ApiError(ErrorCode.E_VALIDATION, "decision 必须是 approved/rejected")
+    if gate_id == "G07" and decision == "approved":
+        wf = session.get(Workflow, run.workflow_id)
+        imported = bool(((((wf.graph_json or {}) if wf else {}).get("meta")) or {}).get("imported"))
+        root = re_mod._project_root(session, run)
+        profiles_svc.ensure_final_ready(session, run, root, imported, _project_profile(root))
     # 门前置校验（如 D03 ≥3 区域）
     precheck = _gate_precheck(session, run_id, gate_id)
     if precheck and decision == "approved":
@@ -939,6 +970,19 @@ def _project_or_404(session: Session, project_id: int) -> Project:
     if not proj:
         raise not_found("项目")
     return proj
+
+
+def _project_profile(root: str | Path) -> dict:
+    p = Path(root) / "project.profile.json"
+    try:
+        prof = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        prof = {}
+    fps = int(prof.get("fps") or 24)
+    duration = float(prof.get("duration") or 0)
+    return {"width": int(prof.get("width") or 1920), "height": int(prof.get("height") or 1080),
+            "fps": fps, "duration": duration,
+            "frames": int(prof.get("frames") or round(duration * fps))}
 
 
 def _doc_impact(kind: str) -> dict:

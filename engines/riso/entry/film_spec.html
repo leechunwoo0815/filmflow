@@ -30,6 +30,9 @@ const START = parseInt(q.get('start') || '0', 10);
 const END = parseInt(q.get('end') || '0', 10);
 const TOTAL = parseInt(q.get('total') || '0', 10);
 const SCALE = parseFloat(q.get('scale') || '1');
+const OUT_W = parseInt(q.get('outW') || '0', 10);
+const OUT_H = parseInt(q.get('outH') || '0', 10);
+const PROXY_FPS = parseFloat(q.get('proxy_fps') || '0');
 
 function title(s) { document.title = s; }
 function fail(e) {
@@ -155,19 +158,20 @@ async function boot() {
   }
   if (MODE === 'proxy') {
     const out = document.createElement('canvas');
-    out.width = Math.round(W * (SCALE || 0.25)); out.height = Math.round(H * (SCALE || 0.25));
+    out.width = OUT_W || Math.round(W * (SCALE || 0.25));
+    out.height = OUT_H || Math.round(H * (SCALE || 0.25));
     const ctx = out.getContext('2d');
-    const total = TOTAL || Math.round((programs[programs.length - 1].end) * 12);
-    const step = FPS / 12;
+    const pfps = PROXY_FPS || 12;
+    const total = TOTAL || Math.round((programs[programs.length - 1].end) * pfps);
     for (let i = 0; i < total; i++) {
-      const t = (i * step) / FPS;
+      const t = i / pfps;
       const canvas = SCENE_RENDER.renderFrameAt(programs, trs, t, { W, H });
       ctx.clearRect(0, 0, out.width, out.height);
       ctx.drawImage(canvas, 0, 0, out.width, out.height);
       const data = out.toDataURL('image/png');
       const r = await fetch('/pframe?i=' + i, { method: 'POST', body: data });
       if (!r.ok) throw new Error('pframe ' + i + ' ' + r.status);
-      if (i % 12 === 0) title('PROXY ' + i + '/' + total);
+      if (i % Math.max(1, Math.round(pfps)) === 0) title('PROXY ' + i + '/' + total);
     }
     await fetch('/done', { method: 'POST' });
     title('PROXY_DONE');

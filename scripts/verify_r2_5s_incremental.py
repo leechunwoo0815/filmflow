@@ -39,7 +39,7 @@ def drive(run_id: int, project_id: int, label: str) -> None:
         pending = {p["gate"] for p in _req("GET", f"/gates/{run_id}/pending")["items"]}
         if "B08" in pending:
             c.post("/gates/B08/decide", json={"run_id": run_id, "decision": "approved", "author": "verify"})
-        if "D03" in pending and st.get("D03") != "succeeded":
+        if "D03" in pending and st.get("D02") in ("succeeded", "cached"):
             while viewed < 3:
                 c.post(f"/projects/{project_id}/stills/viewed",
                        json={"scene": f"S0{viewed + 1}", "t": 0})

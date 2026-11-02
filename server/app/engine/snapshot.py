@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 
 from ..models import ProjectDoc, Run, Workflow
 from ..services.project_docs import build_script_doc, build_timeline_doc, content_hash
+from ..services.render_profiles import resolve as resolve_render_profiles
 
 SNAPSHOT_SCHEMA = "filmflow.snapshot/1"
 
@@ -67,12 +68,16 @@ def ensure_run_snapshot(session: Session, run: Run, project_root: str) -> dict:
             if kind in docs:
                 (run_dir / f"{kind}.doc.json").write_text(
                     json.dumps(docs[kind]["content"], ensure_ascii=False, indent=1), encoding="utf-8")
+    render_profiles = resolve_render_profiles(project_root, profile, allow_low_final=imported)
     snapshot = {
         "schema": SNAPSHOT_SCHEMA, "run_id": run.id, "imported": imported,
-        "profile": profile, "docs": docs,
+        "profile": profile, "render_profiles": render_profiles, "docs": docs,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    snapshot["doc_snapshot_sha"] = content_hash({"docs": docs, "profile": profile, "imported": imported})
+    snapshot["doc_snapshot_sha"] = content_hash({
+        "docs": docs, "profile": profile, "render_profiles": render_profiles,
+        "imported": imported,
+    })
     tmp = snap_path.with_suffix(".tmp")
     tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(snap_path)

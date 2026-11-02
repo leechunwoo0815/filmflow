@@ -19,6 +19,7 @@ from .executors import REGISTRY
 from .locks import LockManager
 from .runner import ProcessRunner
 from .snapshot import ensure_run_snapshot
+from ..services.render_profiles import PROFILE_NODES, profiles_sha
 
 ACTIVE: dict[int, asyncio.Task] = {}
 CANCELS: dict[int, asyncio.Event] = {}
@@ -273,7 +274,11 @@ async def execute_node(run_id: int, node_id: str) -> dict:
 
         input_hashes = _upstream_hashes(session, run_id, node_id, states, project_root)
         doc_sha = snapshot.get("doc_snapshot_sha", "") if node_id in DOC_NODES else ""
-        key = node_cache_key(node_id, EXECUTOR_VERSION, params, input_hashes,
+        cache_params = params
+        run_profiles = snapshot.get("render_profiles") or {}
+        if node_id in PROFILE_NODES and run_profiles:
+            cache_params = {**params, "renderProfilesSha": profiles_sha(run_profiles)}
+        key = node_cache_key(node_id, EXECUTOR_VERSION, cache_params, input_hashes,
                              run.caps_json or [], doc_sha)
 
         # 缓存命中：同 workflow 任意 run 的同键成功记录（规格 §5.3）
@@ -329,6 +334,7 @@ async def execute_node(run_id: int, node_id: str) -> dict:
             "doc_snapshot_sha": snapshot.get("doc_snapshot_sha", ""),
             "run_imported": bool(snapshot.get("imported")),
             "run_profile": snapshot.get("profile") or {},
+            "run_render_profiles": snapshot.get("render_profiles") or {},
         }
         try:
             fn = REGISTRY[N[node_id]["executor"]]
