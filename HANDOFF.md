@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-02 · R2.0 Phase 0.1–7 已完成
-> 当前基线：Phase 7 代码 `f5d5de1` / tag `r2-jobs`；交接文档提交见 `git log` 最新一条。
+> 更新时间：2026-11-02 · R2.0 Phase 0.1–8 已完成
+> 当前基线：Phase 8 代码 `371ea4b` / tag `r2-golden`；交接文档提交见 `git log` 最新一条。
 > 本文是**唯一权威接手入口**；规格 `../filmflow-web-agent-prompt.md` 仍是宪法，v2 需求以
 > `docs/prd/PRD-002-production-workbench.md` + `docs/adr/ADR-0005-v2-ratification.md` 为准。
 > **先读本文 §0、§1、§6，再读 `AGENTS.md`、PRD-002、ADR-0005、`vendor/README.md`。**
@@ -24,7 +24,7 @@ curl -s http://127.0.0.1:7860/api/health
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 78 passed
+cd server && uv run pytest tests -q                       # 83 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景
 uv run --project server python scripts/smoke_m1.py         # API 冒烟：46 节点 / 93 边
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量验收
@@ -35,17 +35,17 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 
 ### 0.3 当前下一步
 
-**从 Phase 8（黄金项目与视觉回归 / FR-30）开始，不要重做 Phase 1–7。**
-Phase 7 已完成并通过验收（见 §2.6 / §6.3）：Job 表/租约/心跳/启动恢复/队列 API/孤儿清理；
-kill -9 后 F02 22.3s 恢复、frames=120、单 Job attempts=1。下一步按 §6.4 做 5s/15s/40s 黄金项目、
-SSIM/pHash 回归、BDD 与干净 rumor 46/46；档位/预览 UI 留 R3。
+**R2.0 Phase 0.1–8 全部完成，进入收尾验收，不要自行扩范围。**
+8 个 FR 全部有证据（见 §1.2、§2.4–2.7、`docs/process/r2-acceptance.md`）：
+5s/15s/40s 黄金、40s 增量 9.69%/墙钟 13.05%、干净 rumor 46/46 + master 39.5s、83 tests。
+下一步只做老板验收/申请 R2.5；预览与档位 UI 接线留 R3，G05/G06 完整音频修复留 R2.5。
 
 ### 0.4 不要做的事
 
 - 不要重写 RunEngine 的 caps / 门 / 三类边 / content_hash / 断点续跑。
 - 不要新增 DAG 节点；46 节点/7 阶段/93 边不变。
 - 不要把新项目回退到 `legacy_entry`；只有 `meta.imported=true` 的旧项目可走 v1 harness。
-- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 `2.4.0`）。
+- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 `2.4.2`）。
 - 不要把 76MB 风格库/示例 mp4 提交进 git；不要把 `vendor/fy-code-animation` import 进服务端。
 - 不要调用在线生成模型、上传文件、开第二个 Chrome。
 - 不要用“页面能点”代替真实产物；所有完成申报必须附测试输出 + 产物路径/sha/时长 + curl/截图。
@@ -58,17 +58,18 @@ SSIM/pHash 回归、BDD 与干净 rumor 46/46；档位/预览 UI 留 R3。
 
 | 项 | 值 |
 |---|---|
-| Phase 7 代码 | `f5d5de1`（tag `r2-jobs`）；当前 HEAD 以 `git log` 为准 |
+| Phase 8 代码 | `371ea4b`（tag `r2-golden`）；当前 HEAD 以 `git log` 为准 |
 | Phase 1 tag | `r2-edge-fix` → `4f9e381` |
 | Phase 3 tag | `r2-scene-dsl` → `53e6462` |
 | Phase 4 tag | `r2-incremental` → `07b5237` |
 | Phase 5 tag | `r2-preview` → `25ff0d9` |
 | Phase 6 tag | `r2-profiles` → `426aa20` |
 | Phase 7 tag | `r2-jobs` → `f5d5de1` |
-| 测试 | **78 passed**（unit 63 / integration 12 / BDD 3） |
+| Phase 8 tag | `r2-golden` → `371ea4b` |
+| 测试 | **83 passed**（unit 64 / integration 12 / BDD 7） |
 | UI E2E | 8 场景 / 9 检查全绿（约 16–20s） |
 | API 冒烟 | 46 节点 / **93 边**通过 |
-| EXECUTOR_VERSION | **2.4.0**（`server/app/engine/cachekey.py`） |
+| EXECUTOR_VERSION | **2.4.2**（`server/app/engine/cachekey.py`） |
 
 ### 1.2 R2.0 八个 FR 的真实状态
 
@@ -81,13 +82,13 @@ SSIM/pHash 回归、BDD 与干净 rumor 46/46；档位/预览 UI 留 R3。
 | FR-24 draft/review/final | [DONE，UI 待接] | `render.profile.json` + API；D02 review/draft 静帧；E05 720p/24 代理；F02 只跑 final 且 manifest 写 `profileSpec`；F05/G07 `E_FINAL_REQUIRED`；Preview draft/review；切档不重跑 final。 |
 | FR-25 文档模型/快照 | [DONE] | ProjectDoc/DocRevision、409、版本/diff/回滚、Run 快照、新项目 task.json 只读、DocsEditor 自动保存/撤销/影响预估。 |
 | FR-29 持久化 Job/恢复 | [DONE，单进程] | Job 表/租约/心跳/尝试次数/队列 API/启动恢复/孤儿清理；kill -9 后 F02 22.3s 恢复。预览 Job 不自动重试。 |
-| FR-30 黄金项目 | [TODO] | 无 `fixtures/golden/`、`golden_run.py`、SSIM/pHash 回归、BDD 新场景。 |
+| FR-30 黄金项目 | [DONE] | 5s/15s/40s fixture + baseline；`golden_run.py` 6 帧 SSIM≥0.98/pHash≤6 + diff；BDD 4 场景；干净 rumor 46/46。 |
 
 **重要诚实项**：
-- `smoke_m1.py` 的 46/46 是 **run #1 的旧状态/缓存**，不是 v2 代码上的全新 rumor 重渲。
-- Phase 8 必须用**干净项目副本**（或删掉 `out/frames` 并强制全量）新建 Run，验证 imported legacy
-  仍 46/46、master 39.5s；不要只看旧 NodeRun 的 succeeded。
-- 5s 项目的 66/120=55% 是因为 S02 占全片 66 帧；40s/5 场的 204/948=21.5% 才对应 FR-22 的 25% 指标。
+- `smoke_m1.py` 的 46/46 仍是旧 run #1 状态；Phase 8 已用**干净副本** `rumor-clean-20261102`
+  run 150 重渲：46/46 succeeded、master 39.5s（manual 对齐）。
+- 40s 已实测：改 S03 只渲 93/960=9.69%，F02 墙钟 13.05%；不再用 204/948 的规划数字。
+- 5s 项目的 66/120=55% 是因为 S02 占全片 66 帧；40s 的 9.69% 才是 FR-22 的正式证据。
 
 ### 1.3 环境
 
@@ -103,6 +104,10 @@ SSIM/pHash 回归、BDD 与干净 rumor 46/46；档位/预览 UI 留 R3。
   （project 47 / run 51，manifest 66/54）。
 - Phase 5 验收项目：`/Users/litianyu/cc-projects/ai-v/filmflow-projects/r2-preview-98`
   （project 76 / run 86→87；预览缓存 75 文件 / 63MB；`out/preview/segment_S01_0.0_5.0_draft.mp4`）。
+- Phase 6 档位项目：`filmflow-projects/r2-profiles-109`（run 111）。
+- Phase 7 恢复项目：`filmflow-projects/r2-recovery-120`（run 134）。
+- Phase 8 黄金：`filmflow-projects/golden-{5s,15s,40s}-*`（40s run 154→155）。
+- 干净 rumor：`filmflow-projects/rumor-clean-20261102`（run 150；master 39.5s）。
 
 ---
 
@@ -140,7 +145,7 @@ PASS: R2.0 Phase 4 5s 增量验收通过
 ### 2.3 回归
 
 ```bash
-cd server && uv run pytest tests -q                       # 78 passed
+cd server && uv run pytest tests -q                       # 83 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # 8 场景
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
 ```
@@ -209,12 +214,33 @@ PASS: R2.0 Phase 7 崩溃恢复验收通过
 - 连续运行时 `verify_r2_5s_incremental` / `verify_r2_preview` / `verify_r2_profiles` 仍通过
   （预览 attached p50 1.50s / p95 1.92s，5s 片段 13.2s）。
 
-## 3. R2.0 Phase 0.1–7 实施记录
+### 2.7 Phase 8 黄金项目与视觉回归（脚本可复现）
+
+`scripts/golden_run.py` 实测（H2 / 1920×1080 / 24fps，baseline 480×270）：
+
+```
+5s  (run 152): 6/6 SSIM=1.000000 pHashDist=0
+15s (run 153): 6/6 SSIM=1.000000 pHashDist=0
+40s (run 154): 6/6 SSIM=1.000000 pHashDist=0
+40s 增量 (run 154→155): rendered=93 reused=867 / 960（9.69%）
+  full F02 wall=108.48s；incremental F02 wall=14.15s（13.05%）
+40s draft 预览：480 帧 / 100.3s（≤8min）
+40s review 预览：960 帧 / 245.6s（≤18min）
+```
+
+- 5s/15s/40s fixture 与 baseline 在 `fixtures/golden/`；40s 5 场，改 S03 后只脏 93 帧。
+- 干净 rumor 副本（`filmflow-projects/rumor-clean-20261102`，run 150）：
+  **46/46 succeeded**、0 failed/skipped；`out/film/master.mp4` 70,204,586 bytes、39.500s、H.264+AAC。
+  本机无 whisper CLI/model，按 ADR D7 使用 **manual alignment**（reference 的 5 段人工打点）；G02 `source=manual`。
+- BDD 新增 4 场景（参数化出片/单场景增量/预览优先级/交付 final），共 7 个 BDD；全量 **83 tests**。
+- 40s golden 全链约 4:25；最终 40s 增量在 2.4.2 上重测为 93/960、13.05%。
+
+## 3. R2.0 Phase 0.1–8 实施记录
 
 ### Phase 0.1 · 基线修复（提交 `4f9e381` 的一部分）
 
 - `server/tests/conftest.py`：session 级 autouse `init_db()`，修复 BDD 在干净库首跑
-  `no such table: style`；现在干净环境首跑全绿（当前 78 项）。
+  `no such table: style`；现在干净环境首跑全绿（当前 83 项）。
 - `dev.sh`：macOS 自带 bash 3.2 不支持 `wait -n`，改为 `kill -0` 轮询；否则脚本启动即退出。
 - 文档同步测试计数。
 
@@ -354,7 +380,22 @@ PASS: R2.0 Phase 7 崩溃恢复验收通过
 - 队列 API：`GET /jobs`、`GET /queue`、`POST /jobs/:id/cancel|retry`；
   优先级 preview 100 / interactive 80 / batch 40 / delivery 20。
 - PreviewService：segment/film Job 落库（priority 100），进度镜像；CDP 竞态回退临时 Chrome/429。
-- EXECUTOR_VERSION 2.4.0；78 tests。
+- Phase 7 结束时 EXECUTOR_VERSION 2.4.0；78 tests（Phase 8 后为 2.4.2/83）。
+
+### Phase 8 · 黄金项目/视觉回归（tag `r2-golden`）
+
+- `fixtures/golden/{5s,15s,40s}/spec.json` + `baseline/`（6 帧 480×270 PNG + pHash baseline）。
+- `scripts/golden_run.py`：建项目 → F06 → 文案断言（场景 meaning 覆盖所有句）→ 6 帧 SSIM≥0.98/pHash≤6
+  → 失败写 `out/golden_diff_<i>.png`；`--update` 生成 baseline。
+- 40s fixture：5 句/5 场，S03 为短句（3.39s），改 S03 理论脏 93/960=9.69%。
+- `scripts/verify_r2_recovery.py` 与 golden 一起作为 Phase 7/8 可复现证据。
+- BDD `bdd/features/r2-workbench.feature` + `server/tests/bdd/test_r2_workbench_bdd.py` 4 场景。
+- 修复（Phase 8 发现）：
+  - `timeline` doc 在 materialize 初始化、旧项目首次快照补持久化；改文案不再重建时间轴。
+  - D02/E05/F02/F04/G01/G05/G07 缓存加入项目根，避免文件产物留在旧项目（G07 master 曾不落新项目）。
+  - B05/compiler 去掉 font-family 字重后缀（`Noto Sans SC 900/500` 导致 Canvas 文字不渲染）。
+- 干净 rumor：手动对齐回退（无 whisper 模型）→ 46/46、master 39.5s。
+- EXECUTOR_VERSION 2.4.2；83 tests（unit 64 / integration 12 / BDD 7）。
 
 ---
 
@@ -404,9 +445,10 @@ docs(当前) + tokens/font/engine
 
 ### 4.3 缓存
 
-- `EXECUTOR_VERSION=2.4.0`，任何执行器行为变化必须升。
+- `EXECUTOR_VERSION=2.4.2`，任何执行器行为变化必须升。
 - 节点缓存键 = version + params + 上游产物 sha + caps + `doc_snapshot_sha`（DOC_NODES）。
   `PROFILE_NODES` 额外加入 `renderProfilesSha`；改 `render.profile.json` 不会复用旧档位产物。
+  `PROJECT_LOCAL_NODES`（D02/E05/F02/F04/G01/G05/G07）额外加入 `projectRoot`，文件产物不会跨项目复用。
 - 场景 manifest hash = program + tokens lock + engine sha + **C02 源字体** + profile + 邻接 transitions。
 - 跨项目缓存注意：E03 binding 已内联 program；F02 读 E03/E04 artifacts；C02/C03 有产物路径回退；
   B06 `task_id` 已进缓存键。
@@ -436,6 +478,7 @@ docs(当前) + tokens/font/engine
 | 预览服务 | `server/app/services/preview.py`；API 在 `routes.py` 的 `preview/*` |
 | 渲染档位 | `server/app/services/render_profiles.py`、项目 `render.profile.json` |
 | 持久化 Job/恢复 | `server/app/services/jobs.py`、`main.py` lifespan、`runengine.py` |
+| 黄金项目/回归 | `fixtures/golden/`、`scripts/golden_run.py`、`server/tests/bdd/test_r2_workbench_bdd.py` |
 | 文档模型/API | `server/app/services/project_docs.py`、`server/app/api/routes.py` |
 | 引擎页 | `engines/riso/entry/{still_spec,film_spec}.html`、`assets/{scene-kit,scene-render,riso-core}.js` |
 | 编辑器 | `web/src/app/editor/page.tsx`、`web/src/components/DocsEditor.tsx` |
@@ -445,7 +488,7 @@ docs(当前) + tokens/font/engine
 
 ## 5. R2.0 新增踩坑（按优先级）
 
-1. **`EXECUTOR_VERSION`**：改任何执行器行为不升版 = 缓存返回旧行为。当前 `2.4.0`。
+1. **`EXECUTOR_VERSION`**：改任何执行器行为不升版 = 缓存返回旧行为。当前 `2.4.2`。
 2. **doc 快照**：A01/B02/B03/B06/D01/E01/E03 的缓存键必须含 `doc_snapshot_sha`；新增读文档的
    执行器要加入 `DOC_NODES`，否则改文档不失效。
 3. **字体 hash**：manifest `font_sha` 用 **C02 源字体**，不要用 C04 子集 CSS（随文案变化会让
@@ -526,6 +569,22 @@ docs(当前) + tokens/font/engine
     PreviewService 的 `_INTERACTIVE` 帧间让位实现，不要以为改 priority 就会抢占 RunEngine。
 42. **恢复验收**：`verify_r2_recovery.py` 会杀/重启 `dev.sh`；不要在有人正在用工作台时跑。
     恢复时间从 kill -9 计，实测 22.3s（API 重启 3.6s）。
+43. **timeline 必须持久化**：materialize 要初始化 script/profile/timeline 文档；旧项目首次快照会补
+    timeline。否则改一句会按新句长重建时间轴，所有场景时长漂移 → 全量重渲。
+44. **项目本地文件节点**：D02/E05/F02/F04/G01/G05/G07 的缓存键必须含 projectRoot；否则命中旧项目
+    产物会留在旧项目，消费者按当前项目路径找不到（G07 master 曾因此缺失）。
+45. **font-family 不能带字重**：A06 的 type 可能是 `Noto Sans SC 900/500`；B05/compiler 必须剥成
+    `Noto Sans SC`，否则 Canvas `ctx.font` 非法、文字完全不渲染（画面只剩纸纹）。
+46. **golden baseline**：只有有意改视觉时才 `--update`；baseline 与 H2/1920×1080/24fps 绑定。
+    机器/字体/风格库变化会触发 SSIM/pHash 回归，先看 `out/golden_diff_<i>.png`。
+47. **40s fixture 的 S03 是短句**：这是为了让「改 S03」脏帧 ≤25% 的可复现设计；改文案/时长后
+    必须重算 dirty 预期并更新 baseline。
+48. **干净 rumor 无 whisper**：本机没有 whisper CLI/model，G02 用 reference 的人工打点（source=manual，
+    ADR D7 允许）；不要伪报 whisper。G 链完整音频修复仍属 R2.5。
+49. **golden 只看 A–F**：5s/15s/40s 黄金项目没有口播，G01 会失败；golden_run 以 F06 为完成点，
+    只对 D/E/F 失败报错。不要用 G 状态判断黄金通过。
+50. **BDD 不启动 Chrome**：4 个 R2 BDD 场景是服务级（编译/规划/队列/final 校验）；真实出片由
+    golden_run 与 Phase 4/5/6/7 verifier 覆盖。
 
 ---
 
@@ -599,7 +658,7 @@ docs(当前) + tokens/font/engine
   run_id/job_id，避免并发 Run 共用 `/tmp/ff-F02`。
 - 测试：F02 kill -9 → 重启 ≤60s 回 running；连续 3 次崩溃；无孤儿 Chrome；帧数正确。
 
-### 6.4 Phase 8 · 黄金项目与视觉回归（FR-30）——下一步
+### 6.4 Phase 8 · 黄金项目与视觉回归（FR-30）——[DONE]
 
 - `fixtures/golden/5s|15s|40s/`：文案、风格、profile、期望静帧/关键帧、manifest。
 - `scripts/golden_run.py`：建项目 → F06 → 6 帧 SSIM/pHash + program 文字断言 → 报告。
@@ -609,6 +668,24 @@ docs(当前) + tokens/font/engine
 - 视觉回归阈值 SSIM ≥0.98、pHash 汉明 ≤6；失败给 diff 图 + scene/layer 定位。
 - R2.0 全部 DoD 通过后再申请 R2.5；不要自行扩范围。
 
+### 6.5 R2.0 DoD 验收结论（2026-11-02）
+
+| 验收项 | 结果 | 证据 |
+|---|---|---|
+| 5s 新项目全链出用户文案 | PASS | `fixtures/golden/5s`；run 152 |
+| 5s 改 S02 只渲 S02+邻接 | PASS | 66/120；Phase 4 verifier |
+| 40s 改 S03 只渲脏场景 | PASS | 93/960=9.69%；F02 墙钟 13.05%（run 154→155） |
+| 预览 F02 中 p50/p95 | PASS | 1.50s / 1.92s；片段 13.2s；缓存 5ms |
+| 档位 D02/E05/F02/G07 | PASS | D02 双静帧、E05 720p/24、F02 only-final、`E_FINAL_REQUIRED` |
+| 40s draft/review/final 耗时 | PASS | draft 100.3s / review 245.6s / final F02 108.5s（全链 4:25） |
+| Job kill -9 ≤60s | PASS | F02 22.3s 恢复；frames=120；attempts=1 |
+| 黄金 5s/15s/40s | PASS | 6 帧 SSIM 1.0 / pHash 0；40s baseline 已入库 |
+| 干净 rumor imported legacy | PASS | 46/46；master 39.500s H.264+AAC；manual 对齐 |
+| BDD / 测试 | PASS | BDD 7（R2 4 场景）；83 tests |
+
+结论：**R2.0 Phase 0.1–8 DoD 通过**。未开始 R2.5；UI 接线（预览/档位/时间轴）与 G05/G06
+完整音频修复属于后续阶段，详见 §9。
+
 ---
 
 ## 7. 命令、环境、复现
@@ -617,13 +694,14 @@ docs(当前) + tokens/font/engine
 
 ```bash
 ./dev.sh                                                   # API 7860 + Web 3000
-cd server && uv run pytest tests -q                        # 78 passed
+cd server && uv run pytest tests -q                        # 83 passed
 cd .. && uv run --project server python scripts/e2e_ui.py   # UI 8 场景
 uv run --project server python scripts/smoke_m1.py          # 46 / 93
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量
 uv run --project server python scripts/verify_r2_preview.py         # Phase 5 预览验收
 uv run --project server python scripts/verify_r2_profiles.py        # Phase 6 档位验收
 uv run --project server python scripts/verify_r2_recovery.py        # Phase 7 kill -9 恢复验收
+uv run --project server python scripts/golden_run.py --project 5s    # Phase 8 黄金回归（5s/15s/40s）
 uv run --project server python scripts/drive_run.py <run> <project>  # 旧全链驱动
 ```
 
@@ -641,7 +719,7 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 - 真实 DB：`~/.filmflow/filmflow.db`；当前有大量测试 project/run，属正常。
 - 测试 DB：`/tmp/filmflow-test-home/filmflow.db`；删掉后下次 `pytest` 自动重建。
 - 821? 无；8787 是 FrameServer；如果 `EADDRINUSE`，先查健康检查/残留进程。
-- Chrome 残留：`/tmp/ff-F02`、`/tmp/ff-chrome-*`；确认无正在跑的 Run 后可清理。
+- Chrome 残留：`/tmp/ff-{node}-{run_id}`、`/tmp/ff-chrome-{node}-{run_id}`；启动恢复会自动清理。
 - 76MB 风格库路径：`cat vendor/style-library.path`；不入 git。
 
 ---
@@ -662,18 +740,18 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 
 ## 9. 已知限制 / 风险（交接时必须知道）
 
-1. **40s 实测未跑**：5s 增量与档位已过；40s 的 25% 指标目前只有规划单测（204/948=21.5%）。
-   Phase 8 必须真跑 40s final/draft/review 并记录耗时（Phase 6 验收用 5s 外推：draft 13.2s、
-   review 31.6s、final 全链约 1 分钟）。
-2. **rumor 新 Run 未在 v2 上重渲**：smoke 的 46/46 是旧 run #1 状态；Phase 8 用干净副本验证
-   imported legacy；F02 legacy 若 `out/frames` 齐全会提前返回，必须清帧或复制项目。
+1. **40s 已实测**：改 S03 只渲 93/960=9.69%，F02 墙钟 14.15/108.48=13.05%；
+   40s draft 100.3s、review 245.6s、final 全链 4:25。15s/40s 建议 nightly，5s 必跑。
+2. **干净 rumor 已验证**：`rumor-clean-20261102` run 150 为 46/46 succeeded、master 39.5s；
+   本机无 whisper，G02 使用 manual 对齐（source=manual，ADR D7），不是 whisper 实测。
 3. **Preview 已完成但 UI 未接**：API/服务与验收已完成；DocsEditor/编辑器还没有预览按钮（R3）。
    片段 mp4 是 draft crf28，抽帧与 final 归一化 SSIM≈0.974（H.264 损失）；单帧 PNG 为 0.9987。
    Phase 6 的单帧新增 `motion=true`，用于与 final 同刻对比（默认仍是 D01 base program）。
 4. **FR-24 已完成但无档位 UI**：API `GET/PUT /render-profile` 与预览/交付链路可用；页面顶部切档、
    「预计 X 分钟 / 复用 Y 帧」留 R3。draft mp4 crf28 抽帧 vs final SSIM ~0.95，原始 PNG 0.9987。
 5. **Job 已落库但单进程**：Job/租约/心跳/恢复/孤儿清理已完成；只支持单个 API worker，不支持多 worker 抢占同一 Run。预览 Job 重启后不自动重试。
-6. **黄金项目/视觉回归未建**：组件 fixture 只有 schema/JSON，未做 SSIM/pHash。
+6. **黄金项目已建**：5s/15s/40s fixture + 6 帧 baseline；但 baseline 与 H2/1920×1080/24fps 和
+   当前字体/风格库绑定，换风格库或 H2 tokens 会触发回归，需确认是有意变化再 `--update`。
 7. **非 riso 新项目被 C01 阻断**：ink/code-video 仍是 Contract 1.0，R2.0 不支持新项目；
    UI 仍可能选到这些风格，C01 会报 `E_ENGINE_API_UNSUPPORTED`。若要做，需先升它们的 Contract v2。
 8. **音频 G 链不参与 5s 验收**：G01 无口播会失败；R2.0 A–F 验收不要求 G；R2.5 做音频。
@@ -682,25 +760,29 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
     同时改模型、迁移与 `test_jobs`，不要只 create_all。
 11. **Chrome 进程语义**：`chrome-queue` 串行的是渲染操作；A04 previs 的常驻浏览器可能空闲存在。
     F02 运行中预览必须 CDP 附加 9222（已实现）；F02 空闲时可临时启动一个 Chrome，但不得常驻第二个浏览器。
-12. **跨项目缓存**：已修 C02/C03/B06/E03/E04 的已知路径；新增执行器若读项目相对文件，先检查
-    缓存命中时文件是否存在，必要时用 artifact/inline。
+12. **跨项目缓存**：C02/C03/B06/E03/E04 用 artifact/inline；D02/E05/F02/F04/G01/G05/G07 已按
+    projectRoot 隔离。新增执行器若写项目文件，必须加入 `PROJECT_LOCAL_NODES`，否则会丢产物。
 13. **测试项目污染真实 DB**：大量 `it-*`/`r2-*` project/run；不影响运行，清理时先确认无引用。
 14. **i18n**：DocsEditor/新提示目前中文为主；R2.0 不强制双语页面，但不要破坏原有 i18n。
 15. **F02 固定 9222**：若本机已有其他进程占用 9222，F02 的新 Chrome 可能启动失败；排查先
-    `lsof -i :9222`。Phase 7 可改为 `--remote-debugging-port=0` + `DevToolsActivePort` 发现端口。
+    `lsof -i :9222`。后续可改为 `--remote-debugging-port=0` + `DevToolsActivePort` 发现端口。
+16. **BDD 是服务级**：R2 的 4 个 BDD 不启动 Chrome；真实出片由 golden_run 和 verifier 覆盖。
+17. **40s golden fixture 的 S03 短句**：为满足 ≤25% 脏帧的可复现设计；改 fixture 文案/时长要同步
+    更新 baseline 与增量预期。
 
 ---
 
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh` 起服务；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **78 passed**（干净库首跑）。
+- [ ] `cd server && uv run pytest tests -q` → **83 passed**（干净库首跑）。
 - [ ] `uv run --project server python scripts/e2e_ui.py` → 8 场景全绿。
 - [ ] `uv run --project server python scripts/smoke_m1.py` → 46 节点 / 93 边。
 - [ ] `uv run --project server python scripts/verify_r2_5s_incremental.py` → PASS（66/54）。
 - [ ] `uv run --project server python scripts/verify_r2_preview.py` → PASS（attached p50/p95、片段 ≤20s、缓存 ≤300ms）。
 - [ ] `uv run --project server python scripts/verify_r2_profiles.py` → PASS（D02 双静帧、E05 720p、F02 final、切档不重跑）。
 - [ ] `uv run --project server python scripts/verify_r2_recovery.py` → PASS（F02 中 kill -9，≤60s 恢复、frames=120）。
+- [ ] `uv run --project server python scripts/golden_run.py --project 5s` → PASS（6 帧 SSIM/pHash；15s/40s 可选）。
 - [ ] 打开 run #1 画布，确认 46 绿 + 审批历史；`out/film/master.mp4` 39.5s。
 - [ ] 读本文 §5/§6/§9；确认从 Phase 6 开始，不重做 Phase 1–5。
 - [ ] 任何“完成”申报附：测试输出、真实产物路径+sha/时长、UI 截图（如涉及）、API curl。
@@ -750,6 +832,7 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 | `docs/adr/ADR-0005-v2-ratification.md` | D1–D7 冻结裁决 |
 | `docs/adr/ADR-0006-preview-service.md` | PreviewService：同一 Chrome/CDP、全分辨率降采样、缓存与边界 |
 | `docs/process/r2-plan.md` | R2.0 阶段计划（Phase 0.1–8） |
+| `docs/process/r2-acceptance.md` | **R2.0 验收报告（DoD/证据/复现命令/已知缺口）** |
 | `docs/tech-plan.md` | v1 技术方案 |
 | `../filmflow-web-agent-prompt.md` | 宪法；§4.8 边表/§17/§19 已同步 93 边（仓库外，不在 git） |
 | `vendor/README.md` | fy-code-animation 技能与 341 库路径 |

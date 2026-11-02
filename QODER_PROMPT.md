@@ -3,9 +3,9 @@
 > 生成于 2026-11-02。目标：让 Qoder 在不读旧对话的情况下，完整接手 FilmFlow 的 R2.0 开发。
 > 配套文件：`AGENTS.md`、`HANDOFF.md`、`docs/prd/PRD-002-production-workbench.md`、`docs/adr/ADR-0005-v2-ratification.md`、`vendor/README.md`。
 >
-> **2026-11-02 状态更新：R2.0 Phase 0.1–7 已完成**（FR-20/21/22/23/24/25/29；tag `r2-edge-fix`/`r2-scene-dsl`/`r2-incremental`/`r2-preview`/`r2-profiles`/`r2-jobs`；78 tests）。
-> 本文件的 Phase 0–4 内容保留为历史。新 Agent 先读 `HANDOFF.md` §0/§1/§6，从 **Phase 8 黄金项目/视觉回归** 开始，
-> 不要重做 Phase 1–7 的边表/文档模型/Scene DSL/增量渲染/预览服务/档位/Job 恢复。
+> **2026-11-02 状态更新：R2.0 Phase 0.1–8 全部完成**（8 个 FR；tag `r2-edge-fix`/`r2-scene-dsl`/`r2-incremental`/`r2-preview`/`r2-profiles`/`r2-jobs`/`r2-golden`；83 tests）。
+> 本文件的 Phase 0–4 内容保留为历史。新 Agent 先读 `HANDOFF.md` §0/§1/§6，R2.0 已进入收尾验收；不要自行开始 R2.5。
+> 不要重做 Phase 1–8 的边表/文档模型/Scene DSL/增量渲染/预览/档位/Job 恢复/黄金。
 
 ---
 
@@ -22,7 +22,7 @@
 工作目录：`/Users/litianyu/cc-projects/ai-v/filmflow`
 
 1. `AGENTS.md` —— 接手入口与硬约束。
-2. `HANDOFF.md` —— R2.0 当前状态、Phase 0.1–7 记录、验收证据、R2.0 新增 42 条坑、Phase 8 设计、§10 接手检查表。
+2. `HANDOFF.md` —— R2.0 当前状态、Phase 0.1–8 记录、验收证据、R2.0 新增 50 条坑、R2.0 DoD 结论、§10 接手检查表。
 3. `docs/prd/PRD-002-production-workbench.md` —— v2 补充 PRD；重点 §2（17 项诊断）、§6（领域模型）、§7.2（R2 FR-20~31）、§8（子系统规格）、§9（46 节点影响）、§13.1（已裁决）。
 4. `docs/adr/ADR-0005-v2-ratification.md` —— 老板已裁决 D1–D7。
 5. `vendor/README.md` —— 内置 `fy-code-animation` 技能与 341 风格库路径（76MB 库外置，不要复制进 git）。
@@ -100,7 +100,7 @@ uv run --project server python scripts/e2e_ui.py
 uv run --project server python scripts/smoke_m1.py
 ```
 
-确认：78 项测试通过（干净环境首跑）、UI 8 场景全绿、run #1 画布 46 绿、`out/film/master.mp4` 39.5s。
+确认：83 项测试通过（干净环境首跑）、UI 8 场景全绿、run #1 画布 46 绿、`out/film/master.mp4` 39.5s。
 然后写一份 `docs/process/r2-plan.md`：阶段拆分、每阶段改哪些文件、测试计划、风险。**计划写完再动代码。**
 
 ### Phase 1 · 边表修正（先做，最小但关键）
@@ -185,7 +185,7 @@ R2.0 完成必须同时满足：
 - [ ] **档位**：40s draft ≤8min；review ≤18min；final ≤30min；G07 拒绝 review 交付。
 - [ ] **恢复**：kill -9 API 进程 → 重启 ≤60s 回到 running；无孤儿 Chrome；帧数正确。
 - [ ] **回归**：rumor-39s 仍 46/46；master 39.5s；黄金帧 SSIM ≥0.98。
-- [ ] **测试**：全绿（当前 78 项：unit 63 / integration 12 / BDD 3）；UI E2E 8 场景仍绿。
+- [ ] **测试**：全绿（当前 83 项：unit 64 / integration 12 / BDD 7）；UI E2E 8 场景仍绿。
 - [ ] **文档**：规格 §4.8/§17 同步 3 条新边；`EXECUTOR_VERSION` 已升；README/HANDOFF 更新。
 
 每条“完成”的申报必须附：测试命令与输出、真实产物路径+sha/时长、UI 截图（如涉及）、API curl 结果。参考 run #1 的证据链标准。
