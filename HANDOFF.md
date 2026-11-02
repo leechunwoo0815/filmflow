@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
 > 更新时间：2026-11-02 · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34）已交付；FR-35/36/37/38 下一批**
-> 当前代码基线：R3.0 代码（本文件提交后见 `git log` 最新一条）；R2.5 基线 `b7591bd`。
+> 当前代码基线：R3.0 代码 `7ecf84a`（tag `r3.0-creation`）；R2.5 基线 `b7591bd`。
 > **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008。**
 > 上下文压缩后继续开发时：从 §6.5 的 R3 下一批（FR-38 → FR-35 → FR-36 → FR-37）开始，不要回滚 R2/R3 已完成部分。
 
@@ -75,6 +75,7 @@ uv run --project server python scripts/e2e_r3.py                    # R3 UI 冒�
 | R2.5 FR-27 tag | `r2_5-audio` → `cd7312f` |
 | R2.5 FR-28 tag | `r2_5-delivery` → `9c4ac00` |
 | R2.5 FR-31 tag | `r2_5-onboarding` → `b7591bd` |
+| R3.0 v1 tag | `r3.0-creation` → `7ecf84a` |
 | R2.0 起始 tag | `r2-edge-fix` → `4f9e381` |
 | R2.0 Scene DSL | `r2-scene-dsl` → `53e6462` |
 | R2.0 增量 | `r2-incremental` → `07b5237` |
