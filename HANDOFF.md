@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
 > 更新时间：2026-11-02 · R2.0 Phase 0.1–8 已完成；R2.5 FR-26/27/28 完成、FR-31 部分
-> 当前基线：R2.5 代码 `65ba92a` / tag `r2_5-delivery`（FR-28）；FR-31 部分未打 tag；交接文档提交见 `git log` 最新一条。
+> 当前基线：R2.5 代码 `64e6898` / tag `r2_5-delivery`（FR-28）；FR-31 部分未打 tag；交接文档提交见 `git log` 最新一条。
 > 本文是**唯一权威接手入口**；规格 `../filmflow-web-agent-prompt.md` 仍是宪法，v2 需求以
 > `docs/prd/PRD-002-production-workbench.md` + `docs/adr/ADR-0005-v2-ratification.md` 为准。
 > **先读本文 §0、§1、§6，再读 `AGENTS.md`、PRD-002、ADR-0005、`vendor/README.md`。**
@@ -57,7 +57,7 @@ R2.0 证据见 §2.4–2.7/`docs/process/r2-acceptance.md`；R2.5 计划与证�
 
 | 项 | 值 |
 |---|---|
-| R2.5 代码 | `65ba92a`（FR-28 tag `r2_5-delivery`；FR-31 部分未打 tag） |
+| R2.5 代码 | `64e6898`（FR-28 tag `r2_5-delivery`；FR-31 部分未打 tag） |
 | Phase 1 tag | `r2-edge-fix` → `4f9e381` |
 | Phase 3 tag | `r2-scene-dsl` → `53e6462` |
 | Phase 4 tag | `r2-incremental` → `07b5237` |
@@ -71,7 +71,7 @@ R2.0 证据见 §2.4–2.7/`docs/process/r2-acceptance.md`；R2.5 计划与证�
 | 测试 | **93 passed**（unit 74 / integration 12 / BDD 7） |
 | UI E2E | 8 场景 / 9 检查全绿（约 16–20s） |
 | API 冒烟 | 46 节点 / **93 边**通过 |
-| EXECUTOR_VERSION | **2.6.2**（`server/app/engine/cachekey.py`） |
+| EXECUTOR_VERSION | **2.6.4**（`server/app/engine/cachekey.py`） |
 
 ### 1.2 R2.0 八个 FR 的真实状态
 
@@ -267,7 +267,9 @@ PASS: R2.5 FR-27 音频工作台验收通过
 
 - 上传/录音 Take、主 Take、waveform、手动对齐、音乐许可均有 API；`/audio` 页面 Playwright 冒烟通过。
 - G05 已改 sidechaincompress + 音乐循环/淡出；G06 使用 true peak 与 0.15s 同步阈值。
-- 关键修复：G04 stdout 管道死锁；G07 批准后必须回 idle 才能执行 package。
+- 关键修复：G04 stdout 管道死锁；G07 批准后必须回 idle 才能执行 package；
+  G05 alimiter 必须 `level=false`（否则自动拉响度到 -13.7LUFS/+0.1dBTP）。
+- 最终 2.6.4 复测：LUFS **-16.0**、TP **-10.5**、stems 5/5/5s；干净 rumor **46/46**、master 39.5s。
 
 ### 2.10 R2.5 FR-28 交付验收
 
