@@ -38,6 +38,8 @@ uv run --project server python scripts/drive_run.py <run> <project>   # 全链�
 
 | 文档 | 说明 |
 |---|---|
+| **[HANDOFF.md](HANDOFF.md)** | **接手入口（交接文档：状态/坑/缺口/路线图）** |
+|---|---|
 | `../filmflow-web-agent-prompt.md` | 技术规格（§4.8 边表 / §19 裁决表为宪法） |
 | `../filmflow-prd.md` | PRD（FR-1~14 / US-01~10 / 风险） |
 | `docs/tech-plan.md` | §18 九项技术方案 |
