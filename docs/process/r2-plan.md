@@ -3,7 +3,7 @@
 > 2026-11-02 · 接手基线审计后制定 · 依据 `QODER_PROMPT.md`、`docs/prd/PRD-002-production-workbench.md`、`docs/adr/ADR-0005-v2-ratification.md`
 > 范围：FR-20/21/22/23/24/25/29/30。不做时间轴、审片、音频 v2、资产库、批量、photo 引擎。
 > 冻结项：46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；只加 3 条 data 边。
-> **进度（2026-11-02）**：Phase 0.1–8 已完成，R2.0 DoD 通过（见 `docs/process/r2-acceptance.md`）。5s 新项目已跑通参数化静帧与 E03–F06；改 S02 文案后新 Run 只渲 66/120 帧（S01 复用，0..53 帧哈希不变），40s 实测改 S03 只渲 93/960=9.69%、F02 墙钟 13.05%。Phase 5 预览（attached p50 1.31s/p95 1.44s，片段 12.7s，缓存 5ms）与 Phase 6 档位（D02 review/draft、E05 720p/24、F02 only-final、切档不重跑）与 Phase 7 恢复（kill -9 后 22.3s、attempts=1）与 Phase 8 黄金（5s/15s/40s SSIM 1.0、干净 rumor 46/46）已完成。R2.0 收尾，不自行开始 R2.5。
+> **进度（2026-11-02）**：Phase 0.1–8 已完成，R2.0 DoD 通过（见 `docs/process/r2-acceptance.md`）；R2.5 FR-26 已完成（见 `r2_5-plan.md`）。5s 新项目已跑通参数化静帧与 E03–F06；改 S02 文案后新 Run 只渲 66/120 帧（S01 复用，0..53 帧哈希不变），40s 实测改 S03 只渲 93/960=9.69%、F02 墙钟 13.05%。Phase 5 预览（attached p50 1.31s/p95 1.44s，片段 12.7s，缓存 5ms）与 Phase 6 档位（D02 review/draft、E05 720p/24、F02 only-final、切档不重跑）与 Phase 7 恢复（kill -9 后 22.3s、attempts=1）与 Phase 8 黄金（5s/15s/40s SSIM 1.0、干净 rumor 46/46）已完成。R2.0 收尾，不自行开始 R2.5。
 
 ---
 

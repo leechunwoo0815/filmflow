@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-02 · R2.0 Phase 0.1–8 已完成
-> 当前基线：Phase 8 代码 `371ea4b` / tag `r2-golden`；交接文档提交见 `git log` 最新一条。
+> 更新时间：2026-11-02 · R2.0 Phase 0.1–8 已完成；R2.5 FR-26 已完成
+> 当前基线：R2.5 FR-26 代码 `a37570d` / tag `r2_5-review`；交接文档提交见 `git log` 最新一条。
 > 本文是**唯一权威接手入口**；规格 `../filmflow-web-agent-prompt.md` 仍是宪法，v2 需求以
 > `docs/prd/PRD-002-production-workbench.md` + `docs/adr/ADR-0005-v2-ratification.md` 为准。
 > **先读本文 §0、§1、§6，再读 `AGENTS.md`、PRD-002、ADR-0005、`vendor/README.md`。**
@@ -24,7 +24,7 @@ curl -s http://127.0.0.1:7860/api/health
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 83 passed
+cd server && uv run pytest tests -q                       # 86 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景
 uv run --project server python scripts/smoke_m1.py         # API 冒烟：46 节点 / 93 边
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量验收
@@ -35,10 +35,9 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 
 ### 0.3 当前下一步
 
-**R2.0 Phase 0.1–8 全部完成，进入收尾验收，不要自行扩范围。**
-8 个 FR 全部有证据（见 §1.2、§2.4–2.7、`docs/process/r2-acceptance.md`）：
-5s/15s/40s 黄金、40s 增量 9.69%/墙钟 13.05%、干净 rumor 46/46 + master 39.5s、83 tests。
-下一步只做老板验收/申请 R2.5；预览与档位 UI 接线留 R3，G05/G06 完整音频修复留 R2.5。
+**R2.0 已验收；R2.5 已获授权并完成 FR-26，下一步 R2.5 · FR-27 音频工作台。**
+R2.0 证据见 §2.4–2.7/`docs/process/r2-acceptance.md`；R2.5 计划与 FR-26 证据见
+`docs/process/r2_5-plan.md` / §2.8。不要开始 R3/R4，也不要重做 R2.0。
 
 ### 0.4 不要做的事
 
@@ -58,7 +57,7 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 
 | 项 | 值 |
 |---|---|
-| Phase 8 代码 | `371ea4b`（tag `r2-golden`）；当前 HEAD 以 `git log` 为准 |
+| R2.5 FR-26 代码 | `a37570d`（tag `r2_5-review`）；当前 HEAD 以 `git log` 为准 |
 | Phase 1 tag | `r2-edge-fix` → `4f9e381` |
 | Phase 3 tag | `r2-scene-dsl` → `53e6462` |
 | Phase 4 tag | `r2-incremental` → `07b5237` |
@@ -66,10 +65,11 @@ uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s
 | Phase 6 tag | `r2-profiles` → `426aa20` |
 | Phase 7 tag | `r2-jobs` → `f5d5de1` |
 | Phase 8 tag | `r2-golden` → `371ea4b` |
-| 测试 | **83 passed**（unit 64 / integration 12 / BDD 7） |
+| R2.5 FR-26 tag | `r2_5-review` → `a37570d` |
+| 测试 | **86 passed**（unit 67 / integration 12 / BDD 7） |
 | UI E2E | 8 场景 / 9 检查全绿（约 16–20s） |
 | API 冒烟 | 46 节点 / **93 边**通过 |
-| EXECUTOR_VERSION | **2.4.2**（`server/app/engine/cachekey.py`） |
+| EXECUTOR_VERSION | **2.5.1**（`server/app/engine/cachekey.py`） |
 
 ### 1.2 R2.0 八个 FR 的真实状态
 
@@ -145,7 +145,7 @@ PASS: R2.0 Phase 4 5s 增量验收通过
 ### 2.3 回归
 
 ```bash
-cd server && uv run pytest tests -q                       # 83 passed
+cd server && uv run pytest tests -q                       # 86 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # 8 场景
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
 ```
@@ -234,6 +234,21 @@ PASS: R2.0 Phase 7 崩溃恢复验收通过
   本机无 whisper CLI/model，按 ADR D7 使用 **manual alignment**（reference 的 5 段人工打点）；G02 `source=manual`。
 - BDD 新增 4 场景（参数化出片/单场景增量/预览优先级/交付 final），共 7 个 BDD；全量 **83 tests**。
 - 40s golden 全链约 4:25；最终 40s 增量在 2.4.2 上重测为 93/960、13.05%。
+
+### 2.8 R2.5 FR-26 静帧审阅验收
+
+`scripts/verify_r2_5_review.py` 实测（project 119 / run 163→164）：
+
+```
+D03 blocked before viewing: 未查看场景 S01..S05
+D05 review scenes: S01=6 S02=1 S03=1 S04=6 S05=6
+contact sheet 1920×1080 / scenes S01..S05
+runB diff changed: ['S03']，其余 unchanged
+PASS: R2.5 FR-26 静帧审阅验收通过
+```
+
+- `/review` Playwright 冒烟：22 张图、contact sheet 可见、全场景已看、100/200% 键盘可用。
+- 修复：B06 同文档缓存命中不写 Run 快照 task.json，`_task_path` 回退只读 `card/task.json`。
 
 ## 3. R2.0 Phase 0.1–8 实施记录
 
@@ -686,6 +701,17 @@ docs(当前) + tokens/font/engine
 结论：**R2.0 Phase 0.1–8 DoD 通过**。未开始 R2.5；UI 接线（预览/档位/时间轴）与 G05/G06
 完整音频修复属于后续阶段，详见 §9。
 
+### 6.6 R2.5 计划与进度（老板已授权）
+
+| FR | 状态 | 说明 |
+|---|---|---|
+| FR-26 全场景静帧审阅 | **DONE**（tag `r2_5-review`） | D01 长场景 6 帧、D02 contact sheet/stills_manifest、D03 逐场门禁、D04 review_diff、`/review` 页 |
+| FR-27 音频工作台 v1 | TODO（下一项） | peaks/录音导入/手动对齐/sidechain/stems/许可；G05/G06 改造 |
+| FR-28 交付 v1 | TODO | 16:9+9:16、SRT、双封面、manifest/QC/rights/zip、G07 改造 |
+| FR-31 新手引导 | TODO | 3 模板 + 10 分钟首片 |
+
+详见 `docs/process/r2_5-plan.md`。不要开始 R3/R4；FR-27/28/31 全部验收前不得宣称 R2.5 DoD。
+
 ---
 
 ## 7. 命令、环境、复现
@@ -694,7 +720,7 @@ docs(当前) + tokens/font/engine
 
 ```bash
 ./dev.sh                                                   # API 7860 + Web 3000
-cd server && uv run pytest tests -q                        # 83 passed
+cd server && uv run pytest tests -q                        # 86 passed
 cd .. && uv run --project server python scripts/e2e_ui.py   # UI 8 场景
 uv run --project server python scripts/smoke_m1.py          # 46 / 93
 uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量
@@ -702,6 +728,7 @@ uv run --project server python scripts/verify_r2_preview.py         # Phase 5 �
 uv run --project server python scripts/verify_r2_profiles.py        # Phase 6 档位验收
 uv run --project server python scripts/verify_r2_recovery.py        # Phase 7 kill -9 恢复验收
 uv run --project server python scripts/golden_run.py --project 5s    # Phase 8 黄金回归（5s/15s/40s）
+uv run --project server python scripts/verify_r2_5_review.py        # R2.5 FR-26 审阅验收
 uv run --project server python scripts/drive_run.py <run> <project>  # 旧全链驱动
 ```
 
@@ -775,7 +802,7 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh` 起服务；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **83 passed**（干净库首跑）。
+- [ ] `cd server && uv run pytest tests -q` → **86 passed**（干净库首跑）。
 - [ ] `uv run --project server python scripts/e2e_ui.py` → 8 场景全绿。
 - [ ] `uv run --project server python scripts/smoke_m1.py` → 46 节点 / 93 边。
 - [ ] `uv run --project server python scripts/verify_r2_5s_incremental.py` → PASS（66/54）。
@@ -783,6 +810,7 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 - [ ] `uv run --project server python scripts/verify_r2_profiles.py` → PASS（D02 双静帧、E05 720p、F02 final、切档不重跑）。
 - [ ] `uv run --project server python scripts/verify_r2_recovery.py` → PASS（F02 中 kill -9，≤60s 恢复、frames=120）。
 - [ ] `uv run --project server python scripts/golden_run.py --project 5s` → PASS（6 帧 SSIM/pHash；15s/40s 可选）。
+- [ ] `uv run --project server python scripts/verify_r2_5_review.py` → PASS（逐场查看/contact sheet/diff）。
 - [ ] 打开 run #1 画布，确认 46 绿 + 审批历史；`out/film/master.mp4` 39.5s。
 - [ ] 读本文 §5/§6/§9；确认从 Phase 6 开始，不重做 Phase 1–5。
 - [ ] 任何“完成”申报附：测试输出、真实产物路径+sha/时长、UI 截图（如涉及）、API curl。
@@ -833,6 +861,7 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 | `docs/adr/ADR-0006-preview-service.md` | PreviewService：同一 Chrome/CDP、全分辨率降采样、缓存与边界 |
 | `docs/process/r2-plan.md` | R2.0 阶段计划（Phase 0.1–8） |
 | `docs/process/r2-acceptance.md` | **R2.0 验收报告（DoD/证据/复现命令/已知缺口）** |
+| `docs/process/r2_5-plan.md` | **R2.5 能审能交计划与 FR-26 状态** |
 | `docs/tech-plan.md` | v1 技术方案 |
 | `../filmflow-web-agent-prompt.md` | 宪法；§4.8 边表/§17/§19 已同步 93 边（仓库外，不在 git） |
 | `vendor/README.md` | fy-code-animation 技能与 341 库路径 |
