@@ -34,6 +34,7 @@ cd server
 uv run pytest tests -q   # 52（干净环境首跑；部分集成需 API 在跑）
 uv run --project server python scripts/smoke_m1.py    # M0/M1 API 全链冒烟（需服务在跑）
 uv run --project server python scripts/e2e_ui.py      # Playwright UI E2E（8 场景，需 ./dev.sh 在跑）
+uv run --project server python scripts/verify_r2_5s_incremental.py  # R2.0 5s 参数化 + 增量验收
 uv run --project server python scripts/drive_run.py <run> <project>   # 全链驱动（自动批门）
 ```
 

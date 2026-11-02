@@ -2,6 +2,10 @@
 
 > 生成于 2026-11-02。目标：让 Qoder 在不读旧对话的情况下，完整接手 FilmFlow 的 R2.0 开发。
 > 配套文件：`AGENTS.md`、`HANDOFF.md`、`docs/prd/PRD-002-production-workbench.md`、`docs/adr/ADR-0005-v2-ratification.md`、`vendor/README.md`。
+>
+> **2026-11-02 状态更新：R2.0 Phase 0.1–4 已完成**（FR-20/21/22/25；tag `r2-edge-fix`/`r2-scene-dsl`/`r2-incremental`；52 tests）。
+> 本文件的 Phase 0–4 内容保留为历史。新 Agent 先读 `HANDOFF.md` §0/§1/§6，从 **Phase 5 PreviewService** 开始，
+> 不要重做 Phase 1–4 的边表/文档模型/Scene DSL/增量渲染。
 
 ---
 
@@ -18,7 +22,7 @@
 工作目录：`/Users/litianyu/cc-projects/ai-v/filmflow`
 
 1. `AGENTS.md` —— 接手入口与硬约束。
-2. `HANDOFF.md` —— 状态、16 条踩坑、§9 硬缺口、§10 路线图、§11 守则、§12 检查表。
+2. `HANDOFF.md` —— R2.0 当前状态、Phase 0.1–4 记录、验收证据、R2.0 新增 20 条坑、Phase 5–8 设计、§10 接手检查表。
 3. `docs/prd/PRD-002-production-workbench.md` —— v2 补充 PRD；重点 §2（17 项诊断）、§6（领域模型）、§7.2（R2 FR-20~31）、§8（子系统规格）、§9（46 节点影响）、§13.1（已裁决）。
 4. `docs/adr/ADR-0005-v2-ratification.md` —— 老板已裁决 D1–D7。
 5. `vendor/README.md` —— 内置 `fy-code-animation` 技能与 341 风格库路径（76MB 库外置，不要复制进 git）。
