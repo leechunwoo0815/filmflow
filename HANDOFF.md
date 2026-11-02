@@ -562,7 +562,7 @@ curl -s http://127.0.0.1:7860/api/queue
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。
 - [ ] R2.5 review/audio/delivery verifier 全绿。
 - [ ] `verify_r3.py`、`verify_r3_camera.py`、`e2e_r3.py` 全绿。
-- [ ] 打开 `/timeline?project=189&run=238`、`/player?project=174&run=223`。
+- [ ] 打开 `/timeline?project=202&run=252`、`/player?project=174&run=223`。
 - [ ] 读 §5、§6、§9；确认下一步是 R3 下一批 FR-38→FR-35→FR-36→FR-37，不重做已完成 FR。
 - [ ] 申报完成必须附：测试输出、产物路径+sha/时长、UI 截图/curl。
 
