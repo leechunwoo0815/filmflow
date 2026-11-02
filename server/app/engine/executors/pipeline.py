@@ -37,7 +37,8 @@ class FrameServer:
 
         class Handler(SimpleHTTPRequestHandler):
             def log_message(self, fmt, *args):
-                if "/frame" in (args[0] if args else "") or "/pframe" in (args[0] if args else ""):
+                msg = fmt % args if args else fmt
+                if "/frame" in msg or "/pframe" in msg:
                     return
                 super().log_message(fmt, *args)
 
@@ -396,6 +397,7 @@ async def e03(ctx):
                 "base_program_sha": base["program_sha"],
                 "program": _project_url(ctx, motion_rel),
                 "program_sha": motion["program_sha"],
+                "base_program_inline": base, "program_inline": motion,
             })
         binding.update({"schema": "filmflow.timeline-binding/2", "programs": programs})
     _artifact_json(ctx, "timeline_binding.json", binding)
@@ -563,6 +565,175 @@ async def e06(ctx):
 
 # ---------- F 渲染 ----------
 
+def _artifact_sha(ctx, node_id: str) -> str:
+    from sqlmodel import select
+    from ...models import Artifact
+    rows = ctx["session"].exec(select(Artifact).where(
+        Artifact.run_id == ctx["run_id"], Artifact.node_id == node_id)).all()  # type: ignore[arg-type]
+    return ";".join(sorted(a.sha256 for a in rows))
+
+
+async def _run_chrome_range(ctx, url: str, frames_dir: Path, start: int, end: int, frames: int) -> int:
+    import asyncio as _aio
+    import time as _time
+    (_project_file(ctx, "out/DONE")).unlink(missing_ok=True)
+    argv = await _chrome_render_argv(ctx, url)
+    node_cancel = _aio.Event()
+    run_cancel = ctx["cancel_event"]
+    t0 = _time.monotonic()
+
+    async def prog(pct, msg):
+        await ctx["progress"](pct, msg)
+
+    async def _watch_done():
+        while not node_cancel.is_set():
+            try:
+                if run_cancel is not None and run_cancel.is_set():
+                    node_cancel.set(); break
+                if (_project_file(ctx, "out/DONE")).exists():
+                    node_cancel.set(); break
+                frames_now = len(list(frames_dir.glob("*.png")))
+                await ctx["progress"](min(frames_now / max(frames, 1), 0.99),
+                                      f"frame {frames_now}/{frames}")
+            except Exception:
+                # 进度落库失败不能让 watcher 死掉；下一轮继续检查 DONE
+                pass
+            await _aio.sleep(2)
+    watcher = _aio.create_task(_watch_done())
+    await ctx["runner"].run(argv, timeout=1800, on_progress=prog, cancel_event=node_cancel)
+    watcher.cancel()
+    missing = [i for i in range(start, end) if not (frames_dir / f"{i:04d}.png").exists()]
+    if missing:
+        raise RuntimeError(f"range {start}-{end} 缺 {len(missing)} 帧：{missing[:8]}…")
+    return int((_time.monotonic() - t0) * 1000)
+
+
+def _write_manifest(ctx, manifest: dict, artifact: bool = False) -> None:
+    dst = _project_file(ctx, "renders/final/manifest.json")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_suffix(".tmp")
+    tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(dst)
+    if artifact:
+        _artifact_json(ctx, "render_manifest.json", manifest)
+
+
+def _upsert_scene_state(ctx, scene: dict, status: str, ms: int = 0) -> None:
+    from sqlmodel import select
+    from ...models import SceneState
+    row = ctx["session"].exec(select(SceneState).where(
+        SceneState.run_id == ctx["run_id"], SceneState.scene_id == scene["id"])).first()  # type: ignore[arg-type]
+    if row is None:
+        row = SceneState(run_id=ctx["run_id"], scene_id=scene["id"])
+    row.hash = scene.get("hash", "")
+    row.status = status
+    row.frame_start = scene["range"][0]
+    row.frame_end = scene["range"][1]
+    row.ms = ms
+    ctx["session"].add(row)
+    ctx["session"].commit()
+
+
+async def _f02_legacy(ctx, build: dict, profile: dict, frames: int, frames_dir: Path) -> None:
+    missing = [i for i in range(frames) if not (frames_dir / f"{i:04d}.png").exists()]
+    if not missing:
+        _artifact_json(ctx, "render_note.json", {"note": "frames 齐全，无需重渲"})
+        await ctx["progress"](1.0, f"resume: 0/{frames} 缺失")
+        return
+    entry = _legacy_entry(build, "film")
+    if not entry:
+        raise RuntimeError("imported 项目缺少 legacy_entry.film")
+    q = f"mode=render&start={missing[0]}&end={frames}&total={frames}"
+    url = _engine_url(ctx, build, entry, q)
+    await _run_chrome_range(ctx, url, frames_dir, missing[0], frames, frames)
+    await ctx["progress"](1.0, f"frames {frames}/{frames}")
+
+
+async def _f02_v2(ctx, build: dict, profile: dict, frames: int, frames_dir: Path) -> None:
+    from ..render_manifest import build_manifest, build_plan, dirty_ranges, plan_dirty
+    up = _upstream_json(ctx, ["E03", "E04"])
+    binding = up.get("E03") or {}
+    if not binding.get("programs"):
+        binding_p = _project_file(ctx, "scenes/timeline_binding.json")
+        binding = _read_json(binding_p) if binding_p.exists() else {}
+    if not binding.get("programs"):
+        raise RuntimeError("E_PROGRAM_INVALID: binding.programs 为空")
+    transitions = (up.get("E04") or {}).get("transitions") or []
+    if not transitions:
+        trans_p = _project_file(ctx, "scenes/transitions.json")
+        transitions = (_read_json(trans_p).get("transitions") or []) if trans_p.exists() else []
+    programs = {}
+    for p in binding["programs"]:
+        prog_p = _project_file(ctx, f"scenes/{p['id']}.program.json")
+        if prog_p.exists():
+            programs[p["id"]] = _read_json(prog_p)
+        elif p.get("program_inline"):
+            programs[p["id"]] = p["program_inline"]
+            prog_p.parent.mkdir(parents=True, exist_ok=True)
+            prog_p.write_text(json.dumps(p["program_inline"], ensure_ascii=False, indent=1), encoding="utf-8")
+        else:
+            raise RuntimeError(f"E_PROGRAM_INVALID: 缺 program {p['id']}")
+    # font_sha 用 C02 源字体：C04 子集 CSS 随文案变化，会把所有场景误标脏
+    plan = build_plan(binding.get("scenes", []), programs, transitions, profile,
+                      _artifact_sha(ctx, "C05"), build["sha256"], _artifact_sha(ctx, "C02"))
+    prev_p = _project_file(ctx, "renders/final/manifest.json")
+    prev = _read_json(prev_p) if prev_p.exists() else None
+    plan = plan_dirty(plan, prev, "final", profile)
+    if ctx["params"].get("force_full"):
+        for s in plan:
+            s["status"] = "dirty"
+    for s in plan:
+        ext_start = max(0, s["range"][0] - s["overlap"])
+        ext_end = min(frames, s["range"][1] + s["overlap"])
+        if any(not (frames_dir / f"{i:04d}.png").exists() for i in range(ext_start, ext_end)):
+            s["status"] = "dirty"
+    for p in frames_dir.glob("*.png"):
+        try:
+            idx = int(p.stem)
+        except ValueError:
+            continue
+        if idx >= frames:
+            p.unlink()
+    ranges = dirty_ranges(plan, frames)
+    if not ranges:
+        manifest = build_manifest(ctx["run_id"], "final", profile, plan, [])
+        _write_manifest(ctx, manifest, artifact=True)
+        for s in plan:
+            _upsert_scene_state(ctx, s, "done", s.get("ms", 0))
+        await ctx["progress"](1.0, f"reuse {manifest['reusedFrames']}/{frames}")
+        return
+    completed: list[tuple[int, int, int]] = []
+    failures: list[tuple[int, int, str]] = []
+    for start, end in ranges:
+        url = _engine_url(ctx, build, _entry(build, "film_spec"),
+                          _film_spec_query(ctx, "render", "final", start, end, frames))
+        try:
+            ms = await _run_chrome_range(ctx, url, frames_dir, start, end, frames)
+            completed.append((start, end, ms))
+        except Exception as e:
+            failures.append((start, end, str(e)[:300]))
+        for s in plan:
+            ext_start = max(0, s["range"][0] - s["overlap"])
+            ext_end = min(frames, s["range"][1] + s["overlap"])
+            if all((frames_dir / f"{i:04d}.png").exists() for i in range(ext_start, ext_end)):
+                s["status"] = "done"
+                s["ms"] = sum(ms for a, b, ms in completed if not (b <= ext_start or a >= ext_end))
+        manifest = build_manifest(ctx["run_id"], "final", profile, plan, completed)
+        _write_manifest(ctx, manifest)
+        for s in plan:
+            _upsert_scene_state(ctx, s, s["status"], s.get("ms", 0))
+    if failures:
+        for s in plan:
+            if s["status"] != "done":
+                _upsert_scene_state(ctx, s, "failed", s.get("ms", 0))
+        raise RuntimeError("E_SCENE_FAILED: " + "; ".join(f"{a}-{b}: {e}" for a, b, e in failures))
+    manifest = build_manifest(ctx["run_id"], "final", profile, plan, completed)
+    _write_manifest(ctx, manifest, artifact=True)
+    for s in plan:
+        _upsert_scene_state(ctx, s, s["status"], s.get("ms", 0))
+    await ctx["progress"](1.0, f"rendered {manifest['renderedFrames']} reused {manifest['reusedFrames']}/{frames}")
+
+
 @executor("chrome-frames")
 async def f02(ctx):
     lm = ctx["lock_manager"]
@@ -573,55 +744,16 @@ async def f02(ctx):
     frames = profile["frames"] or round(profile["duration"] * profile["fps"])
     frames_dir = _project_file(ctx, "out/frames")
     frames_dir.mkdir(parents=True, exist_ok=True)
-    missing = [i for i in range(frames) if not (frames_dir / f"{i:04d}.png").exists()]
-    if not missing and ctx.get("run_imported"):
-        _artifact_json(ctx, "render_note.json", {"note": "frames 齐全，无需重渲"})
-        await ctx["progress"](1.0, f"resume: 0/{frames} 缺失")
-        return
-    if not missing:
-        # v2 暂以全量重渲保证内容正确；Phase 4 用 render.manifest 做增量
-        missing = list(range(frames))
-    (_project_file(ctx, "out/DONE")).unlink(missing_ok=True)
     if ctx.get("run_imported"):
-        entry = _legacy_entry(build, "film")
-        if not entry:
-            raise RuntimeError("imported 项目缺少 legacy_entry.film")
-        q = f"mode=render&start={missing[0]}&end={missing[-1] + 1}&total={frames}"
-    else:
-        if not _api_v2(build):
-            from ...errors import ApiError, ErrorCode
-            raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 film_spec")
-        entry = _entry(build, "film_spec")
-        if not entry:
-            from ...errors import ApiError, ErrorCode
-            raise ApiError(ErrorCode.E_PROGRAM_INVALID, "新项目 film_spec 入口未登记")
-        q = _film_spec_query(ctx, "render", "final", missing[0], frames, frames)
-    url = _engine_url(ctx, build, entry, q)
-    argv = await _chrome_render_argv(ctx, url)
-    import asyncio as _aio
-    node_cancel = _aio.Event()
-    run_cancel = ctx["cancel_event"]
-
-    async def prog(pct, msg):
-        await ctx["progress"](pct, msg)
-
-    async def _watch_done():
-        while not node_cancel.is_set():
-            if run_cancel is not None and run_cancel.is_set():
-                node_cancel.set(); break
-            if (_project_file(ctx, "out/DONE")).exists():
-                node_cancel.set(); break
-            frames_now = len(list(frames_dir.glob("*.png")))
-            await ctx["progress"](min(frames_now / frames, 0.99), f"frame {frames_now}/{frames}")
-            await _aio.sleep(2)
-    watcher = _aio.create_task(_watch_done())
-    res = await ctx["runner"].run(argv, timeout=1800, on_progress=prog, cancel_event=node_cancel)
-    watcher.cancel()
-    have = len(list(frames_dir.glob("*.png")))
-    still_missing = [i for i in range(frames) if not (frames_dir / f"{i:04d}.png").exists()]
-    if still_missing:
-        raise RuntimeError(f"渲染后仍缺 {len(still_missing)} 帧：{still_missing[:8]}…")
-    await ctx["progress"](1.0, f"frames {have}/{frames}")
+        await _f02_legacy(ctx, build, profile, frames, frames_dir)
+        return
+    if not _api_v2(build):
+        from ...errors import ApiError, ErrorCode
+        raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 film_spec")
+    if not _entry(build, "film_spec"):
+        from ...errors import ApiError, ErrorCode
+        raise ApiError(ErrorCode.E_PROGRAM_INVALID, "新项目 film_spec 入口未登记")
+    await _f02_v2(ctx, build, profile, frames, frames_dir)
 
 
 @executor("frame-integrity")
@@ -631,36 +763,72 @@ async def f03(ctx):
     profile = _profile(ctx)
     frames = profile["frames"] or round(profile["duration"] * profile["fps"])
     frames_dir = _project_file(ctx, "out/frames")
+    manifest_p = _project_file(ctx, "renders/final/manifest.json")
+    manifest = _read_json(manifest_p) if manifest_p.exists() else {}
+    scenes = manifest.get("scenes") or []
+    scene_by_frame = {}
+    stats = {}
+    for s in scenes:
+        rng = s.get("range") or [0, 0]
+        stats[s["id"]] = {"id": s["id"], "hash": s.get("hash", ""), "range": rng,
+                          "missing": 0, "black": 0, "dups": 0}
+        for i in range(int(rng[0]), int(rng[1])):
+            scene_by_frame[i] = s["id"]
     missing, black, dups = [], [], 0
     prev_hash = None
     import hashlib
     n_checked = 0
     for i in range(frames):
         p = frames_dir / f"{i:04d}.png"
+        sid = scene_by_frame.get(i)
         if not p.exists():
             missing.append(i)
+            if sid and sid in stats:
+                stats[sid]["missing"] += 1
             continue
         n_checked += 1
         img = Image.open(p)
         g = np.asarray(img.convert("L"), dtype=float)
         if float(g.mean()) < 8:
             black.append(i)
+            if sid and sid in stats:
+                stats[sid]["black"] += 1
         h = hashlib.sha256(g.tobytes()).hexdigest()
         if h == prev_hash:
             dups += 1
+            if sid and sid in stats:
+                stats[sid]["dups"] += 1
         prev_hash = h
         if n_checked % 120 == 0:
             await ctx["progress"](i / frames, f"integrity {i}/{frames}")
+    scene_report = []
+    for s in stats.values():
+        s["status"] = "failed" if (s["missing"] or s["black"]) else "done"
+        scene_report.append(s)
+    if scenes:
+        from sqlmodel import select
+        from ...models import SceneState
+        for s in scene_report:
+            row = ctx["session"].exec(select(SceneState).where(
+                SceneState.run_id == ctx["run_id"], SceneState.scene_id == s["id"])).first()  # type: ignore[arg-type]
+            if row:
+                row.status = s["status"]
+                row.qa_json = s
+                ctx["session"].add(row)
+        ctx["session"].commit()
     if missing:
-        raise RuntimeError(f"缺失帧 {len(missing)}：{missing[:8]}…")
+        scene_ids = sorted({scene_by_frame[i] for i in missing if i in scene_by_frame})
+        raise RuntimeError(f"缺失帧 {len(missing)}：{missing[:8]}…（场景 {scene_ids}）")
     if black:
-        raise RuntimeError(f"黑帧 {len(black)}：{black[:8]}…")
+        scene_ids = sorted({scene_by_frame[i] for i in black if i in scene_by_frame})
+        raise RuntimeError(f"黑帧 {len(black)}：{black[:8]}…（场景 {scene_ids}）")
     ratio = dups / max(frames, 1)
     # 规格 §6.2：重复帧=警告（有意停顿的影片必然有重复；§4.6 的 <0.1% 硬门与其冲突，按 §6.2 执行）
     dup_warning = ratio >= 0.001
     _artifact_json(ctx, "frame_report.json", {"frames": frames, "missing": [], "black": [],
                                               "dups": dups, "dup_ratio": round(ratio, 4),
-                                              "dup_warning": dup_warning})
+                                              "dup_warning": dup_warning,
+                                              "scene_report": scene_report})
 
 
 @executor("ffmpeg-encode")

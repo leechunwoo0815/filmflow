@@ -632,6 +632,18 @@ async def run_artifacts(run_id: int, session: Session = Depends(get_session)):
         select(Artifact).where(Artifact.run_id == run_id)).all()]}
 
 
+@router.get("/runs/{run_id}/render-manifest")
+async def run_render_manifest(run_id: int, session: Session = Depends(get_session)):
+    run = session.get(Run, run_id)
+    if not run:
+        raise not_found("run")
+    root = re_mod._project_root(session, run)
+    p = Path(root) / "renders/final/manifest.json"
+    if not p.exists():
+        raise not_found("render manifest")
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
 @router.get("/artifacts/{artifact_id}/file")
 async def artifact_file(artifact_id: int, session: Session = Depends(get_session)):
     a = session.get(Artifact, artifact_id)

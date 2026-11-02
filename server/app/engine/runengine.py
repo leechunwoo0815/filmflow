@@ -26,7 +26,7 @@ LOCK_MANAGER = LockManager()
 
 TERMINAL_OK = {"succeeded", "cached"}
 # 只读文档快照的节点：文档变化必须使这些节点缓存失效（FR-25）
-DOC_NODES = {"A01", "B02", "B03", "B06", "D01", "E01"}
+DOC_NODES = {"A01", "B02", "B03", "B06", "D01", "E01", "E03"}
 
 
 class EngineError(RuntimeError):
@@ -138,12 +138,25 @@ def _gate_valid(session: Session, run: Run, gate_id: str, content_hash: str) -> 
 def _ready_set(session: Session, run: Run, wf: Workflow, states: dict[str, NodeRun], project_root: str) -> dict[str, str]:
     """返回 {node_id: 原因}，原因空字符串 = ready。"""
     graph = _graph(wf)
-    caps = run.caps_json or caps_mod.initial_caps()
+    caps = list(run.caps_json or caps_mod.initial_caps())
+    caps_dirty = False
     ready: dict[str, str] = {}
     for nid, node in N.items():
         st = states[nid]
+        if node["gate"] == "human" and st.status in TERMINAL_OK:
+            # 已批准的门的 caps 必须补发（跨 Run 继承/重启后尤其重要）
+            new_caps = caps_mod.caps_after_approval(caps, nid)
+            if new_caps != caps:
+                caps = new_caps
+                run.caps_json = caps
+                session.add(run)
+                caps_dirty = True
         if st.status in TERMINAL_OK or st.status == "running":
             ready[nid] = "busy_or_done"
+            continue
+        if st.status in ("failed", "skipped", "canceled"):
+            # 失败不自动重排：retry 端点显式把 failed → idle；resume 显式重置 skipped
+            ready[nid] = "terminal"
             continue
         if st.status == "disabled":
             ready[nid] = "disabled"
@@ -168,6 +181,13 @@ def _ready_set(session: Session, run: Run, wf: Workflow, states: dict[str, NodeR
             ch = gate_content_hash(nid, params, _upstream_hashes(session, run.id, nid, states, project_root))
             ok, stale = _gate_valid(session, run, nid, ch)
             if ok:
+                # 跨 Run 继承的批准同样要补发 caps（否则 F01/F02 会无门可等却永远 idle）
+                new_caps = caps_mod.caps_after_approval(caps, nid)
+                if new_caps != caps:
+                    caps = new_caps
+                    run.caps_json = caps
+                    session.add(run)
+                    caps_dirty = True
                 target = "idle" if node["executor"] not in ("gate", "still-view") else "succeeded"
                 if st.status != target:
                     st.status = target
@@ -189,6 +209,9 @@ def _ready_set(session: Session, run: Run, wf: Workflow, states: dict[str, NodeR
             ready[nid] = why
             continue
         ready[nid] = ""
+    if caps_dirty:
+        session.add(run)
+        session.commit()
     return ready
 
 
@@ -234,6 +257,11 @@ async def execute_node(run_id: int, node_id: str) -> dict:
                     session.add(st)
                     session.commit()
                 return {"status": "blocked", "reason": "等待批准"}
+            new_caps = caps_mod.caps_after_approval(run.caps_json or [], node_id)
+            if new_caps != (run.caps_json or []):
+                run.caps_json = new_caps
+                session.add(run)
+                session.commit()
             if N[node_id]["executor"] in ("gate", "still-view"):
                 if st.status != "succeeded":
                     st.status = "succeeded"
@@ -386,7 +414,8 @@ async def _run_loop(run_id: int) -> None:
                         failed = [n for n in N if states[n].status == "failed"]
                         run.status = "needs_changes" if blocked and not failed else ("failed" if failed else "succeeded")
                     else:
-                        run.status = "blocked" if blocked else run.status or "running"
+                        # 无就绪节点、无等待门却不是终态：暴露为 blocked，避免“running 但不动”
+                        run.status = "blocked"
                     run.finished_at = _now() if run.status in ("succeeded", "failed") else None
                     session.add(run)
                     session.commit()

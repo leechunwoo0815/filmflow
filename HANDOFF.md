@@ -18,7 +18,7 @@ FilmFlow 是一个**本地代码动画"印厂控制台"**：46 节点 DAG 把「
 | 版本 | v0.1.3（tags: `m0`/`v0.1.0`/`v0.1.1`/`v0.1.2`/`v0.1.3`） |
 | 仓库 | `~/cc-projects/ai-v/filmflow/` |
 | 规格/PRD | `../filmflow-web-agent-prompt.md` · `../filmflow-prd.md` |
-| 测试 | 28 自动化（unit 15 / integration 10 / BDD 3）+ Playwright UI E2E 8 场景（全绿） |
+| 测试 | 52 自动化（unit 37 / integration 12 / BDD 3）+ Playwright UI E2E 8 场景（全绿） |
 | 主题 | **白天默认**、夜间可切（ADR-0004） |
 | 双语 | zh/en（`web/src/lib/i18n.tsx`） |
 
@@ -38,7 +38,7 @@ cd ~/cc-projects/ai-v/filmflow
 冒烟验证（服务在跑时）：
 
 ```bash
-cd server && uv run pytest tests -q                      # 28 项（干净环境首跑）
+cd server && uv run pytest tests -q                      # 52 项（R2.0 Phase 4）
 cd .. && uv run --project server python scripts/e2e_ui.py # UI 8 场景 ~15s
 uv run --project server python scripts/smoke_m1.py        # API 全链冒烟
 uv run --project server python scripts/drive_run.py <runId> <projectId>  # 全链驱动（自动批门）
@@ -152,8 +152,8 @@ filmflow/
 
 ## 6. 测试体系
 
-- 单元 15：DAG 核心（边方向/拓扑/caps/缓存键/失效/锁/进度解析/执行器注册完整性）。
-- 集成 10：A03 真实库（341/193/计数/ID/矩阵/S 同义词）；向导 materialize（含 E_ENGINE_UNAVAILABLE）；缺帧/黑帧/干净项目夹具；其中 2 项需要 API 服务在跑。
+- 单元 37：DAG 核心、Scene DSL 编译器、Contract v2、文档模型/快照、增量 manifest、路径安全、ProcessRunner。
+- 集成 12：A03 真实库（341/193/计数/ID/矩阵/S 同义词）；向导 materialize（含 E_ENGINE_UNAVAILABLE）；缺帧/黑帧/干净项目夹具；文档 API（409/回滚/只读/导入元数据）；部分需要 API 服务在跑。
 - BDD 3：`style-indexing.feature` 自动化绑定（pytest-bdd 中文 parsers）。
 - UI E2E 1 脚本 8 场景：首页→向导→选择器搜索→设主风格→生成→46 节点画布→EN→导入。
 - 手工脚本：`smoke_m1.py`（API 链）、`drive_run.py`（全链驱动，自动批门）。
@@ -181,6 +181,8 @@ filmflow/
 15. **F03 重复帧**：参考片有意停顿占 28.8%，硬门会误杀→按 §6.2 降为警告（缺失/黑帧仍硬失败）。
 16. **预演是 Playwright 常驻 Chrome（channel=chrome）**，与生产渲染共享 `chrome-queue=1`；`executable_path` 必传系统 Chrome，否则报“Executable doesn't exist”。
 17. **macOS 自带 bash 3.2 不支持 `wait -n`**：`dev.sh` 曾因此启动即退出；已改为 `kill -0` 轮询等待任一子进程。
+18. **FrameServer 是全局单例**：D02/E05/F02 必须同时持 `port-8787` 锁；否则别的 Run 的 F01/渲染节点会切换根目录，帧/DONE 写到错误项目（已修）。
+19. **ProcessRunner 正常退出后必须取消 `_watch_cancel`**：否则 `run()` 永久挂住；已改为 `watch.cancel()`，并用 `test_runner` 回归。
 
 ---
 
@@ -286,7 +288,7 @@ uv run --project server python scripts/drive_run.py <run_id> <project_id> --time
 ## 12. 交接检查表（接手第一小时）
 
 - [ ] `./dev.sh` 起服务；`/api/health`、`:3000` 正常
-- [ ] `uv run pytest tests -q` → 28 passed
+- [ ] `uv run pytest tests -q` → 52 passed
 - [ ] `uv run --project server python scripts/e2e_ui.py` → 8 场景全绿
 - [ ] 打开 run #1 画布，确认 46 绿 + 审批历史（含 B08 驳回→重批）
 - [ ] `out/film/master.mp4` 39.5s 带音轨

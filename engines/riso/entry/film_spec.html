@@ -66,7 +66,7 @@ async function boot() {
   const transitions = TRANSITIONS ? await loadJSON(TRANSITIONS).catch(() => ({ transitions: [] })) : { transitions: [] };
   const programs = [];
   for (const p of (binding.programs || [])) {
-    const prog = await loadJSON(p.program);
+    const prog = p.program_inline || await loadJSON(p.program);
     programs.push({ id: p.id, start: p.start, end: p.end, program: prog });
   }
   if (!programs.length) throw new Error('E_PROGRAM_INVALID: binding.programs 为空');

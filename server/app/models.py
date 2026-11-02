@@ -216,10 +216,24 @@ class SchemaMigration(SQLModel, table=True):
     applied_at: datetime = Field(default_factory=utcnow)
 
 
+class SceneState(SQLModel, table=True):
+    """场景级渲染状态（FR-22）：F02 写，F03 聚合 QA。"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int = Field(foreign_key="run.id", index=True)
+    scene_id: str = Field(index=True)
+    hash: str = ""
+    status: str = Field(default="idle", index=True)
+    frame_start: int = 0
+    frame_end: int = 0
+    ms: int = 0
+    qa_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    __table_args__ = (Index("ix_scene_state_unique", "run_id", "scene_id", unique=True),)
+
+
 TABLES: list[type[SQLModel]] = [
     Project, Draft, Style, StylePreview, StylePick, Workflow, Run, NodeRun,
     Artifact, Metric, Event, Approval, AuditLog, Job, WorkflowVersion,
-    ProjectDoc, DocRevision, SchemaMigration,
+    ProjectDoc, DocRevision, SchemaMigration, SceneState,
 ]
 
 def table_dict(model: Any) -> dict:

@@ -39,7 +39,7 @@ FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 
 
 ```bash
 ./dev.sh
-cd server && uv run pytest tests -q                       # 28 项（干净环境首跑）
+cd server && uv run pytest tests -q                       # 52 项（R2.0 Phase 4）
 uv run --project server python scripts/e2e_ui.py          # UI 8 场景 ~15s
 uv run --project server python scripts/smoke_m1.py        # API 冒烟
 ```

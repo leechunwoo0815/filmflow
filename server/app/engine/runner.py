@@ -97,8 +97,8 @@ class ProcessRunner:
         tasks = [
             asyncio.create_task(self._pump(self._proc.stdout, self._stdout_buf, "stdout", on_progress)),
             asyncio.create_task(self._pump(self._proc.stderr, self._stderr_buf, "stderr")),
-            asyncio.create_task(self._watch_cancel(cancel_event)),
         ]
+        watch = asyncio.create_task(self._watch_cancel(cancel_event))
         timed_out = False
         try:
             await asyncio.wait_for(self._proc.wait(), timeout=timeout if timeout > 0 else None)
@@ -107,7 +107,9 @@ class ProcessRunner:
             await self._terminate()
         if self._cancel_requested and self._proc.returncode is None:
             await self._terminate()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        # 进程正常退出时 watch 会永远等在 cancel_event 上，必须显式取消
+        watch.cancel()
+        await asyncio.gather(*tasks, watch, return_exceptions=True)
         for f in self._log_files.values():
             f.close()
         self._log_files.clear()

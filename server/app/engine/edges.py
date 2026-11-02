@@ -40,7 +40,7 @@ N: dict[str, dict] = {
     "C05": dict(title="视觉令牌锁定", executor="tokens-lock",  auth="internal",    minCap=[], locks=[], timeout=10, retries=0, gate=None),
     # ---- D 静帧 ----
     "D01": dict(title="静帧规格构建", executor="still-spec",   auth="internal",    minCap=[], locks=[], timeout=10, retries=0, gate=None),
-    "D02": dict(title="静帧渲染",   executor="chrome-still",   auth="render_still", minCap=[], locks=["chrome-queue"], timeout=120, retries=1, gate=None),  # 每张 120s
+    "D02": dict(title="静帧渲染",   executor="chrome-still",   auth="render_still", minCap=[], locks=["chrome-queue", "port-8787"], timeout=120, retries=1, gate=None),  # 每张 120s
     "D03": dict(title="静帧查看",   executor="still-view",     auth="internal",    minCap=["render_still"], locks=[], timeout=0, retries=0, gate="human"),
     "D04": dict(title="静帧 QA",    executor="still-qa",       auth="internal",    minCap=["render_still"], locks=[], timeout=60, retries=0, gate="auto"),
     "D05": dict(title="静帧批准",   executor="gate",           auth="internal",    minCap=[], locks=[], timeout=0, retries=0, gate="human"),
@@ -49,12 +49,12 @@ N: dict[str, dict] = {
     "E02": dict(title="相机曲线",   executor="camera-curves",  auth="internal",    minCap=["render_still"], locks=[], timeout=10, retries=0, gate=None),
     "E03": dict(title="场景运动绑定", executor="timeline-binding", auth="internal", minCap=["render_still"], locks=[], timeout=30, retries=0, gate=None),
     "E04": dict(title="接缝匹配",   executor="transitions",    auth="internal",    minCap=["render_still"], locks=[], timeout=10, retries=0, gate=None),
-    "E05": dict(title="预演渲染与拼图", executor="chrome-proxy", auth="internal",   minCap=["render_still"], locks=["chrome-queue"], timeout=720, retries=0, gate=None),
+    "E05": dict(title="预演渲染与拼图", executor="chrome-proxy", auth="internal",   minCap=["render_still"], locks=["chrome-queue", "port-8787"], timeout=720, retries=0, gate=None),
     "E06": dict(title="运动 QA（代理帧）", executor="motion-qa", auth="internal",   minCap=["render_still"], locks=[], timeout=120, retries=0, gate="auto"),
     "E07": dict(title="分镜批准",   executor="gate",           auth="internal",    minCap=[], locks=[], timeout=0, retries=0, gate="human"),
     # ---- F 渲染 ----
     "F01": dict(title="帧服务",     executor="frame-server",   auth="render_video", minCap=[], locks=["port-8787"], timeout=0, retries=0, gate=None),
-    "F02": dict(title="逐帧渲染",   executor="chrome-frames",  auth="render_video", minCap=[], locks=["chrome-queue"], timeout=900, retries=0, gate=None),
+    "F02": dict(title="逐帧渲染",   executor="chrome-frames",  auth="render_video", minCap=[], locks=["chrome-queue", "port-8787"], timeout=900, retries=0, gate=None),
     "F03": dict(title="帧完整性 QA", executor="frame-integrity", auth="internal",  minCap=["render_video"], locks=[], timeout=120, retries=0, gate="auto"),
     "F04": dict(title="编码",       executor="ffmpeg-encode",  auth="internal",    minCap=["render_video"], locks=["ffmpeg"], timeout=600, retries=1, gate=None),
     "F05": dict(title="成片 QA",    executor="video-qa",       auth="internal",    minCap=["render_video"], locks=[], timeout=300, retries=0, gate="auto"),
