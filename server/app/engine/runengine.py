@@ -30,7 +30,7 @@ TERMINAL_OK = {"succeeded", "cached"}
 # 只读文档快照的节点：文档变化必须使这些节点缓存失效（FR-25）
 DOC_NODES = {"A01", "B02", "B03", "B06", "D01", "E01", "E03"}
 # 这些节点写项目内文件（stills/proxy/frames/mp4/wav/master）；跨项目缓存会让消费者找不到文件
-PROJECT_LOCAL_NODES = {"D02", "E05", "F02", "F04", "G01", "G05", "G07"}
+PROJECT_LOCAL_NODES = {"D01", "D02", "E03", "E04", "E05", "F02", "F04", "G01", "G05", "G07"}
 
 
 class EngineError(RuntimeError):

@@ -9,7 +9,16 @@ export default function HelpPage() {
           <li><b>←/→</b> 审阅切换静帧</li>
           <li><b>1 / 2</b> 100% / 200%</li>
           <li><b>C</b> A/B 对比上一版</li>
-          <li><b>空格</b> 时间轴播放（R3）</li>
+          <li><b>空格</b> 时间轴/审片播放 · <b>J/K/L</b> 倒/停/正</li>
+          <li><b>←/→</b> 逐帧 · <b>Shift+←/→</b> 逐秒 · <b>I/O</b> 入出点 · <b>+/−</b> 缩放</li>
+          <li><b>F</b> 审片全屏 · <b>S</b> 安全区</li>
+        </ul>
+      </section>
+      <section className="card p-4 mb-4">
+        <h2 className="font-semibold mb-2">R3 新页面</h2>
+        <ul className="text-sm space-y-1">
+          <li><a className="text-blue" href="/timeline">/timeline</a>：场景块拖拽/改时长/ripple、分割合并、文本、相机关键帧、转场、250ms 静帧预览。</li>
+          <li><a className="text-blue" href="/player">/player</a>：审片播放器、帧锚定批注、resolve、场景/整片决议、JSON/CSV、审片包。</li>
         </ul>
       </section>
       <section className="card p-4 mb-4">
@@ -25,6 +34,9 @@ export default function HelpPage() {
           <li><b>E_PROGRAM_INVALID</b>：场景 program 缺失或组件未知，检查 C01/D01/E03。</li>
           <li><b>E_PREVIEW_BUSY</b>：批量渲染中，稍后自动刷新。</li>
           <li><b>E_DELIVERY_QC</b>：查看交付 qc.json 的 checks，修复后重新生成。</li>
+          <li><b>E_DELIVERY_GATE</b>：G07 还没通过，先完成交付打包/审批。</li>
+          <li><b>E_SCENE_READ_OVERFLOW</b>：场景时长读不完文案；拉长或删字，时间轴会二次确认。</li>
+          <li><b>E_QC_LUFS/TRUE_PEAK</b>：G05 重新混音到 −16 LUFS，真峰留 1dB 余量。</li>
         </ul>
       </section>
     </main>

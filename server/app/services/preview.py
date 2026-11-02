@@ -219,6 +219,11 @@ def _scene_by_id(ctx: PreviewContext, scene_id: str) -> dict:
 
 def _camera(scene: dict, profile: dict) -> dict:
     start, end = float(scene.get("start", 0)), float(scene.get("end", 0))
+    if scene.get("camera_keyframes"):
+        return {"scene": scene["id"], "keyframes": scene["camera_keyframes"],
+                "anchor": scene.get("camera_anchor") or [int(profile["width"]) / 2,
+                                                         int(profile["height"]) / 2],
+                "note": scene.get("camera", "自定义关键帧")}
     return {"scene": scene["id"], "zoom": [[start, 1.0], [end, 1.03]],
             "pan": [[start, 0], [end, 0]],
             "anchor": [int(profile["width"]) / 2, int(profile["height"]) / 2],

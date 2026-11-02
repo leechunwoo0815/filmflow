@@ -1,9 +1,9 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-02 · **R2.0 已验收；R2.5 FR-26/27/28/31 全部完成并通过实测**
-> 当前代码基线：R2.5 代码 `b7591bd`（FR-31 + G07 QC + 40s 交付）；文档基线见 `git log` 最新一条。
-> **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r2_5-plan.md`、PRD-002、ADR-0005/0007。**
-> 上下文压缩后继续开发时：从 §6.4 的 R2.5 总验收开始，不要回滚或重做 R2.0/R2.5 已完成部分。
+> 更新时间：2026-11-02 · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34）已交付；FR-35/36/37/38 下一批**
+> 当前代码基线：R3.0 代码（本文件提交后见 `git log` 最新一条）；R2.5 基线 `b7591bd`。
+> **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008。**
+> 上下文压缩后继续开发时：从 §6.5 的 R3 下一批（FR-38 → FR-35 → FR-36 → FR-37）开始，不要回滚 R2/R3 已完成部分。
 
 ---
 
@@ -24,7 +24,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 102 passed
+cd server && uv run pytest tests -q                       # 117 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -39,23 +39,26 @@ uv run --project server python scripts/verify_r2_5_onboarding.py
 uv run --project server python scripts/verify_r2_5_delivery.py
 uv run --project server python scripts/verify_r2_5_delivery_40s.py
 uv run --project server python scripts/verify_rumor_regression.py   # 干净 rumor 46/46
+uv run --project server python scripts/verify_r3.py                 # R3 时间轴+审片
+uv run --project server python scripts/verify_r3_camera.py          # 相机/文本/转场 final
+uv run --project server python scripts/e2e_r3.py                    # R3 UI 冒烟
 ```
 
 ### 0.3 当前下一步（按优先级）
 
-1. **R2.5 总验收**：逐项打勾 §6.4，附测试输出、产物路径/哈希、UI 截图/curl；全部已通过，
-   可直接向老板申请 R2.5 签收。
-2. 40s 交付已实测（190.0s，9 文件/QC 全绿）；干净 rumor 2.6.6 已 46/46。
-3. G07 与交付包的边界已定：G07 只做 master + 核心 QC；交付包是显式 post-run 作业，
-   必须等 G07 通过（[ADR-0007](docs/adr/ADR-0007-g07-qc-and-delivery.md)）。
-4. 签收前**不要开始 R3/R4**（时间轴/审片/音频 v2/资产库/批量/photo 引擎）。
+1. **明早验收**：R2.5 §6.4 全绿；R3.0 v1 §3.5 全绿。证据命令见 §0.2，计划见
+   `docs/process/r3_plan.md`。
+2. **R3 下一批**（未开始，不要虚报）：FR-38 Take 对比/采纳/提升/分支 → FR-35 音频 v2 →
+   FR-36 资产库 → FR-37 模板/系列。
+3. R3.0 v1 只含 FR-32/33/34；`/timeline` 与 `/player` 已可用。
+4. **不要开始 R4**（多规格矩阵/平台发布/批量/photo 引擎）。
 
 ### 0.4 不要做的事
 
 - 不要重写 RunEngine 的 caps / 门 / 三类边 / content_hash / 断点续跑；46 节点/93 边不变。
 - 不要新增 DAG 节点；R2.5 的审阅/音频/交付都在服务/页面层。
 - 不要把新项目回退 `legacy_entry`；只有 `meta.imported=true` 可走 v1 harness。
-- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 **2.6.6**）。
+- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 **2.7.1**）。
 - 不要用“页面能点”代替真实产物；完成申报必须附测试、产物路径/哈希、UI 截图/curl。
 - 不要跑 `verify_r2_recovery.py` 时同时使用工作台（它会 kill -9 并重启 dev.sh）。
 
@@ -79,8 +82,8 @@ uv run --project server python scripts/verify_rumor_regression.py   # 干净 rum
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **102 passed**（unit 83 / integration 12 / BDD 7） |
-| EXECUTOR_VERSION | **2.6.6**（`server/app/engine/cachekey.py`；G07 master QC） |
+| 测试 | **117 passed**（unit 98 / integration 12 / BDD 7） |
+| EXECUTOR_VERSION | **2.7.1**（`server/app/engine/cachekey.py`；R3 文本/相机/转场 + project-local） |
 | UI E2E | 8 场景全绿（约 16s）；FR-31 冒烟另 4 组 |
 
 ### 1.2 R2.0（已验收，8 FR）
@@ -259,6 +262,29 @@ PASS: R2.5 FR-28 40s 交付验收通过（run 305.4s / delivery 190.0s）
     向导标题预演使用用户文案（`很多工作不是难，是重复`），3 候选可切换。
   - 修复 StylePicker 少 `min-h-0` 导致 640px 网格溢出压住标题预演的真实 UI bug。
 
+### 3.5 R3.0 创作闭环 v1（FR-32/33/34）
+
+- **FR-32 时间轴**：`/timeline`；V/T/C/A1/A2/A3/M 轨道；拖块排序、拖右边缘改时长 + ripple；
+  分割/合并/复制；文本框自动保存；相机/转场 inspector；250ms 防抖静帧预览；撤销/重做 50；
+  读时校验 409 + force；JKL/逐帧/入出点/缩放/吸附。
+- **FR-33 审片**：`/player`；F04/master 视频；矩形/箭头/画笔/文字批注锚定 frame+sceneId；
+  列表跳帧；resolve/回复/指派；场景与整片决议；JSON/CSV 导出导入；审片包 zip。
+- **FR-34 相机/转场**：timeline scene `camera_keyframes`/`camera_anchor` + `text` override；
+  E02/PreviewService 同一 camera；renderer 支持 rotate；7 预设；8 类转场 id；E04 接受 id。
+- **验收（2026-11-02，EXECUTOR_VERSION 2.7.1）**：
+  - `verify_r3.py`（project 201 / run 251）：S03 +2s ripple 40→42s/1008 帧；split/merge；
+    读时 409 + force；相机 3 帧 motion preview 1.63s；30 文档版本恢复初始；
+    10 条批注 export→clear→import；审片包 6.8MB / review.mp4 40.0s。
+  - `verify_r3_camera.py`（project 188 / run 237）：D01 文本 override、E03 相机 3 帧、
+    E04 4 类转场；同刻 preview vs final **SSIM 0.989483**。
+  - `e2e_r3.py`（project 189 / run 238）：拖 S01 +2s、改字、相机预设、撤销、刷新恢复、
+    批注跳帧 4.0s→4.000s、播放器新增批注。
+  - 117 tests；`e2e_ui.py`/`e2e_onboarding.py`/`e2e_r3.py` 全绿。
+  - R2.5 回归：5s 交付 26.1s；干净 rumor 46/46（run 243，147.6s）；5s 黄金 SSIM 1.0。
+
+**R3.0 v1 的诚实边界**：撤销 30 步已用 30 个文档版本恢复验证，但 30 步 UI 连点未自动化；
+100 场景服务端 ops <0.2s，浏览器 100 场景 60fps 未实测；FR-35/36/37/38 未开始。
+
 ---
 
 ## 4. 架构与关键文件
@@ -281,6 +307,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - `server/app/services/preview.py`：上下文解析、base/motion 编译、CDP/临时 Chrome、水印、500MB 缓存、
   latest-wins、segment/film job。
 - F02 Chrome：`--remote-debugging-port=9222`；F02 运行中只附加同一 Chrome，空闲时临时 Chrome。
+- 相机：`_camera()` 读 timeline `camera_keyframes`/`camera_anchor`；与 E02 共用 compiler。
 - 页面：`/review`、`/audio` 不依赖预览页；预览 API 独立。
 
 ### 4.3 档位（FR-24）
@@ -308,11 +335,21 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
   manifest/rights、zip、Job。
 - 页面：`/review`、`/audio`、`/delivery`、`/help`；首页模板与引导。
 
+### 4.5b R3.0 服务（创作闭环 v1）
+
+- `server/app/services/timeline_ops.py`：resize/ripple、move、split/merge/duplicate、set_text、
+  set_camera、camera_preset、set_transition；normalize/validate；`/projects/:id/timeline/ops` 乐观锁。
+- `server/app/services/review_comments.py`：`review/review.json`；评论/回复/resolve/场景+整片决议；
+  JSON/CSV 导出、按 id 去重导入、`review-package.zip`（review.mp4 + review.json + README）。
+- 页面：`/timeline`（V/T/C/A1/A2/A3/M 轨道、拖拽/ripple、inspector、250ms 静帧预览）、
+  `/player`（视频、批注覆盖、跳帧、决议、导出导入、审片包）。
+- 数据源：timeline scene `text`/`camera_keyframes`/`camera_anchor`/`transition`；ADR-0008。
+
 ### 4.6 缓存/锁（必须理解）
 
-- `EXECUTOR_VERSION=2.6.6`；改执行器必须升。
+- `EXECUTOR_VERSION=2.7.1`；改执行器必须升。
 - `DOC_NODES` 缓存含 `doc_snapshot_sha`；`PROFILE_NODES` 含 `renderProfilesSha`；
-  `PROJECT_LOCAL_NODES={D02,E05,F02,F04,G01,G05,G07}` 含 `projectRoot`。
+  `PROJECT_LOCAL_NODES={D01,D02,E03,E04,E05,F02,F04,G01,G05,G07}` 含 `projectRoot`。
 - `chrome-queue=1`；`ffmpeg=1`；`port-8787=1`（F01/D02/E05/F02）。
 - Chrome profile：`/tmp/ff-{node}-{run_id}`、`/tmp/ff-chrome-{node}-{run_id}`。
 
@@ -340,15 +377,16 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 
 ## 5. 踩坑清单（按优先级，必须看）
 
-1. **EXECUTOR_VERSION**：改任何执行器行为必须升版；当前 2.6.6，否则缓存返回旧行为。
+1. **EXECUTOR_VERSION**：改任何执行器行为必须升版；当前 2.7.1，否则缓存返回旧行为。
 2. **task 快照回退**：B06 同文档缓存命中时不会写 `runs/<id>/docs/task.json`；`_task_path` 必须回退
    只读 `card/task.json`，否则 D01 空场景、D03/D04 失败。
 3. **timeline 持久化**：materialize/首次快照落 timeline doc；编辑 script 不得重建 timeline，
    否则改一句导致全场景时长漂移、全量重渲。
 4. **reading window**：`last_text_at=end-read_seconds`；B07 校验 `last_text_at+read_seconds≤end`；
    G06 用 `last_text_at+read_seconds` 作为句子对齐目标。
-5. **项目本地缓存**：D02/E05/F02/F04/G01/G05/G07 写项目文件，缓存键必须含 projectRoot；
-   新增文件产物节点必须加入 `PROJECT_LOCAL_NODES`，否则 master/帧留在旧项目。
+5. **项目本地缓存**：D01/D02/E03/E04/E05/F02/F04/G01/G05/G07 写项目文件，缓存键必须含 projectRoot；
+   新增文件产物节点必须加入 `PROJECT_LOCAL_NODES`，否则 program/transitions/master/帧留在旧项目。
+   R3 实测踩到 E04 跨项目命中导致新项目缺 `scenes/transitions.json`。
 6. **G07 门**：G07 是 human+package；gate_decide 必须把 NodeRun 置 idle（不是 succeeded），
    否则 package 永远不执行、master 缺失。G07 前 `ensure_final_ready`；imported 跳过。
 7. **G05 音频**：必须 sidechaincompress + 音乐循环/淡出到片长；`alimiter=limit=0.7:level=false`
@@ -364,6 +402,12 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 12. **job attempts**：只在启动恢复时 +1；gate 重启/retry_wait 不自增；≥max 才失败。
 13. **SQLAlchemy JSON**：原地改 `graph_json` 后必须 `flag_modified`。
 14. **C02 字体**：异步 runner + 本地 cache/既有 artifact 回退；禁止同步 subprocess curl 阻塞事件循环。
+15. **相机预览同源**：PreviewService `_camera()` 必须读 timeline `camera_keyframes`；R3 曾因仍用默认
+    缓推导致 preview vs final SSIM 0.85，修复后 0.9895。E02 与 PreviewService 都走同一 compiler。
+16. **读时门禁范围**：改文本/时长/分割/合并受 `E_SCENE_READ_OVERFLOW` 阻断；相机/转场/排序
+    不应被既有读时错误连带阻断（否则用户无法继续结构编辑）。
+17. **scene.text**：时间轴 override 优先于 source_span/meaning；script 仍是口播/字幕/对齐事实源，
+    改画面文字不要改 script。
 15. **F04 跨项目**：即使已有 projectRoot，消费者仍优先用 `_upstream_file`（内容寻址）兜底。
 16. **FrameServer**：8787 全局单例；D02/E05/F02 持 `port-8787`；否则根目录被别的 Run 改。
 17. **ProcessRunner**：正常退出后 cancel `_watch_cancel`；否则永久挂起。
@@ -418,7 +462,15 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
 - [x] 102 tests、E2E、干净 rumor 46/46 回归（run 222，90.6s）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
-- [x] 未开始 R3/R4
+- [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
+
+### 6.5 R3.0 下一批（未开始）
+
+1. **FR-38 Take 对比**：Run 列表/评分/当前；双视频同步；场景采纳；promote/branch/删除保护。
+2. **FR-35 音频 v2**：多 Take 拼接、afftdn/highpass/deesser/EQ、拍点、SFX、Stems v2、响度预设。
+3. **FR-36 资产库**：全局/项目作用域、sha 去重、引用计数、image/audio 图层、替换重链。
+4. **FR-37 模板/系列**：项目另存模板、场景模板、变量替换、批量 CSV；依赖 R4 FR-46。
+5. 任何 R4 能力都不提前做。
 
 ---
 
@@ -469,7 +521,7 @@ curl -s http://127.0.0.1:7860/api/queue
 - 46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；边数 93。
 - Chrome 全局串行 1 个（`chrome-queue=1`）；ffmpeg 独占；预览不新开第二个浏览器。
 - 新项目禁止 `legacy_entry`；只有 `meta.imported=true` 可走 v1 harness。
-- 改执行器行为必须升 `EXECUTOR_VERSION`（2.6.6）。
+- 改执行器行为必须升 `EXECUTOR_VERSION`（2.7.1）。
 - 路径白名单/禁止路径穿越；FrameServer 只服务 `/engine` 与 `/project`。
 - 76MB 风格库/示例 mp4 不入 git；`vendor/fy-code-animation` 只查方法，不 import。
 - R2.5 只做 FR-26/27/28/31；R3/R4 不做。
@@ -493,18 +545,24 @@ curl -s http://127.0.0.1:7860/api/queue
 11. **测试污染真实 DB**：大量 `it-*`/`r2-*`/`golden-*` project/run；清理先确认引用。
 12. **F02 固定 9222**：端口被占会启动失败；排查 `lsof -i :9222`。
 13. **UI i18n**：新页面中文优先；不要破坏既有 zh/en 切换。
+14. **R3 v1 未含**：FR-35/36/37/38；不要把它们写成已完成。
+15. **时间轴撤销**：UI 历史 50 步；30 步只验证了文档版本恢复；长链 UI 连点未自动化。
+16. **时间轴性能**：100 场景 ops 服务端 <0.2s；浏览器 60fps 未实测。
+17. **审片批注**：项目级 review.json（不按 Run 分桶）；Take 对比要等 FR-38。
+18. **R3 版本**：EXECUTOR_VERSION 2.7.1；D01/E03/E04 已加入 project-local 缓存。
 
 ---
 
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **102 passed**。
+- [ ] `cd server && uv run pytest tests -q` → **117 passed**。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。
 - [ ] R2.5 review/audio/delivery verifier 全绿。
-- [ ] 打开 `/review?project=119&run=163`、`/audio?project=151`、`/delivery?project=142&run=186`。
-- [ ] 读 §5、§6、§9；确认下一步是 R2.5 总验收，不重做 R2.0/FR-26/27/28/31。
+- [ ] `verify_r3.py`、`verify_r3_camera.py`、`e2e_r3.py` 全绿。
+- [ ] 打开 `/timeline?project=189&run=238`、`/player?project=174&run=223`。
+- [ ] 读 §5、§6、§9；确认下一步是 R3 下一批 FR-38→FR-35→FR-36→FR-37，不重做已完成 FR。
 - [ ] 申报完成必须附：测试输出、产物路径+sha/时长、UI 截图/curl。
 
 ---

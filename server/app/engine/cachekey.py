@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.6.6"  # R2.5 FR-28：G07 QC 真峰解析兼容 ffmpeg summary 换行格式
+EXECUTOR_VERSION = "2.7.1"  # R3.0：D01/E03/E04 写项目文件，必须 project-local 缓存
 
 
 def canonical(obj) -> str:

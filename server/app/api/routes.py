@@ -27,6 +27,8 @@ from ..services import engines as engines_svc
 from ..services import preview as preview_svc
 from ..services import audio as audio_svc
 from ..services import onboarding as onboarding_svc
+from ..services import review_comments as review_svc
+from ..services import timeline_ops as tl_svc
 from ..services import delivery as delivery_svc
 from ..services import jobs as jobs_svc
 from ..services import project_docs as docs_svc
@@ -1083,6 +1085,8 @@ async def gates_pending(run_id: int, session: Session = Depends(get_session)):
             checklist = [f"{s['id']}: {s.get('meaning') or '（未填 meaning）'}" for s in t.get("scenes", [])]
         item = {"gate": gid, "title": edges.N[gid]["title"], "stale": stale,
                 "checklist": checklist or [f"{edges.N[gid]['title']} 检查项"]}
+        if gid in ("D05", "E07", "F06", "G07"):
+            item["comments"] = review_svc.summary(proj_root)
         if gid in ("D03", "D05"):
             entries, viewed, missing = _review_viewed(session, run, proj_root)
             item["review"] = {"sceneCount": len(set(viewed) | set(missing)),
@@ -1196,6 +1200,132 @@ async def project_audio_license_save(project_id: int, payload: dict,
     lic = audio_svc.save_license(proj.root, payload)
     audit(session, "audio.license", proj.root, after=lic)
     return {"license": lic, "ok": True, "reason": ""}
+
+
+# ---------- FR-33 审片批注 ----------
+
+def _review_videos(session: Session, project_id: int) -> list[dict]:
+    wf = session.exec(select(Workflow).where(Workflow.project_id == project_id)).first()  # type: ignore[arg-type,union-attr]
+    if not wf:
+        return []
+    runs = session.exec(select(Run).where(Run.workflow_id == wf.id)
+                        .order_by(Run.id.desc())).all()  # type: ignore[arg-type]
+    labels = {"E05": "review 代理", "F04": "final 成片", "G07": "master"}
+    out, seen = [], set()
+    for run in runs[:8]:
+        rows = session.exec(select(Artifact).where(
+            Artifact.run_id == run.id, Artifact.type == "MP4")).all()  # type: ignore[arg-type]
+        for a in rows:
+            if a.node_id not in labels or not Path(a.path).exists() or a.id in seen:
+                continue
+            seen.add(a.id)
+            out.append({"id": a.id, "node": a.node_id, "label": labels[a.node_id],
+                        "runId": run.id, "sha256": a.sha256,
+                        "bytes": Path(a.path).stat().st_size,
+                        "url": f"/api/artifacts/{a.id}/file"})
+    return out
+
+
+def _review_pick_video(session: Session, project_id: int, video_id: int | None) -> tuple[Artifact, str]:
+    rows = _review_videos(session, project_id)
+    if video_id:
+        row = next((x for x in rows if x["id"] == video_id), None)
+        if row:
+            return session.get(Artifact, video_id), row["url"]  # type: ignore[return-value]
+        raise ApiError(ErrorCode.E_NOT_FOUND, "审片视频不属于该项目", status=404)
+    preferred = next((x for x in rows if x["node"] == "E05"), None) or \
+        next((x for x in rows if x["node"] == "F04"), None) or \
+        next((x for x in rows if x["node"] == "G07"), None)
+    if not preferred:
+        raise ApiError(ErrorCode.E_VALIDATION, "项目还没有可审的 MP4（先跑 E05/F04）", status=409)
+    return session.get(Artifact, preferred["id"]), preferred["url"]  # type: ignore[return-value]
+
+
+@router.get("/projects/{project_id}/review")
+async def project_review(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    data = review_svc.load(proj.root)
+    return {**data, "summary": review_svc.summary(proj.root),
+            "videos": _review_videos(session, project_id)}
+
+
+@router.post("/projects/{project_id}/review/comments")
+async def review_comment_add(project_id: int, payload: dict,
+                             session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    comment = review_svc.add(proj.root, payload)
+    audit(session, "review.comment", f"{proj.root}:{comment['id']}",
+          after={"frame": comment["frame"], "scene": comment["sceneId"]})
+    return comment
+
+
+@router.patch("/projects/{project_id}/review/comments/{comment_id}")
+async def review_comment_update(project_id: int, comment_id: str, payload: dict,
+                                session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    comment = review_svc.update(proj.root, comment_id, payload)
+    audit(session, "review.update", f"{proj.root}:{comment_id}",
+          after={"status": comment.get("status")})
+    return comment
+
+
+@router.post("/projects/{project_id}/review/decisions")
+async def review_decide(project_id: int, payload: dict,
+                        session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    decisions = review_svc.decide(proj.root, payload)
+    audit(session, "review.decision", proj.root,
+          after={"scene": payload.get("sceneId"), "decision": payload.get("decision")})
+    return decisions
+
+
+@router.get("/projects/{project_id}/review/videos")
+async def review_videos(project_id: int, session: Session = Depends(get_session)):
+    _project_or_404(session, project_id)
+    return {"items": _review_videos(session, project_id)}
+
+
+@router.get("/projects/{project_id}/review/export")
+async def review_export(project_id: int, format: str = "json",
+                        session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    if format == "csv":
+        text = review_svc.export_csv(proj.root)
+        return Response(content=text, media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="review.csv"'})
+    data = review_svc.load(proj.root)
+    return JSONResponse(content=data, headers={
+        "Content-Disposition": 'attachment; filename="review.json"'})
+
+
+@router.post("/projects/{project_id}/review/import")
+async def review_import(project_id: int, payload: dict,
+                        session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    result = review_svc.import_json(proj.root, payload)
+    audit(session, "review.import", proj.root, after=result)
+    return result
+
+
+@router.post("/projects/{project_id}/review/package")
+async def review_package(project_id: int, payload: dict | None = None,
+                         session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    payload = payload or {}
+    artifact, _url = _review_pick_video(session, project_id,
+                                        int(payload["videoId"]) if payload.get("videoId") else None)
+    result = review_svc.package(proj.root, Path(artifact.path), proj.name)
+    audit(session, "review.package", proj.root, after=result)
+    return {**result, "download": f"/api/projects/{project_id}/review/package"}
+
+
+@router.get("/projects/{project_id}/review/package")
+async def review_package_file(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    p = Path(proj.root) / "review" / "review-package.zip"
+    if not p.exists():
+        raise ApiError(ErrorCode.E_NOT_FOUND, "审片包尚未生成", status=404)
+    return FileResponse(p, filename=f"{proj.name}-review-package.zip")
 
 
 # ---------- 静帧查看记录（D03 前置） ----------
@@ -1407,6 +1537,32 @@ async def project_doc_restore(project_id: int, kind: str, payload: dict,
           after={"version": doc.version, "restored_from": payload.get("version")})
     return {**docs_svc.doc_payload(session, project_id, proj.root, kind),
             "diff": diff, "impact": _doc_impact(kind)}
+
+
+@router.post("/projects/{project_id}/timeline/ops")
+async def project_timeline_ops(project_id: int, payload: dict,
+                               session: Session = Depends(get_session)):
+    """FR-32：时间轴操作（乐观锁 + 读时/相机校验）。"""
+    proj = _project_or_404(session, project_id)
+    current = docs_svc.doc_payload(session, project_id, proj.root, "timeline")
+    base = int(payload.get("baseVersion") if payload.get("baseVersion") is not None
+               else current["version"])
+    script = docs_svc.doc_payload(session, project_id, proj.root, "script")["content"]
+    op = str(payload.get("op") or "")
+    try:
+        content, meta = tl_svc.apply(current["content"], script, op, payload)
+    except tl_svc.TimelineOpError as e:
+        raise ApiError(ErrorCode.E_VALIDATION, f"{e.code}: {e.message}",
+                       status=e.status, details=e.details)
+    except (TypeError, ValueError) as e:
+        raise ApiError(ErrorCode.E_VALIDATION, f"E_TIMELINE_OP: {e}", status=400)
+    doc, diff = docs_svc.save_doc(session, project_id, "timeline", content, base,
+                                  payload.get("author", "timeline"))
+    audit(session, f"timeline.{op}", f"{project_id}:timeline",
+          after={"version": doc.version, "scene": payload.get("sceneId")})
+    return {**docs_svc.doc_payload(session, project_id, proj.root, "timeline"),
+            "op": op, "diff": diff, "impact": _doc_impact("timeline"),
+            "validation": meta["validation"]}
 
 
 @router.post("/projects/{project_id}/docs/timeline/rebuild")

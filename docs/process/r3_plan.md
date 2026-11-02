@@ -1,0 +1,59 @@
+# R3.0 创作闭环 v1（FR-32/33/34）
+
+> 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。老板要求继续后续开发，明早验收。
+> 本文只覆盖本轮范围；FR-35 音频 v2、FR-36 资产库、FR-37 模板/系列、FR-38 Take 对比留到下一批，
+> 不虚报为 R3.0 全量。
+
+## 本轮范围
+
+| FR | 交付 |
+|---|---|
+| FR-32 时间轴编辑器 | `/timeline`：V/T/C/A1/A2/A3/M 轨道、拖拽/改时长/ripple、分割/合并/复制、吸附、播放头/JKL/缩放、场景文本编辑、250ms 静帧预览、自动保存、撤销 50、读时校验 |
+| FR-33 审片播放器 | `/player`：F04/review/master 视频、逐帧/JKL/循环/全屏/安全区、矩形/箭头/画笔/文字批注、帧+场景锚点、回复/resolve、场景决议、review.json/CSV 导出导入、审片包 zip |
+| FR-34 镜头语言 v1 | 时间轴相机 inspector：keyframes（t/zoom/x/y/rotate）、7 预设、曲线缩略图；转场 8 类+时长；program 更新走同一编译器 |
+
+## 关键技术决策
+
+1. **场景文本 override**：timeline scene 增加 `text` 字段；`compile_scene` 优先用它，其次 `source_span`，
+   最后 `meaning`。时间轴改字无需重建 script 文档，C03 字集仍从整份 timeline JSON 取字。
+2. **相机 keyframes**：timeline scene 存 `camera_keyframes`/`camera_anchor`；E02 直接透传，
+   compiler 归一化；renderer 增加 rotate（默认 0，视觉回归不变）。
+3. **时间轴操作在服务端**：`timeline_ops.py` 纯函数 + `/projects/:id/timeline/ops`，乐观锁
+   沿用 docs `base_version`；所有变更即时落 ProjectDoc，刷新可恢复。
+4. **预览**：时间轴用 PreviewService 单帧（draft），250ms 防抖；整片预览仍走 preview/film，
+   不写 out/frames、不产生审批。
+5. **审片批注本地文件**：`review/review.json`（评论/回复/场景决议/整片决议）；导出 JSON/CSV，
+   审片包 = review 视频 + review.json + README，不引入云/账号。
+
+## 验收结果（2026-11-02，EXECUTOR_VERSION 2.7.1）
+
+- [x] S03 +2s：S04/S05 自动后移，duration 40→42、frames 1008；`verify_r3.py` project 201。
+- [x] 分割 S02 → S02/S02b（transition=cut，文本独立），合并可还原；`verify_r3.py`。
+- [x] 改一句自动保存 + 静帧预览：`e2e_r3.py`；相机+文本 motion preview 1.63s（≤3s）。
+- [~] 撤销：UI 历史 50 步 + e2e 单步撤销；30 个文档版本已实测可恢复初始（`verify_r3.py`）；
+      30 步 UI 连点未自动化，如实标部分。
+- [x] 相机 3 keyframes + 文本 override + 4 种转场：project 188/run 237，D01/E03/E04 产物正确；
+      同刻 preview vs final **SSIM 0.989483**。8 类转场由 `test_timeline_ops.py` 覆盖。
+- [x] 100 场景 ops <0.2s（`test_timeline_ops.py`）；浏览器 100 场景 60fps 未实测。
+- [x] 10 条批注（含框选）在不同帧；点击跳帧 4.0s→4.000s；export→clear→import 恢复 10 条；
+      审片包 6.8MB、内含 40.0s review.mp4 + review.json + README（`verify_r3.py` + `e2e_r3.py`）。
+- [x] **117 tests**；`e2e_ui.py`/`e2e_onboarding.py`/`e2e_r3.py` 全绿；R2.5 回归：5s 交付 26.1s、
+      干净 rumor 46/46（run 243）、5s 黄金 SSIM 1.0。
+- [x] 明确未做 FR-35/36/37/38，见下节。
+
+## 复现命令
+
+```bash
+cd server && uv run pytest tests -q                       # 117
+cd .. && uv run --project server python scripts/verify_r3.py
+uv run --project server python scripts/verify_r3_camera.py
+uv run --project server python scripts/e2e_r3.py
+```
+
+## 明确不做（下一批）
+
+- FR-35 多 Take 拼接/降噪/EQ/拍点/SFX/Stems v2（依赖 FR-36）。
+- FR-36 图片/字体资产库与 image 图层（需要 renderer/DSL 扩展）。
+- FR-37 模板另存/系列/批量（依赖 FR-46 R4 批量），本轮不做。
+- FR-38 Take 对比/采纳/提升/分支（依赖 FR-33；本轮先交付审片，下一批做对比）。
+- 任何 R4 能力。

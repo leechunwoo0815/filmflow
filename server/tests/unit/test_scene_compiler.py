@@ -32,6 +32,27 @@ def test_compiler_uses_user_text_and_static_identity():
     assert not validate_program(base) and not validate_program(motion)
 
 
+def test_compiler_prefers_scene_text_override():
+    script = build_script_doc("原始文案。")
+    scene = {**_scene(), "text": "时间轴改写后的文案。"}
+    prog = compile_scene(scene, script, TOKENS, PROFILE)
+    title = next(layer for layer in prog["layers"] if layer["id"] == "L_title")
+    assert title["content"] == "时间轴改写后的文案。"
+
+
+def test_camera_keyframes_and_rotate_pass_through():
+    script = build_script_doc("相机测试。")
+    camera = {"anchor": [800, 500], "keyframes": [
+        {"t": 0, "zoom": 1.0, "x": 0, "y": 0, "rotate": 0},
+        {"t": 1.2, "zoom": 1.2, "x": 60, "y": -8, "rotate": 3},
+        {"t": 2.5, "zoom": 1.05, "x": 0, "y": 0, "rotate": 0}]}
+    prog = compile_scene(_scene(), script, TOKENS, PROFILE, camera=camera, motion=True)
+    assert prog["camera"]["anchor"] == [800, 500]
+    assert prog["camera"]["keyframes"][1]["rotate"] == 3
+    assert prog["camera"]["keyframes"][1]["zoom"] == 1.2
+    assert not validate_program(prog)
+
+
 def test_font_family_strips_weight_suffix():
     script = build_script_doc("风从纸上起。")
     tokens = {**TOKENS, "type_spec": {**TOKENS["type_spec"], "family": "Noto Sans SC 900/500"}}

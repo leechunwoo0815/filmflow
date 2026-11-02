@@ -9,7 +9,7 @@ const SCENE_RENDER = (() => {
 
   function cameraAt(camera, t) {
     const kfs = (camera || {}).keyframes;
-    if (!kfs || !kfs.length) return { z: 1, tx: 0, ty: 0 };
+    if (!kfs || !kfs.length) return { z: 1, tx: 0, ty: 0, rot: 0 };
     let a = kfs[0], b = kfs[kfs.length - 1];
     for (let i = 0; i < kfs.length - 1; i++) {
       if (t >= kfs[i].t && t <= kfs[i + 1].t) { a = kfs[i]; b = kfs[i + 1]; break; }
@@ -19,8 +19,9 @@ const SCENE_RENDER = (() => {
     const z = a.zoom + (b.zoom - a.zoom) * p;
     const x = (a.x || 0) + ((b.x || 0) - (a.x || 0)) * p;
     const y = (a.y || 0) + ((b.y || 0) - (a.y || 0)) * p;
+    const rot = (a.rotate || 0) + ((b.rotate || 0) - (a.rotate || 0)) * p;
     const anchor = (camera || {}).anchor || [960, 540];
-    return { z, tx: anchor[0] * (1 - z) + x, ty: anchor[1] * (1 - z) + y };
+    return { z, tx: anchor[0] * (1 - z) + x, ty: anchor[1] * (1 - z) + y, rot };
   }
 
   function wrapText(ctx, text, maxWidth, font, weight, size, letterSpacing) {
@@ -146,6 +147,12 @@ const SCENE_RENDER = (() => {
     plates.forEach((canvas) => {
       const ctx = canvas.getContext('2d');
       ctx.setTransform(cam.z * scale, 0, 0, cam.z * scale, cam.tx * scale, cam.ty * scale);
+      if (cam.rot) {
+        const anchor = (program.camera || {}).anchor || [W / 2, H / 2];
+        ctx.translate(anchor[0], anchor[1]);
+        ctx.rotate(cam.rot * Math.PI / 180);
+        ctx.translate(-anchor[0], -anchor[1]);
+      }
     });
     const duration = program.duration || 1;
     (program.layers || []).slice().sort((a, b) => (a.z || 0) - (b.z || 0)).forEach((layer) => {

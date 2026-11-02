@@ -10,6 +10,9 @@ DEFAULT_PALETTE = ["#F4EEE2", "#3D5588", "#FF665E", "#FFB511"]
 
 
 def scene_text(scene: dict, script: dict) -> str:
+    override = str(scene.get("text") or "").strip()
+    if override:
+        return override
     sentences = script.get("sentences") or []
     span = scene.get("source_span") or []
     text = "".join(sentences[i].get("text", "") for i in span
@@ -48,12 +51,26 @@ def camera_from_e02(camera: dict | None, duration: float, w: int, h: int) -> dic
         return {"anchor": [w / 2, h / 2], "keyframes": [
             {"t": 0.0, "zoom": 1.0, "x": 0, "y": 0, "rotate": 0, "ease": "linear"},
             {"t": round(duration, 3), "zoom": 1.03, "x": 0, "y": 0, "rotate": 0, "ease": "linear"}]}
+    anchor = camera.get("anchor") or [w / 2, h / 2]
+    if camera.get("keyframes"):
+        kfs = []
+        for k in sorted(camera["keyframes"], key=lambda x: float(x.get("t") or 0)):
+            kfs.append({
+                "t": round(max(0.0, min(float(k.get("t") or 0), duration)), 3),
+                "zoom": round(float(k.get("zoom") or 1.0), 4),
+                "x": round(float(k.get("x") or 0), 2),
+                "y": round(float(k.get("y") or 0), 2),
+                "rotate": round(float(k.get("rotate") or 0), 3),
+                "ease": str(k.get("ease") or "linear"),
+            })
+        if kfs:
+            return {"anchor": anchor, "keyframes": kfs}
     zoom = camera.get("zoom") or [[0, 1.0], [duration, 1.03]]
     pan = camera.get("pan") or [[0, 0], [duration, 0]]
     times = sorted({0.0, round(duration, 3)} | {round(float(t), 3) for t, _ in zoom + pan})
     kfs = [{"t": t, "zoom": round(_interp(zoom, t), 4), "x": round(_interp(pan, t), 2),
             "y": 0, "rotate": 0, "ease": "linear"} for t in times]
-    return {"anchor": camera.get("anchor") or [w / 2, h / 2], "keyframes": kfs}
+    return {"anchor": anchor, "keyframes": kfs}
 
 
 def _font_family(value) -> str:

@@ -533,9 +533,14 @@ async def e02(ctx):
     tl = u.get("E01") or {}
     cams = []
     for s in tl.get("scenes", []):
-        cams.append({"scene": s["id"], "zoom": [[s["start"], 1.0], [s["end"], 1.03]],
-                     "pan": [[s["start"], 0], [s["end"], 0]], "anchor": [960, 540],
-                     "note": s.get("camera", "默认缓推 3%")})
+        if s.get("camera_keyframes"):
+            cams.append({"scene": s["id"], "keyframes": s["camera_keyframes"],
+                         "anchor": s.get("camera_anchor") or [960, 540],
+                         "note": s.get("camera", "自定义关键帧")})
+        else:
+            cams.append({"scene": s["id"], "zoom": [[s["start"], 1.0], [s["end"], 1.03]],
+                         "pan": [[s["start"], 0], [s["end"], 0]], "anchor": [960, 540],
+                         "note": s.get("camera", "默认缓推 3%")})
     _artifact_json(ctx, "camera.json", {"cameras": cams})
 
 
@@ -596,6 +601,9 @@ async def e03(ctx):
 
 def _transition_type(text) -> str:
     t = str(text or "")
+    if t in ("cut", "dissolve", "wipe", "push", "paper-slide", "ink-bleed",
+             "glitch", "match-shape"):
+        return t
     for key, value in (("硬切", "cut"), ("溶解", "dissolve"), ("擦", "wipe"), ("推", "push"),
                        ("滑", "paper-slide"), ("墨", "ink-bleed"), ("故障", "glitch"),
                        ("匹配", "match-shape")):

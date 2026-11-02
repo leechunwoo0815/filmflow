@@ -113,7 +113,9 @@ function CanvasInner() {
         {graph && <span className="text-dim text-xs">caps: {graph.caps.join("/")}</span>}
         <div className="ml-auto flex gap-2">
           <a className="btn" href={`/editor?project=${projectId}`}>{t("nav.editor")}</a>
+          <a className="btn" href={`/timeline?project=${projectId}&run=${runId}`}>时间轴</a>
           <a className="btn" href={`/review?project=${projectId}&run=${runId}`}>静帧审阅</a>
+          <a className="btn" href={`/player?project=${projectId}&run=${runId}`}>审片</a>
           <a className="btn" href={`/audio?project=${projectId}`}>音频</a>
           <a className="btn" href={`/delivery?project=${projectId}&run=${runId}`}>交付</a>
           <button className="btn" data-testid="studio-guide-btn" onClick={() => setGuideOpen((v) => !v)}>引导</button>
@@ -142,6 +144,9 @@ function CanvasInner() {
               <ul className="text-dim text-xs mt-1 list-disc ml-4">
                 {g.checklist.slice(0, 5).map((c: string, i: number) => <li key={i}>{c}</li>)}
               </ul>
+              {g.comments && (
+                <div className="text-xs text-gold mt-1">批注：未解决 {g.comments.open} / 共 {g.comments.total}</div>
+              )}
               <div className="flex gap-2 mt-2">
                 <button className="btn-primary" onClick={async () => { await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: runId, decision: "approved", author: "local", note: "", checklist: [] }) }); load(); }}>{t("cv.approve")}</button>
                 <button className="btn" onClick={async () => {
