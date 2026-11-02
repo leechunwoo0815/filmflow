@@ -16,6 +16,18 @@ from .api.routes import router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # FR-29：清孤儿进程/旧 profile；恢复被 kill -9 中断的 Run Job
+    from sqlmodel import Session
+    from .db import engine
+    from .engine import runengine
+    from .services import jobs as jobs_svc
+    clean = jobs_svc.cleanup_orphans()
+    with Session(engine) as session:
+        recovered = jobs_svc.recover(session)
+    for run_id in recovered["requeued"]:
+        runengine.start_run(run_id)
+    if clean["killed"] or clean["removedProfiles"] or recovered["requeued"]:
+        print(f"[recovery] cleanup={clean} recovered={recovered}", flush=True)
     yield
 
 

@@ -19,6 +19,7 @@ from .executors import REGISTRY
 from .locks import LockManager
 from .runner import ProcessRunner
 from .snapshot import ensure_run_snapshot
+from ..services import jobs as jobs_svc
 from ..services.render_profiles import PROFILE_NODES, profiles_sha
 
 ACTIVE: dict[int, asyncio.Task] = {}
@@ -394,18 +395,61 @@ def _clone_artifacts(session: Session, prev: NodeRun, run_id: int, new_node_run_
     session.commit()
 
 
+def _job_finish(job_id: int | None, status: str, *, error_code: str = "",
+                error_msg: str = "", result: dict | None = None) -> None:
+    if not job_id:
+        return
+    with Session(engine) as session:
+        jobs_svc.finish_job(session, job_id, status, error_code=error_code,
+                            error_msg=error_msg, result=result)
+
+
+def _job_park(job_id: int | None, status: str, error_code: str, error_msg: str) -> None:
+    if not job_id:
+        return
+    with Session(engine) as session:
+        jobs_svc.park_job(session, job_id, status, error_code, error_msg)
+
+
+async def _heartbeat_job(job_id: int, owner: str) -> None:
+    while True:
+        await asyncio.sleep(jobs_svc.HEARTBEAT_SECONDS)
+        try:
+            with Session(engine) as session:
+                jobs_svc.heartbeat(session, job_id, owner)
+        except Exception:
+            # 心跳失败不能杀死 run；下次心跳继续
+            pass
+
+
 async def _run_loop(run_id: int) -> None:
+    owner = f"run:{run_id}"
+    job_id: int | None = None
+    hb_task: asyncio.Task | None = None
     with Session(engine) as session:
         run = session.get(Run, run_id)
+        job = jobs_svc.ensure_run_job(session, run_id)
+        job = jobs_svc.start_job(session, job.id or 0, owner)  # type: ignore[arg-type]
+        job_id = job.id
         run.status = "running"
         run.started_at = run.started_at or _now()
         session.add(run)
         session.commit()
+    hb_task = asyncio.create_task(_heartbeat_job(job_id or 0, owner))
     emit("run.started", run_id)
     try:
         while True:
             if CANCELS.get(run_id) and CANCELS[run_id].is_set():
-                break
+                with Session(engine) as session:
+                    run = session.get(Run, run_id)
+                    run.status = "canceled"
+                    run.finished_at = _now()
+                    session.add(run)
+                    session.commit()
+                _job_finish(job_id, "canceled", error_code="E_RUN_CANCELED",
+                            result={"runStatus": "canceled"})
+                emit("run.finished", run_id, status="canceled")
+                return
             with Session(engine) as session:
                 run = session.get(Run, run_id)
                 wf = _workflow(session, run)
@@ -425,6 +469,14 @@ async def _run_loop(run_id: int) -> None:
                     run.finished_at = _now() if run.status in ("succeeded", "failed") else None
                     session.add(run)
                     session.commit()
+                    if run.status == "succeeded":
+                        _job_finish(job_id, "succeeded", result={"runStatus": "succeeded"})
+                    elif run.status == "failed":
+                        _job_finish(job_id, "failed", error_code="E_RUN_FAILED",
+                                    error_msg="run failed", result={"runStatus": "failed"})
+                    else:
+                        # 等门/needs_changes：保留 active job，批准后 start_run 复用
+                        _job_park(job_id, "retry_wait", "E_RUN_BLOCKED", run.status)
                     emit("run.finished", run_id, status=run.status)
                     return
             # 并发：纯分析节点 2 并发，锁由 LockManager 串行（规格 §9.3）
@@ -434,14 +486,20 @@ async def _run_loop(run_id: int) -> None:
                 # 全 cached 时避免忙转：继续下一轮（ready 集会推进）
                 continue
     except asyncio.CancelledError:
-        pass
+        # 进程关闭/任务取消：保留 running job 与租约，交给启动恢复
+        raise
     except Exception as e:
         with Session(engine) as session:
             run = session.get(Run, run_id)
             run.status = "failed"
             session.add(run)
             session.commit()
+        _job_finish(job_id, "failed", error_code="E_RUN_FAILED", error_msg=str(e)[:300],
+                    result={"runStatus": "failed"})
         emit("run.finished", run_id, status="failed", error=str(e)[:300])
+    finally:
+        if hb_task:
+            hb_task.cancel()
 
 
 def start_run(run_id: int) -> None:
@@ -454,6 +512,7 @@ def start_run(run_id: int) -> None:
             project = session.get(Project, wf.project_id) if wf else None
             if project:
                 ensure_run_snapshot(session, run, project.root)
+        jobs_svc.ensure_run_job(session, run_id)
     CANCELS[run_id] = asyncio.Event()
     ACTIVE[run_id] = asyncio.create_task(_run_loop(run_id))
 
@@ -475,8 +534,22 @@ async def step_run(run_id: int) -> dict:
 
 
 def cancel_run(run_id: int) -> None:
+    active = run_id in ACTIVE and not ACTIVE[run_id].done()
     if run_id in CANCELS:
         CANCELS[run_id].set()
+    with Session(engine) as session:
+        job = jobs_svc._active_job(session, run_id)
+        if not job or not job.id:
+            return
+        if not active:
+            run = session.get(Run, run_id)
+            if run and run.status not in ("succeeded", "failed"):
+                run.status = "canceled"
+                session.add(run)
+            jobs_svc.finish_job(session, job.id, "canceled",
+                                error_code="E_RUN_CANCELED", result={"runStatus": "canceled"})
+        else:
+            jobs_svc.cancel_requested(session, job.id)
 
 
 async def resume_run(run_id: int) -> dict:

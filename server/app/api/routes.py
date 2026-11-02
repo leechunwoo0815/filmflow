@@ -25,6 +25,7 @@ from ..models import (Approval, Artifact, AuditLog, Draft, Job, Metric, NodeRun,
 from ..services import environment as env_svc
 from ..services import engines as engines_svc
 from ..services import preview as preview_svc
+from ..services import jobs as jobs_svc
 from ..services import project_docs as docs_svc
 from ..services import render_profiles as profiles_svc
 from ..services import recommend as rec_svc
@@ -1076,6 +1077,52 @@ async def project_doc_diff(project_id: int, kind: str, from_version: int, to_ver
 
 
 # ---------- jobs / audit / 事件 ----------
+
+@router.get("/jobs")
+async def jobs_list(status: str | None = None, kind: str | None = None,
+                    limit: int = 200, session: Session = Depends(get_session)):
+    return {"items": [table_dict(j) for j in jobs_svc.list_jobs(session, status, kind, limit)]}
+
+
+@router.get("/queue")
+async def queue_summary(session: Session = Depends(get_session)):
+    return jobs_svc.queue_summary(session)
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def job_cancel(job_id: int, session: Session = Depends(get_session)):
+    j = session.get(Job, job_id)
+    if not j:
+        raise not_found("job")
+    if j.kind == "run" and j.run_id:
+        re_mod.cancel_run(j.run_id)
+    elif j.kind.startswith("preview_"):
+        pj = preview_svc.find_by_db_job(job_id)
+        if pj:
+            preview_svc.cancel_job(pj.id)
+        else:
+            jobs_svc.finish_job(session, job_id, "canceled", error_code="E_PREVIEW_CANCELED")
+    else:
+        jobs_svc.cancel_requested(session, job_id)
+    session.expire_all()
+    return table_dict(session.get(Job, job_id))
+
+
+@router.post("/jobs/{job_id}/retry")
+async def job_retry(job_id: int, session: Session = Depends(get_session)):
+    j = session.get(Job, job_id)
+    if not j:
+        raise not_found("job")
+    if j.kind != "run" or not j.run_id:
+        raise ApiError(ErrorCode.E_CONFLICT, "只有 Run job 支持重试", status=409)
+    if j.status not in ("failed", "canceled"):
+        raise ApiError(ErrorCode.E_CONFLICT, f"job 状态 {j.status} 不可重试", status=409)
+    result = await re_mod.resume_run(j.run_id)
+    with Session(engine) as s2:
+        latest = jobs_svc.latest_run_job(s2, j.run_id)
+    return {"runId": j.run_id, "requeued": result["requeued"],
+            "jobId": latest.id if latest else None}
+
 
 @router.get("/jobs/{job_id}")
 async def job_get(job_id: int, session: Session = Depends(get_session)):

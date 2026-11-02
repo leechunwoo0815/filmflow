@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.3.1"  # R2.0 Phase 6：G06 真实同步口径（不再伪报 0）
+EXECUTOR_VERSION = "2.4.0"  # R2.0 Phase 7：持久化 Job/恢复；Chrome profile 带 run_id
 
 
 def canonical(obj) -> str:

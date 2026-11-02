@@ -169,12 +169,27 @@ class AuditLog(SQLModel, table=True):
 
 
 class Job(SQLModel, table=True):
-    """异步任务（预演渲染等 drafts 作用域工作）。"""
+    """持久化异步任务（FR-29）：run / preview_segment / preview_film。"""
     id: Optional[int] = Field(default=None, primary_key=True)
-    kind: str                                               # previs | import | label ...
-    status: str = Field(default="queued", index=True)       # queued|running|succeeded|failed
+    kind: str                                               # run | preview_segment | preview_film
+    status: str = Field(default="queued", index=True)       # queued|leased|running|succeeded|failed|canceled|retry_wait
+    priority: int = Field(default=40, index=True)           # preview 100 / interactive 80 / batch 40 / delivery 20
     payload_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
     result_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    run_id: Optional[int] = Field(default=None, foreign_key="run.id", index=True)
+    parent_id: Optional[int] = None
+    attempts: int = 0
+    max_attempts: int = 3
+    lease_until: Optional[datetime] = None
+    heartbeat_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    cancel_requested: bool = False
+    progress: float = 0.0
+    eta: Optional[float] = None
+    error_code: str = ""
+    error_msg: str = ""
+    lease_owner: str = ""
     created_at: datetime = Field(default_factory=utcnow)
     finished_at: Optional[datetime] = None
 

@@ -368,6 +368,11 @@ class PreviewCache:
 
 # ---------- 渲染器（同一 Chrome / 临时 Chrome） ----------
 
+def _f02_active() -> bool:
+    from ..engine.runengine import LOCK_MANAGER
+    return any(h.endswith(":F02") for h in LOCK_MANAGER.holders("chrome-queue"))
+
+
 def _cdp_ok(port: int = 9222) -> bool:
     import urllib.request
     try:
@@ -550,9 +555,19 @@ async def render_still(session: Session, project_id: int, scene_id: str, t: floa
     try:
         async with _PAGE_SEM:
             _INTERACTIVE += 1
-            async with PreviewRenderer() as r:
-                chrome_mode = r.mode
-                raw = await r.render_one(payload)
+            try:
+                async with PreviewRenderer() as r:
+                    chrome_mode = r.mode
+                    raw = await r.render_one(payload)
+            except Exception as first_err:
+                # F02 恰好结束/区间切换会关闭 CDP 页面；F02 已空闲则改临时 Chrome 重试
+                await asyncio.sleep(0.4)
+                if _f02_active():
+                    raise ApiError(ErrorCode.E_PREVIEW_BUSY, "批量渲染切换中，预览稍后自动刷新",
+                                   status=429, details={"retry_after_ms": 1500}) from first_err
+                async with PreviewRenderer() as r:
+                    chrome_mode = r.mode
+                    raw = await r.render_one(payload)
     finally:
         _INTERACTIVE = max(0, _INTERACTIVE - 1)
     if _STILL_GEN.get(gen_key) != gen:
@@ -591,6 +606,7 @@ class PreviewJob:
     rendered: int = 0
     reused: int = 0
     chrome: str | None = None
+    db_job_id: int | None = None
 
 
 def job_payload(job: PreviewJob) -> dict:
@@ -609,11 +625,26 @@ def get_job(job_id: str) -> PreviewJob:
     return job
 
 
+def find_by_db_job(db_job_id: int) -> PreviewJob | None:
+    for job in _JOBS.values():
+        if job.db_job_id == db_job_id:
+            return job
+    return None
+
+
 def cancel_job(job_id: str) -> dict:
+    from . import jobs as jobs_svc
+    from ..db import engine as db_engine
     job = get_job(job_id)
     job.cancel_event.set()
     if job.status in ("queued", "running"):
         job.status = "canceled"
+    if job.db_job_id:
+        with Session(db_engine) as session:
+            jobs_svc.cancel_requested(session, job.db_job_id)
+            jobs_svc.finish_job(session, job.db_job_id, "canceled",
+                                error_code="E_PREVIEW_CANCELED",
+                                result={"previewJobId": job.id})
     return job_payload(job)
 
 
@@ -623,6 +654,16 @@ def _new_job(project_id: int, kind: str, profile: str, **kw) -> PreviewJob:
     job.url = f"/api/preview/jobs/{job.id}/file"
     _JOBS[job.id] = job
     return job
+
+
+def _persist_job(session: Session, job: PreviewJob, **extra) -> None:
+    from . import jobs as jobs_svc
+    db_job = jobs_svc.create_job(
+        session, f"preview_{job.kind}", jobs_svc.PRIORITY["preview"],
+        payload={"projectId": job.project_id, "profile": job.profile,
+                 "sceneId": job.scene_id, "start": job.start, "end": job.end, **extra},
+        result={"previewJobId": job.id})
+    job.db_job_id = db_job.id
 
 
 def create_segment_job(session: Session, project_id: int, scene_id: str, start: float,
@@ -636,6 +677,7 @@ def create_segment_job(session: Session, project_id: int, scene_id: str, start: 
                        f"片段范围非法：{start}-{end}（片长 {ctx.profile['duration']}s）")
     job = _new_job(project_id, "segment", profile, scene_id=scene_id,
                    start=round(start, 3), end=round(end, 3))
+    _persist_job(session, job, scene_id=scene_id, start=start, end=end, watermark=watermark)
     job.task = asyncio.create_task(_run_job(job, watermark))
     return job
 
@@ -646,6 +688,7 @@ def create_film_job(session: Session, project_id: int, profile: str = "draft",
     _output_profile(profile, ctx)
     job = _new_job(project_id, "film", profile,
                    start=0.0, end=round(ctx.profile["duration"], 3))
+    _persist_job(session, job, watermark=watermark)
     job.task = asyncio.create_task(_run_job(job, watermark))
     return job
 
@@ -670,25 +713,42 @@ async def _render_frames(job: PreviewJob, ctx: PreviewContext, programs: list[di
         # 与 final 同源：native 分辨率渲染，再 Lanczos 降采样（SSIM 归一化 ≥0.98）
         native = {"width": int(ctx.profile["width"]), "height": int(ctx.profile["height"])}
         payload = _payload(ctx, programs, ctx.transitions, native)
-        async with PreviewRenderer() as r:
-            job.chrome = r.mode
-            await r.init(payload)
-            for n, (i, t) in enumerate(missing):
-                if job.cancel_event.is_set():
-                    raise asyncio.CancelledError
-                while _INTERACTIVE > 0:
-                    await asyncio.sleep(0.03)
-                async with _PAGE_SEM:
-                    raw = await r.frame_jpeg(t, 0.98)
-                data = await asyncio.to_thread(finish_png, raw, out["width"], out["height"], watermark)
-                key = _still_key(group, t, profile, out, watermark)
-                cache.put(group, key, data)
-                pngs[i] = data
-                job.rendered += 1
-                done = reused + n + 1
-                job.progress = done / max(len(times), 1)
-                elapsed = time.time() - job.created
-                job.eta = (elapsed / job.progress - elapsed) if job.progress > 0 else None
+
+        async def _render_missing() -> None:
+            async with PreviewRenderer() as r:
+                job.chrome = r.mode
+                await r.init(payload)
+                for n, (i, t) in enumerate(missing):
+                    if job.cancel_event.is_set():
+                        raise asyncio.CancelledError
+                    while _INTERACTIVE > 0:
+                        await asyncio.sleep(0.03)
+                    key = _still_key(group, t, profile, out, watermark)
+                    cached = cache.get(group, key)
+                    if cached is not None:
+                        pngs[i] = cached
+                        continue
+                    async with _PAGE_SEM:
+                        raw = await r.frame_jpeg(t, 0.98)
+                    data = await asyncio.to_thread(finish_png, raw, out["width"], out["height"], watermark)
+                    cache.put(group, key, data)
+                    pngs[i] = data
+                    job.rendered += 1
+                    done = reused + n + 1
+                    job.progress = done / max(len(times), 1)
+                    elapsed = time.time() - job.created
+                    job.eta = (elapsed / job.progress - elapsed) if job.progress > 0 else None
+                    if job.db_job_id and (n % 10 == 0 or n == len(missing) - 1):
+                        await asyncio.to_thread(_update_preview_job_progress, job)
+
+        try:
+            await _render_missing()
+        except Exception as first_err:
+            await asyncio.sleep(0.4)
+            if _f02_active():
+                raise ApiError(ErrorCode.E_PREVIEW_BUSY, "批量渲染切换中，预览稍后自动刷新",
+                               status=429, details={"retry_after_ms": 1500}) from first_err
+            await _render_missing()
     await asyncio.to_thread(cache.evict)
     _STATS["renders"] += len(missing)
     if job.chrome is None:
@@ -738,16 +798,64 @@ async def _ffmpeg_encode(frames_dir: Path, fps: int, out: Path, crf: int, preset
         LOCK_MANAGER.release("ffmpeg", holder)
 
 
+def _update_preview_job_progress(job: PreviewJob) -> None:
+    if not job.db_job_id:
+        return
+    from . import jobs as jobs_svc
+    from ..db import engine as db_engine
+    try:
+        with Session(db_engine) as session:
+            jobs_svc.update_job(session, job.db_job_id, progress=job.progress,
+                                eta=job.eta, status=job.status)
+    except Exception:
+        pass
+
+
+def _finish_preview_db(job: PreviewJob, status: str, *, error_code: str = "",
+                       error_msg: str = "") -> None:
+    if not job.db_job_id:
+        return
+    from . import jobs as jobs_svc
+    from ..db import engine as db_engine
+    try:
+        with Session(db_engine) as session:
+            jobs_svc.finish_job(session, job.db_job_id, status, error_code=error_code,
+                                error_msg=error_msg,
+                                result={"previewJobId": job.id, "url": job.url,
+                                        "path": job.path})
+    except Exception:
+        pass
+
+
+async def _heartbeat_preview(job: PreviewJob) -> None:
+    from . import jobs as jobs_svc
+    from ..db import engine as db_engine
+    while True:
+        await asyncio.sleep(jobs_svc.HEARTBEAT_SECONDS)
+        try:
+            with Session(db_engine) as session:
+                jobs_svc.heartbeat(session, job.db_job_id or 0, f"preview:{job.id}")
+        except Exception:
+            pass
+
+
 async def _run_job(job: PreviewJob, watermark: bool) -> None:
     from ..db import engine as db_engine
+    from . import jobs as jobs_svc
     tmpdir: Path | None = None
+    hb_task: asyncio.Task | None = None
     try:
         if job.cancel_event.is_set():
             job.status = "canceled"
+            _finish_preview_db(job, "canceled", error_code="E_PREVIEW_CANCELED")
             return
         job.status = "running"
         with Session(db_engine) as session:
             ctx = resolve_context(session, job.project_id)
+            if job.db_job_id:
+                jobs_svc.start_job(session, job.db_job_id, f"preview:{job.id}")
+        if job.db_job_id:
+            hb_task = asyncio.create_task(_heartbeat_preview(job))
         out = _output_profile(job.profile, ctx)
         if job.kind == "segment":
             start = float(job.start or 0)
@@ -788,11 +896,16 @@ async def _run_job(job: PreviewJob, watermark: bool) -> None:
         job.status = "succeeded"
         job.progress = 1.0
         job.eta = 0.0
+        _finish_preview_db(job, "succeeded")
     except asyncio.CancelledError:
         job.status = "canceled"
+        _finish_preview_db(job, "canceled", error_code="E_PREVIEW_CANCELED")
     except Exception as e:
         job.status = "failed"
         job.error = str(e)[:800]
+        _finish_preview_db(job, "failed", error_code="E_PREVIEW_FAILED", error_msg=job.error)
     finally:
+        if hb_task:
+            hb_task.cancel()
         if tmpdir is not None:
             shutil.rmtree(tmpdir, ignore_errors=True)

@@ -135,7 +135,7 @@ async def _chrome_screenshot(ctx, url: str, out_png: Path, width: int, height: i
         from ...errors import ApiError, ErrorCode
         raise ApiError(ErrorCode.E_ENV_MISSING, "未找到 Chrome")
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    profile = f"/tmp/ff-chrome-{ctx['node_id']}"
+    profile = f"/tmp/ff-chrome-{ctx['node_id']}-{ctx['run_id']}"
     argv = [chrome, "--headless=new", "--disable-gpu", "--enable-unsafe-swiftshader",
             f"--user-data-dir={profile}", f"--window-size={width},{height}", "--hide-scrollbars",
             "--virtual-time-budget=8000", f"--screenshot={out_png}", url]
@@ -586,7 +586,7 @@ async def _chrome_render_argv(ctx, url: str, debug_port: int | None = None) -> l
         from ...errors import ApiError, ErrorCode
         raise ApiError(ErrorCode.E_ENV_MISSING, "未找到 Chrome")
     argv = [chrome, "--headless=new", "--disable-gpu", "--enable-unsafe-swiftshader",
-            f"--user-data-dir=/tmp/ff-{ctx['node_id']}", "--window-size=1920,1080", "--hide-scrollbars"]
+            f"--user-data-dir=/tmp/ff-{ctx['node_id']}-{ctx['run_id']}", "--window-size=1920,1080", "--hide-scrollbars"]
     if debug_port:
         argv += [f"--remote-debugging-port={debug_port}", "--remote-debugging-address=127.0.0.1"]
     return argv + [url]
