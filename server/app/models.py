@@ -142,6 +142,18 @@ class Asset(SQLModel, table=True):
     __table_args__ = (Index("ix_asset_scope_sha", "scope", "project_id", "sha256"),)
 
 
+class Template(SQLModel, table=True):
+    """FR-37 项目/场景模板；content_json 带版本化快照，项目用 template.lock.json 锁定。"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = Field(index=True)                           # project | scene
+    name: str
+    description: str = ""
+    content_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    version: int = 1
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class Metric(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     run_id: int = Field(foreign_key="run.id", index=True)
@@ -264,7 +276,7 @@ class SceneState(SQLModel, table=True):
 
 TABLES: list[type[SQLModel]] = [
     Project, Draft, Style, StylePreview, StylePick, Workflow, Run, NodeRun,
-    Artifact, Asset, Metric, Event, Approval, AuditLog, Job, WorkflowVersion,
+    Artifact, Asset, Template, Metric, Event, Approval, AuditLog, Job, WorkflowVersion,
     ProjectDoc, DocRevision, SchemaMigration, SceneState,
 ]
 

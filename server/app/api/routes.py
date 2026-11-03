@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -21,8 +23,8 @@ from ..engine.invalidation import impact_preview
 from ..errors import ApiError, ErrorCode, not_found
 from ..events import emit, subscribe, unsubscribe
 from ..models import (Approval, Artifact, Asset, AuditLog, Draft, Job, Metric, NodeRun,
-                      Project, ProjectDoc, Run, Style, StylePick, Workflow, WorkflowVersion,
-                      table_dict)
+                      Project, ProjectDoc, Run, Style, StylePick, Template, Workflow,
+                      WorkflowVersion, table_dict)
 from ..services import environment as env_svc
 from ..services import engines as engines_svc
 from ..services import preview as preview_svc
@@ -32,6 +34,7 @@ from ..services import onboarding as onboarding_svc
 from ..services import review_comments as review_svc
 from ..services import takes as takes_svc
 from ..services import timeline_ops as tl_svc
+from ..services import templates as tpl_svc
 from ..services import delivery as delivery_svc
 from ..services import jobs as jobs_svc
 from ..services import project_docs as docs_svc
@@ -528,9 +531,332 @@ FIRST_TEMPLATES = [
 ]
 
 
+def _saved_templates(session: Session, kind: str = "") -> list[Template]:
+    stmt = select(Template)
+    if kind:
+        stmt = stmt.where(Template.kind == kind)
+    return session.exec(stmt.order_by(Template.id.desc())).all()  # type: ignore[arg-type]
+
+
+def _resolve_template(session: Session, template_id: str) -> tuple[str, dict, Template | None, dict | None]:
+    if template_id.startswith("saved:"):
+        try:
+            tid = int(template_id.split(":", 1)[1])
+        except ValueError:
+            raise not_found("模板")
+        t = session.get(Template, tid)
+        if not t:
+            raise not_found("模板")
+        return t.kind, t.content_json or {}, t, None
+    if template_id.startswith("builtin:scene-"):
+        item = next((x for x in tpl_svc.BUILTIN_SCENE_TEMPLATES if x["id"] == template_id), None)
+        if not item:
+            raise not_found("场景模板")
+        content = {k: v for k, v in item.items() if k not in ("id", "name", "kind", "description")}
+        return "scene", content, None, item
+    item = next((x for x in FIRST_TEMPLATES if x["id"] == template_id), None)
+    if item:
+        return "project", item, None, item
+    raise not_found("模板")
+
+
+def _latest_style(session: Session, project_id: int) -> tuple[StylePick | None, Style | None]:
+    pick = session.exec(select(StylePick).where(
+        StylePick.project_id == project_id).order_by(StylePick.id.desc())).first()  # type: ignore[arg-type,union-attr]
+    style = session.get(Style, pick.primary_id) if pick and pick.primary_id else None
+    return pick, style
+
+
+def _project_template_content(session: Session, project_id: int, copy,
+                              description: str = "") -> dict:
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    profile = docs_svc.doc_payload(session, project_id, proj.root, "profile")["content"]
+    timeline = docs_svc.doc_payload(session, project_id, proj.root, "timeline")["content"]
+    script = docs_svc.doc_payload(session, project_id, proj.root, "script")["content"]
+    delivery = docs_svc.doc_payload(session, project_id, proj.root, "delivery")["content"]
+    pick, style = _latest_style(session, project_id)
+    if copy is None:
+        copy = script.get("text", "")
+    return tpl_svc.project_template_content(
+        profile=profile, timeline=timeline, style_id=(pick.primary_id if pick else ""),
+        style_family=(style.family if style else "print"), delivery=delivery,
+        copy=str(copy or ""), description=description, source_project_id=project_id)
+
+
 @router.get("/templates")
-async def templates_list():
-    return {"items": FIRST_TEMPLATES}
+async def templates_list(kind: str = "", session: Session = Depends(get_session)):
+    items: list[dict] = []
+    if kind in ("", "project"):
+        items.extend([{**t, "kind": "project", "saved": False, "version": 0}
+                      for t in FIRST_TEMPLATES])
+        items.extend(tpl_svc.saved_dto(t) for t in _saved_templates(session, "project"))
+    if kind in ("scene", "all"):
+        items.extend(tpl_svc.builtin_scene_dto(x) for x in tpl_svc.BUILTIN_SCENE_TEMPLATES)
+        items.extend(tpl_svc.saved_dto(t) for t in _saved_templates(session, "scene"))
+    return {"items": items}
+
+
+@router.get("/templates/{template_id}")
+async def template_get(template_id: str, session: Session = Depends(get_session)):
+    kind, content, saved, builtin = _resolve_template(session, template_id)
+    if saved:
+        return {"template": tpl_svc.saved_dto(saved, with_content=True)}
+    if kind == "scene":
+        return {"template": tpl_svc.builtin_scene_dto(builtin or {})}
+    return {"template": {**builtin, "kind": "project", "saved": False, "version": 0,
+                         "content": content}}
+
+
+@router.delete("/templates/{template_id}")
+async def template_delete(template_id: str, session: Session = Depends(get_session)):
+    if not template_id.startswith("saved:"):
+        raise ApiError(ErrorCode.E_VALIDATION, "内置模板不能删除")
+    _, content, saved, _ = _resolve_template(session, template_id)
+    if not saved:
+        raise not_found("模板")
+    session.delete(saved)
+    session.commit()
+    audit(session, "template.delete", template_id)
+    return {"deleted": saved.id}
+
+
+async def _materialize_saved_template(session: Session, tpl: Template, variables: dict,
+                                      name: str, copy_override: str | None = None) -> dict:
+    content = tpl.content_json or {}
+    vars = {str(k): v for k, v in (variables or {}).items()}
+    copy_src = copy_override if copy_override is not None else str(content.get("copy") or "")
+    copy, missing_copy = tpl_svc.substitute(copy_src, vars)
+    profile_src, missing_profile = tpl_svc.substitute(content.get("profile") or {}, vars)
+    content_sub, missing_content = tpl_svc.substitute(content, vars)
+    profile = {k: v for k, v in profile_src.items() if k != "schema"}
+    profile.setdefault("width", 1920)
+    profile.setdefault("height", 1080)
+    profile.setdefault("fps", 24)
+    result = await _materialize_first(
+        session, name=name, copy=str(copy), profile=profile,
+        family=str(content.get("style_family") or "print"), title=name,
+        source=f"{tpl.id}", style_id=str(content.get("style_id") or ""))
+    pid = int(result["project"]["id"])
+    proj = session.get(Project, pid)
+    if not proj:
+        raise not_found("项目")
+    assets_svc.ensure_asset_shas(session, content.get("sourceProjectId"), proj.root,
+                                 content.get("assetShas") or [])
+    current_profile = docs_svc.doc_payload(session, pid, proj.root, "profile")
+    script = docs_svc.doc_payload(session, pid, proj.root, "script")["content"]
+    timeline = tpl_svc.build_timeline_from_content(content_sub, script, profile)
+    profile_doc = {"schema": docs_svc.SCHEMAS["profile"], **profile,
+                   "duration": timeline["duration"], "frames": timeline["frames"]}
+    docs_svc.save_doc(session, pid, "profile", profile_doc, current_profile["version"],
+                      "template")
+    current_tl = docs_svc.doc_payload(session, pid, proj.root, "timeline")
+    docs_svc.save_doc(session, pid, "timeline", timeline, current_tl["version"], "template")
+    delivery = content_sub.get("delivery") or {}
+    if delivery.get("schema") == docs_svc.SCHEMAS["delivery"]:
+        current_delivery = docs_svc.doc_payload(session, pid, proj.root, "delivery")
+        docs_svc.save_doc(session, pid, "delivery", delivery,
+                          current_delivery["version"], "template")
+    lock = tpl_svc.write_lock(proj.root, tpl.id or 0, tpl.version, content.get("variables"))
+    missing = sorted(set(missing_copy) | set(missing_profile) | set(missing_content))
+    result.update({"template": f"saved:{tpl.id}", "templateId": tpl.id,
+                   "templateVersion": tpl.version, "missingVariables": missing,
+                   "lock": lock, "name": name})
+    return result
+
+
+@router.post("/projects/{project_id}/save-template")
+async def project_save_template(project_id: int, payload: dict,
+                                session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    name = str(payload.get("name") or f"{proj.name} 模板").strip()[:80]
+    if not name:
+        raise ApiError(ErrorCode.E_VALIDATION, "模板名称不能为空")
+    content = _project_template_content(session, project_id, payload.get("copy"),
+                                        str(payload.get("description") or ""))
+    t = Template(kind="project", name=name, description=str(payload.get("description") or ""),
+                 content_json=content)
+    session.add(t)
+    session.commit()
+    session.refresh(t)
+    audit(session, "template.save", f"project:{project_id}", after={"template": t.id})
+    return {"template": tpl_svc.saved_dto(t, with_content=True)}
+
+
+@router.post("/templates/{template_id}/version")
+async def template_new_version(template_id: str, payload: dict,
+                               session: Session = Depends(get_session)):
+    if not template_id.startswith("saved:"):
+        raise ApiError(ErrorCode.E_VALIDATION, "内置模板不能改版本")
+    _, _content, saved, _ = _resolve_template(session, template_id)
+    if not saved or saved.kind != "project":
+        raise ApiError(ErrorCode.E_VALIDATION, "只有项目模板可保存新版本")
+    project_id = int(payload.get("projectId") or 0)
+    content = _project_template_content(session, project_id, payload.get("copy"),
+                                        str(payload.get("description") or saved.description))
+    saved.content_json = content
+    flag_modified(saved, "content_json")
+    saved.version += 1
+    saved.updated_at = datetime.now(timezone.utc)
+    if payload.get("name"):
+        saved.name = str(payload["name"])[:80]
+    session.add(saved)
+    session.commit()
+    session.refresh(saved)
+    audit(session, "template.version", template_id,
+          after={"version": saved.version, "project": project_id})
+    return {"template": tpl_svc.saved_dto(saved, with_content=True)}
+
+
+@router.post("/projects/{project_id}/scenes/{scene_id}/save-template")
+async def project_save_scene_template(project_id: int, scene_id: str, payload: dict,
+                                      session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    timeline = docs_svc.doc_payload(session, project_id, proj.root, "timeline")["content"]
+    scene = next((s for s in timeline.get("scenes") or [] if s.get("id") == scene_id), None)
+    if not scene:
+        raise not_found("场景")
+    name = str(payload.get("name") or f"{scene_id} 场景模板").strip()[:80]
+    content = tpl_svc.scene_template_content(
+        scene, keep_text=bool(payload.get("keepText")),
+        description=str(payload.get("description") or ""), source_project_id=project_id)
+    t = Template(kind="scene", name=name, description=str(payload.get("description") or ""),
+                 content_json=content)
+    session.add(t)
+    session.commit()
+    session.refresh(t)
+    audit(session, "template.scene.save", f"project:{project_id}:{scene_id}",
+          after={"template": t.id})
+    return {"template": tpl_svc.saved_dto(t, with_content=True)}
+
+
+@router.post("/projects/{project_id}/timeline/scene-template")
+async def project_apply_scene_template(project_id: int, payload: dict,
+                                       session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    kind, content, saved, builtin = _resolve_template(session, str(payload.get("templateId") or ""))
+    if kind != "scene":
+        raise ApiError(ErrorCode.E_VALIDATION, "不是场景模板")
+    scene = deepcopy(content)
+    for key in ("schema", "description", "id", "name", "kind"):
+        scene.pop(key, None)
+    scene["duration"] = float(scene.get("duration") or 2.5)
+    scene.setdefault("text", "新场景。")
+    assets_svc.ensure_asset_shas(session, content.get("sourceProjectId"), proj.root,
+                                 content.get("assetShas") or [])
+    current = docs_svc.doc_payload(session, project_id, proj.root, "timeline")
+    script = docs_svc.doc_payload(session, project_id, proj.root, "script")["content"]
+    index = payload.get("index")
+    if payload.get("afterSceneId"):
+        ids = [s.get("id") for s in current["content"].get("scenes") or []]
+        try:
+            index = ids.index(str(payload["afterSceneId"])) + 1
+        except ValueError:
+            index = None
+    try:
+        new_content, meta = tl_svc.apply(current["content"], script, "add_scene",
+                                         {"scene": scene, "index": index})
+    except tl_svc.TimelineOpError as e:
+        raise ApiError(ErrorCode.E_VALIDATION, f"{e.code}: {e.message}",
+                       status=e.status, details=e.details)
+    base = int(payload.get("baseVersion") if payload.get("baseVersion") is not None
+               else current["version"])
+    doc, diff = docs_svc.save_doc(session, project_id, "timeline", new_content, base,
+                                  payload.get("author", "scene-template"))
+    before = {s.get("id") for s in current["content"].get("scenes") or []}
+    inserted = next((s.get("id") for s in new_content.get("scenes") or [] if s.get("id") not in before), "")
+    audit(session, "template.scene.apply", f"project:{project_id}",
+          after={"template": payload.get("templateId"), "sceneId": inserted})
+    return {**docs_svc.doc_payload(session, project_id, proj.root, "timeline"),
+            "sceneId": inserted, "diff": diff, "validation": meta["validation"],
+            "template": (f"saved:{saved.id}" if saved else str(payload.get("templateId")))}
+
+
+@router.get("/projects/{project_id}/template-lock")
+async def project_template_lock(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    return {"lock": tpl_svc.read_lock(proj.root)}
+
+
+@router.get("/projects/{project_id}/template-diff")
+async def project_template_diff(project_id: int, templateId: str,
+                                session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    kind, content, saved, _ = _resolve_template(session, templateId)
+    if kind != "project" or not saved:
+        raise ApiError(ErrorCode.E_VALIDATION, "升级只支持已保存的项目模板")
+    profile = docs_svc.doc_payload(session, project_id, proj.root, "profile")["content"]
+    timeline = docs_svc.doc_payload(session, project_id, proj.root, "timeline")["content"]
+    return {"template": tpl_svc.saved_dto(saved), "lock": tpl_svc.read_lock(proj.root),
+            "diff": tpl_svc.template_diff(profile, timeline, content)}
+
+
+@router.post("/projects/{project_id}/template-upgrade")
+async def project_template_upgrade(project_id: int, payload: dict,
+                                   session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    kind, content, saved, _ = _resolve_template(session, str(payload.get("templateId") or ""))
+    if kind != "project" or not saved:
+        raise ApiError(ErrorCode.E_VALIDATION, "升级只支持已保存的项目模板")
+    profile_doc = docs_svc.doc_payload(session, project_id, proj.root, "profile")
+    timeline_doc = docs_svc.doc_payload(session, project_id, proj.root, "timeline")
+    diff = tpl_svc.template_diff(profile_doc["content"], timeline_doc["content"], content)
+    if not payload.get("confirm"):
+        return {"applied": False, "diff": diff, "lock": tpl_svc.read_lock(proj.root)}
+    assets_svc.ensure_asset_shas(session, content.get("sourceProjectId"), proj.root,
+                                 content.get("assetShas") or [])
+    script = docs_svc.doc_payload(session, project_id, proj.root, "script")["content"]
+    new_timeline, prof_overlay = tpl_svc.overlay_template(timeline_doc["content"], content, script)
+    new_profile = {**profile_doc["content"], **prof_overlay,
+                   "duration": new_timeline["duration"], "frames": new_timeline["frames"],
+                   "schema": docs_svc.SCHEMAS["profile"]}
+    docs_svc.save_doc(session, project_id, "profile", new_profile, profile_doc["version"],
+                      "template-upgrade")
+    docs_svc.save_doc(session, project_id, "timeline", new_timeline, timeline_doc["version"],
+                      "template-upgrade")
+    lock = tpl_svc.write_lock(proj.root, saved.id or 0, saved.version,
+                              content.get("variables"))
+    audit(session, "template.upgrade", f"project:{project_id}",
+          after={"template": saved.id, "diff": diff})
+    return {"applied": True, "diff": diff, "lock": lock}
+
+
+@router.post("/series/from-template")
+async def series_from_template(payload: dict, session: Session = Depends(get_session)):
+    template_id = str(payload.get("templateId") or "")
+    kind, content, saved, _ = _resolve_template(session, template_id)
+    if kind != "project" or not saved:
+        raise ApiError(ErrorCode.E_VALIDATION, "系列只支持已保存的项目模板")
+    items = payload.get("items") or []
+    if not isinstance(items, list) or not items:
+        raise ApiError(ErrorCode.E_VALIDATION, "items 不能为空")
+    if len(items) > 5:
+        raise ApiError(ErrorCode.E_VALIDATION, "v1 系列最多 5 项；批量 CSV/队列属 R4 FR-46")
+    prefix = str(payload.get("name") or saved.name or "系列")
+    results = []
+    for i, item in enumerate(items):
+        item = item if isinstance(item, dict) else {"copy": str(item)}
+        vars = item.get("variables") or item.get("vars") or item
+        name = str(item.get("name") or f"{prefix} {i + 1:02d}")
+        try:
+            r = await _materialize_saved_template(
+                session, saved, vars if isinstance(vars, dict) else {}, name,
+                item.get("copy"))
+            results.append({"index": i, "ok": True, "name": name,
+                            "project": r["project"], "run_id": r["run_id"],
+                            "missingVariables": r.get("missingVariables")})
+        except Exception as e:
+            session.rollback()
+            try:
+                session.refresh(saved)
+            except Exception:
+                pass
+            results.append({"index": i, "ok": False, "name": name, "error": str(e)[:300]})
+    return {"template": f"saved:{saved.id}", "items": results,
+            "created": sum(1 for r in results if r["ok"]),
+            "failed": sum(1 for r in results if not r["ok"]),
+            "note": "v1 同步创建；CSV 批量/队列/批量 zip 属 R4 FR-46，未实现"}
 
 
 def _first_available_style(session: Session, family: str) -> Style:
@@ -546,9 +872,11 @@ def _first_available_style(session: Session, family: str) -> Style:
 
 async def _materialize_first(session: Session, *, name: str, copy: str, profile: dict,
                              family: str, title: str, source: str,
-                             placeholder: str = "voice") -> dict:
+                             placeholder: str = "voice", style_id: str = "") -> dict:
     """模板/示例共用：建草稿 → 项目 → 文档/占位 → Run。"""
-    st = _first_available_style(session, family)
+    st = session.get(Style, style_id) if style_id else None
+    if st is None or not st.available or st.tokens_status != "complete":
+        st = _first_available_style(session, family)
     root = _default_project_root(name)
     profile = dict(profile)
     profile.setdefault("frames", round(float(profile["duration"]) * int(profile["fps"])))
@@ -569,7 +897,15 @@ async def _materialize_first(session: Session, *, name: str, copy: str, profile:
 
 @router.post("/projects/from-template")
 async def project_from_template(payload: dict, session: Session = Depends(get_session)):
-    tpl = next((t for t in FIRST_TEMPLATES if t["id"] == payload.get("templateId")), None)
+    template_id = str(payload.get("templateId") or "")
+    if template_id.startswith("saved:"):
+        kind, _content, saved, _ = _resolve_template(session, template_id)
+        if kind != "project" or not saved:
+            raise ApiError(ErrorCode.E_VALIDATION, "不是项目模板")
+        return await _materialize_saved_template(
+            session, saved, payload.get("variables") or {},
+            str(payload.get("name") or saved.name), payload.get("copy"))
+    tpl = next((t for t in FIRST_TEMPLATES if t["id"] == template_id), None)
     if not tpl:
         raise not_found("模板")
     return await _materialize_first(

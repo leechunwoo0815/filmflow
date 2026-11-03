@@ -49,9 +49,11 @@ def main() -> int:
         raise SystemExit("API 未就绪")
 
     templates = req("GET", "/templates").json()["items"]
-    assert {t["id"] for t in templates} == {"voice15", "opinion30", "product40"}
-    assert all(t.get("audioPlaceholder") == "voice" for t in templates)
-    print("templates", [(t["id"], t["seconds"]) for t in templates], flush=True)
+    builtin = {"voice15", "opinion30", "product40"}
+    assert builtin <= {t["id"] for t in templates}
+    assert all(t.get("audioPlaceholder") == "voice"
+               for t in templates if t["id"] in builtin)
+    print("templates", [(t["id"], t["seconds"]) for t in templates[:6]], flush=True)
 
     titles = req("GET", "/wizard/titles?" + str(httpx.QueryParams({"copy": COPY}))).json()["items"]
     assert len(titles) == 3 and len(set(titles)) == 3

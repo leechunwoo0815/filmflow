@@ -57,6 +57,7 @@ export default function Home() {
           <p className="text-dim text-sm mt-1">{t("app.tagline")}</p>
         </div>
         <div className="flex gap-2 items-center">
+          <a className="btn" href="/templates">模板库</a>
           <a className="btn" href="/help">帮助</a>
           <a className="btn" href="/labeling">{t("nav.labeling")}{lib ? ` (${lib.matrix?.label_queue ?? 0})` : ""}</a>
           <a className="btn-primary" href="/wizard">{t("nav.newProject")}</a>

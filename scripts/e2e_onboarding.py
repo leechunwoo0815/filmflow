@@ -35,7 +35,7 @@ def main() -> int:
         # 1. 首页：3 模板 + 2 只读示例
         page.goto(WEB, wait_until="domcontentloaded", timeout=60000)
         page.wait_for_selector('[data-testid="template-voice15"]', timeout=30000)
-        assert page.locator('[data-testid^="template-"]').count() == 3
+        assert page.locator('[data-testid^="template-"]').count() >= 3
         assert page.locator('[data-testid^="example-"]').count() == 2
         expect(page.get_by_text("示例项目（只读）")).to_be_visible()
         print("✓ 1. 首页 3 模板 + 2 只读示例", flush=True)

@@ -474,6 +474,38 @@ def resolve_path_for_project(session: Session, project_root: str | Path, sha: st
     return Path(asset.path) if asset else None
 
 
+def ensure_asset_shas(session: Session, source_project_id: int | None,
+                      target_project_root: str | Path, shas: list[str]) -> list[int]:
+    """模板实例化时把源项目的本地资产复制到目标项目；全局资产直接复用。"""
+    target_root = Path(target_project_root).resolve()
+    copied: list[int] = []
+    for sha in shas or []:
+        rows = session.exec(select(Asset).where(
+            Asset.sha256 == sha, Asset.archived == False)).all()  # type: ignore[arg-type]
+        if not rows:
+            raise ApiError(ErrorCode.E_ASSET_MISSING, f"模板资产 {sha[:12]} 缺失")
+        if any(r.scope == "global" for r in rows):
+            continue
+        if any(Path(r.path).resolve().is_relative_to(target_root) for r in rows):
+            continue
+        source = next((r for r in rows if r.project_id == source_project_id), rows[0])
+        p = Path(source.path)
+        if not p.exists():
+            raise ApiError(ErrorCode.E_ASSET_MISSING, f"模板资产文件缺失：{sha[:12]}")
+        meta = source.meta_json or {}
+        ext = meta.get("ext") or p.suffix
+        lic = dict(source.license_json or {})
+        if source.kind == "font" and (not lic.get("source") or not lic.get("type")):
+            lic.update({"source": "template", "type": "inherited"})
+        new, _ = import_asset(
+            session, "project", target_root, f"{sha[:12]}{ext}",
+            base64.b64encode(p.read_bytes()).decode(), kind=source.kind,
+            name=meta.get("name") or sha[:12], tags=source.tags_json or [],
+            license=lic, author="template")
+        copied.append(new.id or 0)
+    return copied
+
+
 def resolve_data_for_project(session: Session, project_root: str | Path, sha: str) -> dict | None:
     """预览页从 file:// 加载，资产内联为 data URL，避免跨源/路径问题。"""
     asset = _pick_asset(session, project_root, sha)

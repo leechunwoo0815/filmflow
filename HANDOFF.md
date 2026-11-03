@@ -1,10 +1,10 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-03（FR-36 交接） · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/36/38）已交付；FR-37 下一批**
-> 复核基线：FR-36 代码 `900076b`（tag `r3.0-assets`）；前序 `7a0ee2c`（`r3.0-audio`）、`r3.0-takes`/`r3.0-creation`；R2.5 基线 `b7591bd`。
-> 测试 **129 passed**；`EXECUTOR_VERSION=2.9.1`；DB 13 个项目、`filmflow-projects` 12 个目录。
+> 更新时间：2026-11-03（FR-37 交接） · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/36/37/38）已交付；下一批 R3.5（FR-39/40/41）或等待裁决**
+> 复核基线：FR-37 代码见 tag `r3.0-templates`；前序 FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）、`r3.0-takes`/`r3.0-creation`；R2.5 基线 `b7591bd`。
+> 测试 **133 passed**；`EXECUTOR_VERSION=2.9.1`；DB 14 个项目、`filmflow-projects` 13 个目录。
 > **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008/0009/0010。**
-> 上下文压缩后继续开发时：从 §6.5 的 R3 下一批（FR-37）开始，不要回滚 R2/R3 已完成部分。
+> 上下文压缩后继续开发时：从 §6.5 的 R3.5（FR-39/40/41）开始；不要提前做 R4，不要回滚已完成部分。
 
 ---
 
@@ -25,7 +25,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 129 passed
+cd server && uv run pytest tests -q                       # 133 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -49,6 +49,8 @@ uv run --project server python scripts/verify_r3_audio_v2.py        # 音频 v2 
 uv run --project server python scripts/e2e_audio_v2.py              # 音频 v2 UI
 uv run --project server python scripts/verify_r3_assets.py          # 资产库/图片/字体/SFX
 uv run --project server python scripts/e2e_assets.py                # 资产库 UI
+uv run --project server python scripts/verify_r3_templates.py       # 模板/场景/系列
+uv run --project server python scripts/e2e_templates.py             # 模板 UI
 ```
 
 > 注意：`pytest` 含 integration 用例，会连已运行的 `:7860` 真实服务并创建 `it-*` 项目/目录；
@@ -56,10 +58,11 @@ uv run --project server python scripts/e2e_assets.py                # 资产库 
 
 ### 0.3 当前下一步（按优先级）
 
-1. **验收状态**：R2.5 §6.4 全绿；R3.0 v1 §3.5/§3.6 全绿（2026-11-03，**129 passed**）。
+1. **验收状态**：R2.5 §6.4 全绿；R3.0 v1 §3.5/§3.6/§3.7 全绿（2026-11-03，**133 passed**）。
    证据命令见 §0.2，计划见 `docs/process/r3_plan.md`。
-2. **R3 下一批**（未开始，不要虚报）：FR-37 模板/系列（依赖 R4 FR-46 批量）。
-3. R3.0 v1 含 FR-32/33/34/35/36/38；`/timeline`、`/player`、`/takes`、`/audio`、`/assets` 已可用。
+2. **下一批候选**：R3.5 FR-39 QA 修复建议 / FR-40 命令面板 / FR-41 本地创作辅助；
+   等老板选批，不虚报已开始。
+3. R3.0 v1 含 FR-32/33/34/35/36/37/38；`/timeline`、`/player`、`/takes`、`/audio`、`/assets`、`/templates` 已可用。
 4. **不要开始 R4**（多规格矩阵/平台发布/批量/photo 引擎）。
 
 ### 0.4 不要做的事
@@ -88,6 +91,7 @@ uv run --project server python scripts/e2e_assets.py                # 资产库 
 | R3.0 FR-38 tag | `r3.0-takes` → `1d2fcf6` |
 | R3.0 FR-35 tag | `r3.0-audio` → `7a0ee2c` |
 | R3.0 FR-36 tag | `r3.0-assets` → `900076b` |
+| R3.0 FR-37 tag | `r3.0-templates` → 当前 HEAD |
 | R2.0 起始 tag | `r2-edge-fix` → `4f9e381` |
 | R2.0 Scene DSL | `r2-scene-dsl` → `53e6462` |
 | R2.0 增量 | `r2-incremental` → `07b5237` |
@@ -95,9 +99,9 @@ uv run --project server python scripts/e2e_assets.py                # 资产库 
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **129 passed**（unit 110 / integration 12 / BDD 7） |
+| 测试 | **133 passed**（unit 114 / integration 12 / BDD 7） |
 | EXECUTOR_VERSION | **2.9.1**（FR-36 资产/图片/字体/SFX + 音频设置缓存键） |
-| UI E2E | 8 场景全绿（约 16s）；FR-31/FR-33/FR-35/FR-36 冒烟另 8 组 |
+| UI E2E | 8 场景全绿（约 16s）；FR-31/FR-33/FR-35/FR-36/FR-37 冒烟另 10 组 |
 
 ### 1.2 R2.0（已验收，8 FR）
 
@@ -319,7 +323,7 @@ PASS: R2.5 FR-28 40s 交付验收通过（run 305.4s / delivery 190.0s）
 
 **R3.0 v1 的诚实边界**：撤销 30 步已用 30 个文档版本恢复验证，但 30 步 UI 连点未自动化；
 100 场景服务端 ops <0.2s，浏览器 100 场景 60fps 未实测；FR-38 没有音频波形对齐/帧差图，
-只做视频同步 + difference 叠加；FR-35 SFX 已随 FR-36 完成；FR-37 未开始。
+只做视频同步 + difference 叠加；FR-35 SFX 已随 FR-36 完成；FR-37 模板/系列 v1 已完成；R3.5 未开始。
 
 ### 3.6 FR-36 资产库 v1（2026-11-03）
 
@@ -347,6 +351,30 @@ PASS: R2.5 FR-28 40s 交付验收通过（run 305.4s / delivery 190.0s）
   - 演示：`/assets?project=211`、`/timeline?project=211`（S01 有图片+SFX）。
 - **边界**：视频只入库不进入 NLE；无智能裁切/主体检测；自定义字体全量 FontFace，不重做子集；
   预览大资产内联 data URL；资产目录暂无自动 GC。
+
+### 3.7 FR-37 模板/系列 v1（2026-11-03）
+
+- **项目模板**：`Template` 表 + `services/templates.py`；另存 profile/时间轴结构/相机/转场/
+  图层/SFX/字体/风格/交付/文案；实例化时重建 script/timeline、写 `card/template.lock.json`，
+  源项目本地资产复制到新项目，全局资产按 sha 复用。
+- **场景模板**：内置标题/论点/证据/结论/行动；任意场景可另存；插入走 `timeline_ops.add_scene`，
+  支持插入到选中场景之后；源资产随模板复制。
+- **变量/系列**：`{{title}}`/`{{number}}`/`{{accent}}` 递归替换；`POST /series/from-template`
+  ≤5 项同步创建、失败项隔离；CSV/10 行队列/批量 zip 依赖 R4 FR-46，未做。
+- **版本/升级**：`POST /templates/:id/version` v+1；项目锁版本；
+  `GET /projects/:id/template-diff`；`POST /template-upgrade {confirm:true}` 只覆盖已有场景
+  视觉字段与 width/height/fps，保留文本/时长/id，不自动增删场景；未 confirm 不改文档。
+- **UI**：`/templates` 项目/场景模板、另存、变量系列、插入；`/timeline` 场景模板下拉+
+  保存当前场景；首页/画布入口。
+- **证据**：
+  - `verify_r3_templates.py`：另存 `saved:3` v1（变量 number/title）→实例化 project 228
+    （文案替换/2 场结构/图片+SFX 资产复制/lock v1）→场景模板插入 S03→模板升 v2→
+    diff/confirm 升级（lock v2）→系列 2 项 created=2；清理模板/项目。
+  - `e2e_templates.py`：模板库/另存表单/系列表单；UI 另存模板；场景模板插入并跳时间轴；
+    时间轴场景模板选择/保存入口；恢复演示时间轴。
+  - **133 tests**；`verify_r2_5_onboarding.py` 允许已保存模板存在（内置三模板子集断言）。
+  - 演示：`/templates`、`/templates?project=227`、`/timeline?project=227`（模板实例，lock v1）。
+- **边界**：系列同步 ≤5；模板升级不增删场景/不迁移文案；模板源资产复制占磁盘；模板删除不删实例。
 
 ---
 
@@ -411,6 +439,9 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
   timeline scene 增加 `layers`/`fontSha`/`audio_layers`；compiler `asset_resolver`；
   FrameServer `/global-assets`；renderer `preloadProgram(s)` + 真图绘制；G05 SFX；
   页面 `/assets` + 时间轴资产面板；ADR-0010。
+- **模板（FR-37）**：`server/app/services/templates.py` + `Template` 表；项目/场景模板、
+  变量替换、模板锁/版本/diff/upgrade、系列 ≤5；`/templates` 页面 + 时间轴场景模板；
+  ADR-0011。
 
 ### 4.6 缓存/锁（必须理解）
 
@@ -439,9 +470,10 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 | Job/恢复 | `server/app/services/jobs.py`、`main.py` |
 | 音频 | `server/app/services/audio.py` |
 | 资产 | `server/app/services/assets.py`、`web/src/app/assets/page.tsx` |
+| 模板 | `server/app/services/templates.py`、`web/src/app/templates/page.tsx` |
 | SFX | `server/app/engine/executors/pipeline.py`（G05 `_timeline_sfx`/`_build_sfx_stem`） |
 | 交付 | `server/app/services/delivery.py` |
-| UI | `web/src/app/{review,audio,assets,delivery,help,page.tsx}`、`canvas/page.tsx` |
+| UI | `web/src/app/{review,audio,assets,templates,delivery,help,page.tsx}`、`canvas/page.tsx` |
 | 黄金 | `fixtures/golden/`、`scripts/golden_run.py` |
 
 ---
@@ -489,7 +521,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 22. **React 19 UI**：Playwright 用 click+keyboard.type，`fill()` 不触发 onChange。
 23. **manual alignment**：whisper 缺失必须显式 `manual`，不要伪装词级；本机无 whisper model。
 24. **单进程 Job**：启动恢复会杀 `/tmp/ff-*` Chrome/项目 ffmpeg；不要多 worker。
-25. **范围边界**：R2.0/R2.5/R3.0 v1 已完成，不要重做；下一批只做 FR-37；
+25. **范围边界**：R2.0/R2.5/R3.0 v1 已完成，不要重做；下一批 R3.5（FR-39/40/41）；
     **不要提前做 R4**（多规格矩阵/平台发布/批量 CSV/photo 引擎）。
 
 ---
@@ -538,11 +570,12 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
-### 6.5 R3.0 下一批（未开始）
+### 6.5 下一批（R3.5；未开始）
 
-1. **FR-37 模板/系列**：项目另存模板、场景模板、变量替换、批量 CSV；依赖 R4 FR-46。
-2. FR-36 v1 已完成（见 §3.6/ADR-0010）；其剩余边界（视频图层/智能裁切/字体子集/GC）不阻塞 FR-37。
-3. **不要提前做 R4**。
+1. **FR-39 QA 修复建议** / **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**；
+   由老板选批，未开始不虚报。
+2. FR-36/37 v1 已完成（§3.6/§3.7、ADR-0010/0011）；其边界见 §9。
+3. **不要提前做 R4**（批量 CSV/多规格矩阵/平台发布/photo 引擎）。
 
 ---
 
@@ -574,37 +607,40 @@ curl -s http://127.0.0.1:7860/api/runs/<id>/render-manifest
 curl -s http://127.0.0.1:7860/api/projects/<id>/audio
 curl -s 'http://127.0.0.1:7860/api/assets?scope=project&projectId=<id>'
 curl -s 'http://127.0.0.1:7860/api/assets?scope=global'
+curl -s 'http://127.0.0.1:7860/api/templates?kind=scene'
+curl -s 'http://127.0.0.1:7860/api/projects/<id>/template-lock'
 curl -s http://127.0.0.1:7860/api/projects/<id>/deliveries/<run>
 curl -s http://127.0.0.1:7860/api/queue
 ```
 
 ### 7.3 数据/清理
 
-- 真实 DB：`~/.filmflow/filmflow.db`。2026-11-03 已清理为 12 个真实项目；重跑验收脚本会新建项目，
+- 真实 DB：`~/.filmflow/filmflow.db`。2026-11-03 已清理为 14 个真实项目；重跑验收脚本会新建项目，
   完成后需按 §7.4 清理。
 - 测试 DB：`/tmp/filmflow-test-home/filmflow.db`（可删，下次 pytest 重建）。**但 integration 用例
   连的是 `:7860` 真实服务**，会往真实 DB/workspace 写 `it-*` 项目；本次已清理 217/218/219、
   `it-wizard-226`、`it-engine-227`。跑完全量测试如需干净基线：先备份 DB，再删除对应
   workflow/run/projectdoc/project 行与目录。
-- DB 备份：`~/.filmflow/backups/filmflow-before-orphan-cleanup-20261103-125802.db`（40MB）、
-  `filmflow-before-handoff-check-20261103.db`（19MB）、
-  `filmflow-before-fr36-test-cleanup-20261103.db`（约 19MB）；确认无误后可删。
+- DB 备份：`filmflow-before-orphan-cleanup-20261103-125802.db`（40MB）、
+  `filmflow-before-handoff-check-20261103.db`（19MB）、`…before-fr36-test-cleanup…`（27MB）、
+  `…before-fr37-test-cleanup…`（27MB）；确认无误后可删。
 - 8787 是 FrameServer；EADDRINUSE 先查健康检查/残留进程。
 - Chrome 残留：`/tmp/ff-{node}-{run_id}`、`/tmp/ff-chrome-{node}-{run_id}`；启动恢复会清理。
 - 预览缓存：`~/.filmflow/cache/preview/<project>`；交付：项目 `out/deliveries/<runId>`。
 ### 7.4 项目/磁盘清单（2026-11-03 清理后）
 
-保留的 12 个 `filmflow-projects` 目录：
-`r2_5-audio-160`、`r2_5-delivery-216`、`r2_5-delivery-224`、`r2_5-delivery40-185`、
-`r3-audio-v2-221`、`r3-camera-199`、`r3-demo-20261103-1`、`golden-5s-217`、`golden-5s-225`、
-`golden-5s-230`、`rumor-clean-20261102`、`trace-x`；另有仓库外参考项目 `rumor-39s`。
-DB 共 13 个项目记录（含 rumor-39s）。重跑验收后按同一策略清理；不要直接 `rm -rf` 正在用的项目。
+保留的 13 个 `filmflow-projects` 目录：
+`FR37模板演示-1`、`r2_5-audio-160`、`r2_5-delivery-216`、`r2_5-delivery-224`、
+`r2_5-delivery40-185`、`r3-audio-v2-221`、`r3-camera-199`、`r3-demo-20261103-1`、
+`golden-5s-217`、`golden-5s-225`、`golden-5s-230`、`rumor-clean-20261102`、`trace-x`；
+另有仓库外参考项目 `rumor-39s`。
+DB 共 14 个项目记录（含 rumor-39s）。重跑验收后按同一策略清理；不要直接 `rm -rf` 正在用的项目。
 当前演示：202（时间轴）、174（审片/40s）、188（Take）、211（音频 v2 + 资产/run 275）、
-215（5s 交付）、216（黄金 5s）、223（FR-36 黄金 run 282）。
+215（5s 交付）、216（黄金 5s）、223（FR-36 黄金 run 282）、227（FR-37 模板实例）。
 
 - 风格库 76MB 外置，不入 git。
-- **磁盘现状（2026-11-03 FR-36 后）**：`filmflow-projects` 2.1GB（12 个目录）、
-  `~/.filmflow` 155MB（含三份 DB 备份）、`rumor-39s` 897MB、源码仓库 889MB；`ai-v` 约 3.8GB。
+- **磁盘现状（2026-11-03 FR-37 后）**：`filmflow-projects` 2.1GB（13 个目录）、
+  `~/.filmflow` 183MB（含四份 DB 备份）、`rumor-39s` 897MB、源码仓库约 900MB；`ai-v` 约 3.8GB。
   新增 golden-5s-230 约 541MB（out/frames+proxy，可按需删）。
 - **不要再让验收脚本无限建项目**：每次 40s 项目约 4.3GB（frames 2.7G + proxy 1.4G）；通过后
   删除 `out/frames`、`out/proxy`，只留 film/artifacts/stills/交付包。
@@ -620,7 +656,7 @@ DB 共 13 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
 - 改执行器行为必须升 `EXECUTOR_VERSION`（2.9.1）。
 - 路径白名单/禁止路径穿越；FrameServer 只服务 `/engine`、`/project` 与 `/global-assets`。
 - 76MB 风格库/示例 mp4 不入 git；`vendor/fy-code-animation` 只查方法，不 import。
-- R3.0 v1 含 FR-32/33/34/35/36/38；FR-37 下一批；R4 不提前做。
+- R3.0 v1 含 FR-32/33/34/35/36/37/38；R3.5 下一批；R4 不提前做。
 - UI 自动化用系统 Chrome + 键盘输入（React 19 `fill()` 不触发 onChange）。
 
 ---
@@ -642,7 +678,7 @@ DB 共 13 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
     （本次已清理 217–222 与 it-* 目录）；清理前先备份 DB 并确认无运行中 Job。
 12. **F02 固定 9222**：端口被占会启动失败；排查 `lsof -i :9222`。
 13. **UI i18n**：新页面中文优先；不要破坏既有 zh/en 切换。
-14. **R3 v1 未含**：FR-37 模板/系列；不要把 FR-37 写成已完成。FR-36 v1 已做，视频仅入库。
+14. **R3 v1 未含**：R3.5（FR-39/40/41）与 R4；不要把未开始项写成已完成。FR-36/37 v1 已做。
 15. **时间轴撤销**：UI 历史 50 步；30 步只验证了文档版本恢复；长链 UI 连点未自动化。
 16. **时间轴性能**：100 场景 ops 服务端 <0.2s；浏览器 60fps 未实测。
 17. **审片批注**：项目级 review.json（不按 Run 分桶）；Take 对比已做，但无音频波形对齐与帧差图。
@@ -665,15 +701,16 @@ DB 共 13 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **129 passed**（含 integration：需 `./dev.sh` 已启动，
+- [ ] `cd server && uv run pytest tests -q` → **133 passed**（含 integration：需 `./dev.sh` 已启动，
       会创建 `it-*` 测试项目，见 §7.3）。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。
 - [ ] R2.5 review/audio/delivery verifier 全绿。
 - [ ] `verify_r3.py`、`verify_r3_camera.py`、`e2e_r3.py`、`verify_r3_assets.py`、`e2e_assets.py` 全绿。
+- [ ] `verify_r3_templates.py`、`e2e_templates.py` 全绿。
 - [ ] 打开 `/timeline?project=202&run=252`、`/player?project=174&run=223`、`/takes?project=188`、
-      `/audio?project=211`、`/assets?project=211`。
-- [ ] 读 §5、§6、§9；确认下一步是 FR-37 模板/系列，不重做 R2/R3 已完成 FR。
+      `/audio?project=211`、`/assets?project=211`、`/templates?project=227`。
+- [ ] 读 §5、§6、§9；确认下一步是 R3.5（FR-39/40/41），不重做 R2/R3 已完成 FR。
 - [ ] 申报完成必须附：测试输出、产物路径+sha/时长、UI 截图/curl。
 
 ---
@@ -689,6 +726,7 @@ DB 共 13 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
 | `docs/adr/ADR-0005-v2-ratification.md` | D1–D7 冻结裁决 |
 | `docs/adr/ADR-0006-preview-service.md` | 预览服务设计 |
 | `docs/adr/ADR-0010-asset-library.md` | FR-36 资产库/图片/字体/SFX 决策 |
+| `docs/adr/ADR-0011-template-series.md` | FR-37 项目/场景模板/系列决策 |
 | `docs/process/r2-plan.md` | R2.0 阶段计划 |
 | `fixtures/golden/` | 5s/15s/40s 黄金 fixture/baseline |
 | `../filmflow-web-agent-prompt.md` | 规格宪法（仓库外） |

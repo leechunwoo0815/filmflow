@@ -37,6 +37,8 @@ function TimelineInner() {
   const [audio, setAudio] = useState<any>(null);
   const [assetLists, setAssetLists] = useState<{ project: any[]; global: any[] }>({ project: [], global: [] });
   const [fontCheck, setFontCheck] = useState<any>(null);
+  const [sceneTemplates, setSceneTemplates] = useState<any[]>([]);
+  const [sceneTplId, setSceneTplId] = useState("");
   const [version, setVersion] = useState(0);
   const [selectedId, setSelectedId] = useState("");
   const [history, setHistory] = useState<any[]>([]);
@@ -91,6 +93,8 @@ function TimelineInner() {
       api<any>(`/assets?scope=project&projectId=${projectId}`),
       api<any>("/assets?scope=global"),
     ]).then(([p, g]) => setAssetLists({ project: p.items || [], global: g.items || [] }))
+      .catch((e) => setMsg(String(e.message || e)));
+    api<any>("/templates?kind=scene").then((d) => setSceneTemplates(d.items || []))
       .catch((e) => setMsg(String(e.message || e)));
   }, [projectId]);
 
@@ -317,6 +321,31 @@ function TimelineInner() {
     } else if (asset.kind === "font") {
       opRef.current?.("set_font", { sceneId, assetSha: asset.sha256 });
     }
+  };
+  const insertSceneTemplate = async (templateId: string) => {
+    if (!templateId) return;
+    try {
+      const tl = await api<any>(`/projects/${projectId}/docs/timeline`);
+      const r = await api<any>(`/projects/${projectId}/timeline/scene-template`, {
+        method: "POST", body: JSON.stringify({
+          templateId, afterSceneId: selectedId || undefined, baseVersion: tl.version,
+        }),
+      });
+      applyResponse(r);
+      setMsg(`已插入场景 ${r.sceneId || ""}`);
+    } catch (e: any) { setMsg(String(e.message || e)); }
+  };
+  const saveSceneTemplate = async () => {
+    if (!selected) return;
+    const name = prompt("场景模板名称", `${selected.id} 场景`);
+    if (name === null) return;
+    try {
+      const r = await api<any>(`/projects/${projectId}/scenes/${selected.id}/save-template`, {
+        method: "POST", body: JSON.stringify({ name, keepText: false }),
+      });
+      setMsg(`已保存场景模板：${r.template.title}`);
+      setSceneTemplates((await api<any>("/templates?kind=scene")).items || []);
+    } catch (e: any) { setMsg(String(e.message || e)); }
   };
   const checkFont = async (asset: any) => {
     if (!asset) return;
@@ -598,6 +627,21 @@ function TimelineInner() {
                     </div>
                   ))}
                 </div>
+              </div>
+              <h3 className="font-semibold mt-4 mb-1">场景模板</h3>
+              <div className="text-xs space-y-1">
+                <div className="flex gap-1">
+                  <select className="flex-1" value={sceneTplId} data-testid="scene-template-select"
+                    onChange={(e) => setSceneTplId(e.target.value)}>
+                    <option value="">选择场景模板</option>
+                    {sceneTemplates.map((t: any) => (
+                      <option key={t.id} value={t.id}>{t.title}（{Number(t.seconds || 0).toFixed(1)}s）</option>
+                    ))}
+                  </select>
+                  <button className="btn" disabled={!sceneTplId} data-testid="scene-template-insert"
+                    onClick={() => insertSceneTemplate(sceneTplId)}>插入到后面</button>
+                </div>
+                <button className="btn" onClick={saveSceneTemplate} data-testid="scene-template-save">保存当前场景为模板</button>
               </div>
               <h3 className="font-semibold mt-4 mb-1">转场</h3>
               <div className="flex gap-1">

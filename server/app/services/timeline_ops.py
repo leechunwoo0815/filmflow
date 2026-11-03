@@ -208,7 +208,18 @@ def validate(doc: dict, script: dict | None = None) -> dict:
             warnings.append({"code": "W_SCENE_READ_TIGHT", "sceneId": sid,
                              "message": f"{sid} 读时偏紧（{req:.2f}s / {dur:.2f}s）",
                              "fix": "可再留 0.2s 呼吸"})
-        for kf in s.get("camera_keyframes") or []:
+        kfs = s.get("camera_keyframes") or []
+        if not isinstance(kfs, list):
+            errors.append({"code": "E_CAMERA_FORMAT", "sceneId": sid,
+                           "message": f"{sid} camera_keyframes 必须是数组",
+                           "fix": "重新选择相机预设"})
+            kfs = []
+        for kf in kfs:
+            if not isinstance(kf, dict):
+                errors.append({"code": "E_CAMERA_FORMAT", "sceneId": sid,
+                               "message": f"{sid} 相机关键帧格式非法",
+                               "fix": "重新选择相机预设"})
+                break
             t = float(kf.get("t") or 0)
             if t < -1e-6 or t > dur + 1e-6:
                 errors.append({"code": "E_CAMERA_TIME", "sceneId": sid,
@@ -444,6 +455,38 @@ def set_transition(doc: dict, script: dict, scene_id: str, transition: str,
     return doc
 
 
+def add_scene(doc: dict, script: dict, scene: dict, index: int | None = None) -> dict:
+    """插入一个场景（场景模板/系列）；保留模板视觉字段，文本交给 script/text。"""
+    new = deepcopy(scene or {})
+    scenes = doc.get("scenes") or []
+    used = {str(s.get("id")) for s in scenes}
+    sid = str(new.get("id") or "")
+    if not sid or sid in used:
+        n = len(scenes) + 1
+        while f"S{n:02d}" in used:
+            n += 1
+        sid = f"S{n:02d}"
+    new["id"] = sid
+    dur = float(new.get("duration") or (float(new.get("end", 0)) - float(new.get("start", 0))))
+    if dur < MIN_SCENE:
+        raise TimelineOpError("E_SCENE_TOO_SHORT", f"{sid} 场景模板时长必须 >= {MIN_SCENE}s", 409)
+    new.pop("duration", None)
+    new.setdefault("time_basis", "planned")
+    new.setdefault("source_span", [])
+    new.setdefault("meaning", "")
+    new.setdefault("operation", "")
+    new.setdefault("camera", "")
+    new.setdefault("transition", "")
+    new["start"] = 0.0
+    new["end"] = round(dur, 3)
+    pos = len(scenes) if index is None else max(0, min(int(index), len(scenes)))
+    scenes.insert(pos, new)
+    doc["scenes"] = scenes
+    normalize(doc, script)
+    _ensure_valid(doc, script, allow_read_overflow=True)
+    return doc
+
+
 def add_image(doc: dict, script: dict, scene_id: str, payload: dict) -> dict:
     _, scene = _scene_by_id(doc, scene_id)
     layers = _image_layers(scene)
@@ -576,6 +619,8 @@ def apply(doc: dict, script: dict, op: str, payload: dict) -> tuple[dict, dict]:
     elif op == "set_transition":
         set_transition(new, script, scene_id, str(payload.get("transition") or ""),
                        payload.get("duration"))
+    elif op == "add_scene":
+        add_scene(new, script, payload.get("scene") or {}, payload.get("index"))
     elif op == "add_image":
         add_image(new, script, scene_id, payload)
     elif op == "update_image":

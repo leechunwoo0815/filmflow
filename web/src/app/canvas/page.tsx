@@ -115,6 +115,7 @@ function CanvasInner() {
           <a className="btn" href={`/editor?project=${projectId}`}>{t("nav.editor")}</a>
           <a className="btn" href={`/timeline?project=${projectId}&run=${runId}`}>时间轴</a>
           <a className="btn" href={`/assets?project=${projectId}`}>资产库</a>
+          <a className="btn" href={`/templates?project=${projectId}`}>模板库</a>
           <a className="btn" href={`/review?project=${projectId}&run=${runId}`}>静帧审阅</a>
           <a className="btn" href={`/player?project=${projectId}&run=${runId}`}>审片</a>
           <a className="btn" href={`/takes?project=${projectId}`}>Take 对比</a>
