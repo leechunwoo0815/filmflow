@@ -1135,21 +1135,37 @@ async def _ffprobe(ctx, path: Path) -> dict:
 @executor("voice-ingest")
 async def g01(ctx):
     from ...services import audio as audio_svc
+    from ...services import artifacts as art
     take = audio_svc.primary_take(ctx["project_root"], "voice")
+    dst = _project_file(ctx, "card/voice.wav")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    concat = None
+    if not ctx.get("run_imported"):
+        tl_p = _run_doc_file(ctx, "timeline.doc.json")
+        timeline = _read_json(tl_p) if tl_p.exists() else {}
+        if timeline.get("scenes"):
+            concat = await asyncio.to_thread(
+                audio_svc.concat_voice, ctx["project_root"], timeline["scenes"],
+                float(_profile(ctx)["duration"]), dst)
+    if concat:
+        ap, sha = art.store_file(ctx["project_root"], dst, "WAV")
+        art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha,
+                     {"takeId": None, "sceneConcat": True, "picks": concat["picks"]})
+        return
     src = Path(ctx["project_root"]) / take["file"] if take else Path(
         ctx["params"].get("path") or _project_file(ctx, "card/voice_raw.wav"))
     if not src.exists():
         raise RuntimeError("未上传口播音频（card/voice_raw.wav 或 audio Take）")
-    dst = _project_file(ctx, "card/voice.wav")
-    dst.parent.mkdir(parents=True, exist_ok=True)
+    if take and take.get("processedFile"):
+        src = Path(ctx["project_root"]) / take["processedFile"]
     argv = ["ffmpeg", "-y", "-i", str(src), "-ac", "1", "-ar", "48000", str(dst)]
     res = await ctx["runner"].run(argv, timeout=120)
     if not res.ok:
         raise RuntimeError("口播转码失败")
-    from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], dst, "WAV")
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha,
-                 {"takeId": take.get("id") if take else None})
+                 {"takeId": take.get("id") if take else None,
+                  "processed": bool(take and take.get("processedFile"))})
 
 
 @executor("audio-align")
@@ -1219,7 +1235,7 @@ async def _decode_pcm(ctx, path: Path, rate: int = 48000) -> list[float]:
     return list(a)
 
 
-def _mix_filter(duration: float, music_db: float = -8.0) -> str:
+def _mix_filter(duration: float, music_db: float = -8.0, target_lufs: float = -16.0) -> str:
     d = f"{duration:.3f}"
     fade_at = f"{max(0.0, duration - 1.0):.3f}"
     fmt = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=mono"
@@ -1228,7 +1244,7 @@ def _mix_filter(duration: float, music_db: float = -8.0) -> str:
             f"volume={music_db}dB[music];"
             "[music][voice]sidechaincompress=threshold=0.03:ratio=4:attack=80:release=350[ducked];"
             "[voice][ducked]amix=inputs=2:duration=longest:normalize=0,"
-            "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.7:level=false[a]")
+            f"loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.7:level=false[a]")
 
 
 async def _make_stem(ctx, src: Path, out: Path, duration: float, loop: bool = False,
@@ -1270,11 +1286,13 @@ async def g05(ctx):
             from ...errors import ApiError, ErrorCode
             raise ApiError(ErrorCode.E_LICENSE_MISSING, why, status=409)
     duration = float(_profile(ctx)["duration"])
-    music_db = float(ctx["params"].get("music_db", -8.0))
+    settings = audio_svc.load_mix(ctx["project_root"])
+    music_db = float(ctx["params"].get("music_db", settings["stems"].get("music", -8.0)))
+    target_lufs = float(settings.get("targetLufs", -16.0))
     out = _project_file(ctx, "card/mix.wav")
     out.parent.mkdir(parents=True, exist_ok=True)
     argv = ["ffmpeg", "-y", "-i", str(voice), "-stream_loop", "-1", "-i", str(music),
-            "-filter_complex", _mix_filter(duration, music_db),
+            "-filter_complex", _mix_filter(duration, music_db, target_lufs),
             "-map", "[a]", "-t", f"{duration:.3f}", "-ar", "48000", "-ac", "1", str(out)]
     res = await ctx["runner"].run(argv, timeout=300)
     if not res.ok or not out.exists():
@@ -1284,10 +1302,12 @@ async def g05(ctx):
              {"mix": True, "duration": duration})
     stems = _project_file(ctx, "card/stems")
     manifest = {
-        "schema": "filmflow.stems/1", "duration": duration,
-        "voice": await _make_stem(ctx, voice, stems / "voice.wav", duration),
+        "schema": "filmflow.stems/1", "duration": duration, "targetLufs": target_lufs,
+        "voice": await _make_stem(ctx, voice, stems / "voice.wav", duration,
+                                  gain_db=float(settings["stems"].get("voice", 0.0))),
         "music": await _make_stem(ctx, music, stems / "music.wav", duration, loop=True, gain_db=music_db),
-        "sfx": await _make_stem(ctx, music, stems / "sfx.wav", duration, loop=True, gain_db=-120.0),
+        "sfx": await _make_stem(ctx, music, stems / "sfx.wav", duration, loop=True,
+                                gain_db=float(settings["stems"].get("sfx", -120.0))),
         "mix": {"path": str(ap), "sha256": sha, "duration": duration},
     }
     _artifact_json(ctx, "stems_manifest.json", manifest)
@@ -1318,8 +1338,11 @@ async def g06(ctx):
                 pass
     if lufs is None:
         raise RuntimeError("ebur128 解析失败")
-    if not (-17.0 <= lufs <= -15.0):
-        raise RuntimeError(f"LUFS {lufs} 超出 −16±1")
+    from ...services import audio as audio_svc
+    mix_settings = audio_svc.load_mix(ctx["project_root"])
+    target = float(mix_settings.get("targetLufs", -16.0))
+    if not (target - 1.0 <= lufs <= target + 1.0):
+        raise RuntimeError(f"LUFS {lufs} 超出目标 {target:.0f}±1")
     if tp is not None and tp > -1.5:
         raise RuntimeError(f"True Peak {tp} > −1.5dBTP")
     # 口播-画面同步偏差：alignment.segment.end vs scene.last_text_at（不再用 abs(start-0) 伪计算）
@@ -1349,7 +1372,8 @@ async def g06(ctx):
     if not ctx.get("run_imported") and sync_verified and dev is not None and dev > 0.15:
         raise RuntimeError(f"音画同步偏差 {dev:.3f}s > 0.15s（{basis}）")
     _artifact_json(ctx, "audio_metrics.json", {
-        "lufs": lufs, "true_peak": tp, "profile": "final", "policy": qa_policy("final"),
+        "lufs": lufs, "true_peak": tp, "target_lufs": target,
+        "profile": "final", "policy": qa_policy("final"),
         "sync_dev_s": round(dev, 3) if dev is not None else None,
         "sync_verified": sync_verified, "sync_basis": basis,
         "approximate": not sync_verified})
@@ -1396,7 +1420,7 @@ async def _measure_loudness(ctx, path: Path) -> dict:
             "truePeak": round(tp, 1) if tp is not None else None}
 
 
-def _validate_master_qc(qc: dict, profile: dict, imported: bool) -> None:
+def _validate_master_qc(qc: dict, profile: dict, imported: bool, target_lufs: float = -16.0) -> None:
     if not qc["audio"]:
         raise RuntimeError("E_QC_AUDIO: master 无音轨；修复：检查 G05 混音与 G07 输入")
     if imported:
@@ -1417,9 +1441,10 @@ def _validate_master_qc(qc: dict, profile: dict, imported: bool) -> None:
             "修复：重跑 F04 final")
     if qc["lufs"] is None or qc["truePeak"] is None:
         raise RuntimeError("E_QC_LUFS: 无法测量响度/真峰；修复：检查 G05 输出音轨")
-    if not -18.0 <= qc["lufs"] <= -14.0:
+    if not (target_lufs - 1.0) <= qc["lufs"] <= (target_lufs + 1.0):
         raise RuntimeError(
-            f"E_QC_LUFS: {qc['lufs']} LUFS 超出 -18..-14；修复：在 G05 重新混音到 -16 LUFS")
+            f"E_QC_LUFS: {qc['lufs']} LUFS 超出目标 {target_lufs:.0f}±1；"
+            f"修复：在 G05 重新混音到 {target_lufs:.0f} LUFS")
     if qc["truePeak"] > -1.0:
         raise RuntimeError(
             f"E_QC_TRUE_PEAK: {qc['truePeak']} dBTP 超过 -1.0；"
@@ -1449,7 +1474,9 @@ async def g07(ctx):
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "MP4", str(ap), sha)
     qc = await _probe_av(ctx, master)
     qc.update(await _measure_loudness(ctx, master))
-    _validate_master_qc(qc, _profile(ctx), bool(ctx.get("run_imported")))
+    from ...services import audio as audio_svc
+    target_lufs = float(audio_svc.load_mix(ctx["project_root"]).get("targetLufs", -16.0))
+    _validate_master_qc(qc, _profile(ctx), bool(ctx.get("run_imported")), target_lufs)
     _artifact_json(ctx, "qc_master.json", qc)
     approvals = ctx["session"].exec(select(Approval).where(Approval.run_id == ctx["run_id"])).all()  # type: ignore[arg-type]
     arts = ctx["session"].exec(select(Artifact).where(Artifact.run_id == ctx["run_id"])).all()  # type: ignore[arg-type]

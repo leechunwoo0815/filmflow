@@ -1,9 +1,9 @@
-# R3.0 创作闭环 v1（FR-32/33/34/38）
+# R3.0 创作闭环 v1（FR-32/33/34/35/38）
 
-> 代码：`1d2fcf6` / tag `r3.0-takes`（v1 tag `r3.0-creation`）；EXECUTOR_VERSION 2.7.2。
+> 代码：`1d2fcf6` + FR-35 增量；EXECUTOR_VERSION 2.8.0。tag 见 `git log`。
 
 > 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。老板要求继续后续开发，明早验收。
-> 本文覆盖 FR-32/33/34/38；FR-35 音频 v2、FR-36 资产库、FR-37 模板/系列留到下一批，
+> 本文覆盖 FR-32/33/34/35/38；FR-36 资产库、FR-37 模板/系列留到下一批，
 > 不虚报为 R3.0 全量。
 
 ## 本轮范围
@@ -14,6 +14,7 @@
 | FR-33 审片播放器 | `/player`：F04/review/master 视频、逐帧/JKL/循环/全屏/安全区、矩形/箭头/画笔/文字批注、帧+场景锚点、回复/resolve、场景决议、review.json/CSV 导出导入、审片包 zip |
 | FR-34 镜头语言 v1 | 时间轴相机 inspector：keyframes（t/zoom/x/y/rotate）、7 预设、曲线缩略图；转场 8 类+时长；program 更新走同一编译器 |
 | FR-38 Take 对比 | `/takes`：Run 列表/评分/当前、A/B 视频同步、差异叠加、场景采纳、promote/branch/软删除保护；`card/takes.json` |
+| FR-35 音频 v2 | `/audio`：多 Take/场景 Take 拼接、processed WAV（高通/降噪/齿音/EQ/静音裁剪/响度归一）、A/B 试听、onset/拍点、−14/−16/−18 响度预设、Stems 增益；`card/audio.mix.json`/`markers.json` |
 
 ## 关键技术决策
 
@@ -31,8 +32,11 @@
    分支复制 Run 快照 script/timeline/profile 并新建 `parent_run_id`；采纳只替换目标场景文本/相机。
 7. **二次 Run 数据源**：新项目 B02/B03 优先 Run 快照 timeline，修复第二次 Run 读旧
    `card/task.json` 导致时间轴修改不进入 final（2.7.2）。
+8. **音频 v2**：`card/audio.json.scenePrimary` 映射场景 Take；G01 有映射时按 scene start
+   adelay+amix 拼成整条 voice.wav；processedFile 优先；`card/audio.mix.json` 的 targetLufs
+   同时驱动 G05 loudnorm、G06 和 G07 QC；onset 用 5ms 能量 flux 本地检测，不引外部模型。
 
-## 验收结果（2026-11-02，EXECUTOR_VERSION 2.7.2）
+## 验收结果（2026-11-02，EXECUTOR_VERSION 2.8.0）
 
 - [x] S03 +2s：S04/S05 自动后移，duration 40→42、frames 1008；`verify_r3.py` project 201。
 - [x] 分割 S02 → S02/S02b（transition=cut，文本独立），合并可还原；`verify_r3.py`。
@@ -45,26 +49,30 @@
 - [x] 10 条批注（含框选）在不同帧；点击跳帧 4.0s→4.000s；export→clear→import 恢复 10 条；
       审片包 6.8MB、内含 40.0s review.mp4 + review.json + README（`verify_r3.py` + `e2e_r3.py`）。
 - [x] **119 tests**；`e2e_ui.py`/`e2e_onboarding.py`/`e2e_r3.py`/`e2e_takes.py` 全绿；R2.5 回归（2.7.2）：
-      5s 交付 26.2s（project 206/run 259）、干净 rumor 46/46（run 262，201.6s）、
-      5s 黄金 SSIM 1.0（project 207/run 260）、相机 preview/final SSIM 0.989483（project 208/run 261）。
+      5s 交付 24.1s（project 215/run 270）、干净 rumor 46/46（run 272，256.1s）、
+      5s 黄金 SSIM 1.0（project 216/run 271；无音频 G 链失败不影响视觉断言）、相机 preview/final SSIM 0.989483（project 208/run 261）。
 - [x] FR-38：project 188 A=237 / B=254；视频 sha 不同；同步播放 1.324s vs 1.324s；差异面板；
       元数据/评分/当前/删除保护；分支 Run 255（parent 254）；采纳 S03 只改 S03。
-- [x] 明确未做 FR-35/36/37，见下节。
+- [x] FR-35：project 211/run 266，G01 场景拼接 5.0s、G05 mix 5.0s、G06 **−13.8 LUFS**
+      （target −14）、stems 5/5/5s；processed take、16 onsets、markers 1；`verify_r3_audio_v2.py`。
+- [x] `e2e_audio_v2.py`：Take/A-B/已处理标记、检测拍点、拼接试听、响度预设 −16↔−14。
+- [x] 明确未做 FR-36/37，见下节。
 
 ## 复现命令
 
 ```bash
-cd server && uv run pytest tests -q                       # 119
+cd server && uv run pytest tests -q                       # 123
 cd .. && uv run --project server python scripts/verify_r3.py
 uv run --project server python scripts/verify_r3_camera.py
 uv run --project server python scripts/verify_r3_takes.py
 uv run --project server python scripts/e2e_r3.py
 uv run --project server python scripts/e2e_takes.py
+uv run --project server python scripts/verify_r3_audio_v2.py
+uv run --project server python scripts/e2e_audio_v2.py
 ```
 
 ## 明确不做（下一批）
 
-- FR-35 多 Take 拼接/降噪/EQ/拍点/SFX/Stems v2（依赖 FR-36）。
-- FR-36 图片/字体资产库与 image 图层（需要 renderer/DSL 扩展）。
+- FR-36 图片/字体资产库与 image 图层（需要 renderer/DSL 扩展）；FR-35 的 SFX 拖入因此未做。
 - FR-37 模板另存/系列/批量（依赖 FR-46 R4 批量），本轮不做。
 - 任何 R4 能力。

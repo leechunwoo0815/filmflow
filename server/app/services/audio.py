@@ -37,7 +37,16 @@ def manifest_path(root: str | Path) -> Path:
 
 def load_manifest(root: str | Path) -> dict:
     data = _read(manifest_path(root))
-    return {"schema": "filmflow.audio/1", "takes": data.get("takes", [])}
+    data.setdefault("schema", "filmflow.audio/1")
+    data.setdefault("takes", [])
+    data.setdefault("scenePrimary", {})
+    return data
+
+
+def save_manifest(root: str | Path, data: dict) -> dict:
+    data = {**data, "schema": "filmflow.audio/1"}
+    _write(manifest_path(root), data)
+    return data
 
 
 def placeholder_path(root: str | Path) -> Path:
@@ -221,3 +230,253 @@ def save_license(root: str | Path, payload: dict) -> dict:
         raise ApiError(ErrorCode.E_LICENSE_MISSING, why, status=409)
     _write(license_path(root), lic)
     return lic
+
+
+# ---------- FR-35 v2：场景 Take / 处理 / 拼接 / 拍点 / 响度 ----------
+
+def _take(root: str | Path, take_id: str) -> dict | None:
+    return next((t for t in load_manifest(root)["takes"] if t.get("id") == take_id), None)
+
+
+def take_path(root: str | Path, take_id: str, processed: bool = False) -> Path:
+    take = _take(root, take_id)
+    if not take:
+        raise ApiError(ErrorCode.E_NOT_FOUND, "音频 Take 不存在", status=404)
+    rel = take.get("processedFile") if processed and take.get("processedFile") else take["file"]
+    p = Path(root) / rel
+    if not p.exists():
+        raise ApiError(ErrorCode.E_NOT_FOUND, "音频文件不存在", status=404)
+    return p
+
+
+def set_scene_primary(root: str | Path, scene_id: str, take_id: str) -> dict:
+    take = _take(root, take_id)
+    if not take:
+        raise ApiError(ErrorCode.E_NOT_FOUND, "音频 Take 不存在", status=404)
+    if take.get("kind") != "voice":
+        raise ApiError(ErrorCode.E_VALIDATION, "只能把 voice Take 设为场景主 Take")
+    data = load_manifest(root)
+    data["scenePrimary"][scene_id] = take_id
+    save_manifest(root, data)
+    return {"sceneId": scene_id, "takeId": take_id}
+
+
+def clear_scene_primary(root: str | Path, scene_id: str) -> dict:
+    data = load_manifest(root)
+    data["scenePrimary"].pop(scene_id, None)
+    save_manifest(root, data)
+    return {"sceneId": scene_id, "takeId": None}
+
+
+def take_for_scene(root: str | Path, scene_id: str) -> dict | None:
+    tid = load_manifest(root).get("scenePrimary", {}).get(scene_id)
+    if tid:
+        take = _take(root, tid)
+        if take:
+            return take
+    return primary_take(root, "voice")
+
+
+def processing_filter(opts: dict) -> str:
+    parts = []
+    if opts.get("highpass"):
+        parts.append("highpass=f=80")
+    if opts.get("denoise"):
+        parts.append("afftdn=nr=12:nf=-30")
+    if opts.get("deesser"):
+        parts.append("deesser=i=0.5")
+    if opts.get("eq"):
+        parts += ["equalizer=f=120:t=q:w=1:g=2", "equalizer=f=1000:t=q:w=1:g=0",
+                  "equalizer=f=6000:t=q:w=1:g=-1.5"]
+    if opts.get("trim"):
+        parts.append("silenceremove=start_periods=1:start_duration=0.05:start_threshold=-45dB:"
+                     "stop_periods=-1:stop_duration=0.1:stop_threshold=-45dB")
+    if opts.get("normalize"):
+        parts.append("loudnorm=I=-16:TP=-1.5:LRA=11")
+    return ",".join(parts)
+
+
+def process_take(root: str | Path, take_id: str, opts: dict) -> dict:
+    root = Path(root)
+    take = _take(root, take_id)
+    if not take:
+        raise ApiError(ErrorCode.E_NOT_FOUND, "音频 Take 不存在", status=404)
+    chain = processing_filter(opts)
+    outdir = root / "card" / "audio"
+    out = outdir / f"{take_id}.processed.wav"
+    if not chain:
+        out.unlink(missing_ok=True)
+        data = load_manifest(root)
+        for t in data["takes"]:
+            if t.get("id") == take_id:
+                for key in ("processedFile", "processedSha", "processing", "processedDuration"):
+                    t.pop(key, None)
+                take = t
+        save_manifest(root, data)
+        return take
+    src = root / take["file"]
+    res = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(src), "-af", chain,
+                          "-ac", "1", "-ar", "48000", str(out)],
+                         capture_output=True, text=True, timeout=600)
+    if res.returncode != 0 or not out.exists():
+        raise ApiError(ErrorCode.E_VALIDATION, "音频处理失败：" + res.stderr[-500:])
+    data = load_manifest(root)
+    for t in data["takes"]:
+        if t.get("id") == take_id:
+            t["processedFile"] = str(out.relative_to(root))
+            t["processedSha"] = file_sha256(str(out))
+            t["processing"] = {k: bool(opts.get(k)) for k in
+                               ("highpass", "denoise", "deesser", "eq", "trim", "normalize")}
+            t["processedDuration"] = _duration(out)
+            take = t
+    save_manifest(root, data)
+    return take
+
+
+def concat_voice(root: str | Path, scenes: list[dict], duration: float,
+                 out_path: str | Path | None = None) -> dict | None:
+    """按 scenePrimary 把多段口播放到场景起点，空场留静音；无映射返回 None。"""
+    root = Path(root)
+    data = load_manifest(root)
+    mapping = data.get("scenePrimary") or {}
+    if not mapping:
+        return None
+    picks = []
+    for scene in scenes:
+        tid = mapping.get(scene.get("id"))
+        take = _take(root, tid) if tid else None
+        if not take:
+            continue
+        start = float(scene.get("start", 0))
+        dur = max(0.1, float(scene.get("end", 0)) - start)
+        picks.append((take_path(root, take["id"], processed=True), start, dur, take["id"]))
+    if not picks:
+        return None
+    out = Path(out_path) if out_path else root / "card" / "voice.wav"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    d = f"{float(duration):.3f}"
+    argv = ["ffmpeg", "-y"]
+    for path, _start, _dur, _tid in picks:
+        argv += ["-i", str(path)]
+    filters = []
+    labels = []
+    for i, (_path, start, dur, _tid) in enumerate(picks):
+        ms = max(0, round(start * 1000))
+        filters.append(f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=mono,"
+                       f"apad=whole_dur={dur:.3f},atrim=duration={dur:.3f},"
+                       f"adelay={ms}:all=1[a{i}]")
+        labels.append(f"[a{i}]")
+    filters.append(f"{''.join(labels)}amix=inputs={len(labels)}:duration=longest:normalize=0,"
+                   f"apad=whole_dur={d},atrim=duration={d}[a]")
+    argv += ["-filter_complex", ";".join(filters), "-map", "[a]", "-t", d,
+             "-ar", "48000", "-ac", "1", str(out)]
+    res = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+    if res.returncode != 0 or not out.exists():
+        raise ApiError(ErrorCode.E_VALIDATION, "多 Take 拼接失败：" + res.stderr[-500:])
+    return {"path": str(out), "duration": _duration(out), "picks": len(picks),
+            "scenes": [p[3] for p in picks]}
+
+
+def mix_path(root: str | Path) -> Path:
+    return Path(root) / "card" / "audio.mix.json"
+
+
+def load_mix(root: str | Path) -> dict:
+    data = _read(mix_path(root))
+    base = {"schema": "filmflow.audio-mix/1", "preset": "-16", "targetLufs": -16.0,
+            "stems": {"voice": 0.0, "music": -8.0, "sfx": -120.0}}
+    if data.get("schema") != base["schema"]:
+        return base
+    base.update({k: data.get(k) for k in ("preset", "targetLufs") if data.get(k) is not None})
+    base["stems"] = {**base["stems"], **(data.get("stems") or {})}
+    return base
+
+
+def save_mix(root: str | Path, payload: dict) -> dict:
+    preset = str(payload.get("preset") or "-16")
+    targets = {"-14": -14.0, "-16": -16.0, "-18": -18.0}
+    try:
+        target = float(payload.get("targetLufs") if payload.get("targetLufs") is not None
+                       else targets.get(preset, -16.0))
+    except (TypeError, ValueError):
+        raise ApiError(ErrorCode.E_VALIDATION, "targetLufs 必须是数字")
+    if not -30 <= target <= -5:
+        raise ApiError(ErrorCode.E_VALIDATION, "targetLufs 必须在 -30..-5")
+    stems = {}
+    src = payload.get("stems") or {}
+    for k in ("voice", "music", "sfx"):
+        try:
+            v = float(src.get(k, {"voice": 0.0, "music": -8.0, "sfx": -120.0}[k]))
+        except (TypeError, ValueError):
+            raise ApiError(ErrorCode.E_VALIDATION, f"stems.{k} 必须是数字")
+        if not -120 <= v <= 12:
+            raise ApiError(ErrorCode.E_VALIDATION, f"stems.{k} 必须在 -60..12dB")
+        stems[k] = v
+    data = {"schema": "filmflow.audio-mix/1", "preset": preset,
+            "targetLufs": round(target, 1), "stems": stems}
+    _write(mix_path(root), data)
+    return data
+
+
+def markers_path(root: str | Path) -> Path:
+    return Path(root) / "card" / "markers.json"
+
+
+def load_markers(root: str | Path) -> dict:
+    data = _read(markers_path(root))
+    return {"schema": "filmflow.markers/1",
+            "markers": data.get("markers") or [],
+            "onsets": data.get("onsets") or []}
+
+
+def save_markers(root: str | Path, markers: list[dict], onsets: list[dict] | None = None) -> dict:
+    clean = []
+    for m in markers or []:
+        try:
+            t = round(float(m.get("time")), 3)
+        except (TypeError, ValueError):
+            raise ApiError(ErrorCode.E_VALIDATION, "marker.time 必须是数字")
+        if t < 0:
+            raise ApiError(ErrorCode.E_VALIDATION, "marker.time 不能为负")
+        clean.append({"id": str(m.get("id") or uuid.uuid4().hex[:8]), "time": t,
+                      "label": str(m.get("label") or "")[:40]})
+    clean.sort(key=lambda x: x["time"])
+    if onsets is None:
+        onsets = load_markers(root).get("onsets") or []
+    data = {"schema": "filmflow.markers/1", "markers": clean, "onsets": onsets}
+    _write(markers_path(root), data)
+    return data
+
+
+def detect_onsets(root: str | Path, take_id: str, min_gap: float = 0.12) -> list[dict]:
+    import tempfile
+    path = take_path(root, take_id, processed=True)
+    fd, name = tempfile.mkstemp(suffix=".f32")
+    try:
+        with open(fd, "wb") as fh:
+            res = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1",
+                                  "-ar", "48000", "-f", "f32le", "-y", name],
+                                 capture_output=True, text=True, timeout=300)
+        if res.returncode != 0:
+            raise ApiError(ErrorCode.E_VALIDATION, "拍点检测解码失败")
+        arr = np.fromfile(name, dtype="<f4")
+    finally:
+        Path(name).unlink(missing_ok=True)
+    if arr.size == 0:
+        return []
+    win = 240  # 5ms
+    e = np.abs(arr[: arr.size // win * win]).reshape(-1, win).mean(axis=1)
+    flux = np.maximum(np.diff(e), 0)
+    if flux.size == 0:
+        return []
+    thr = float(flux.mean() + 1.2 * flux.std())
+    peaks = []
+    last = -1.0
+    for i in range(1, len(flux) - 1):
+        if flux[i] > thr and flux[i] >= flux[i - 1] and flux[i] > flux[i + 1]:
+            t = i * win / 48000.0
+            if t - last >= min_gap:
+                peaks.append({"time": round(t, 3),
+                              "strength": round(float(flux[i] / (flux.max() or 1)), 3)})
+                last = t
+    return peaks

@@ -98,8 +98,9 @@ async def a02(ctx):
 
 @executor("style-index")
 async def a03(ctx):
+    import asyncio
     from ...services.style_index import scan_library
-    report = scan_library()
+    report = await asyncio.to_thread(scan_library)
     _artifact_json(ctx, "index_report.json", report)
 
 

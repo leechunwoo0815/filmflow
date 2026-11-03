@@ -1133,8 +1133,11 @@ async def project_audio(project_id: int, session: Session = Depends(get_session)
     ok, why = audio_svc.license_ok(lic)
     primary = audio_svc.primary_take(proj.root)
     return {"takes": manifest["takes"], "primary": primary,
+            "scenePrimary": manifest.get("scenePrimary") or {},
             "alignment": audio_svc.load_alignment(proj.root),
             "license": lic, "licenseOk": ok, "licenseReason": why,
+            "mix": audio_svc.load_mix(proj.root),
+            "markers": audio_svc.load_markers(proj.root),
             "placeholder": audio_svc.load_placeholder(proj.root)}
 
 
@@ -1158,6 +1161,99 @@ async def project_audio_primary(project_id: int, payload: dict,
     take = audio_svc.set_primary(proj.root, str(payload.get("takeId") or ""))
     audit(session, "audio.primary", proj.root, after={"take": take["id"]})
     return {"primary": take}
+
+
+@router.post("/projects/{project_id}/audio/scene-primary")
+async def audio_scene_primary(project_id: int, payload: dict,
+                              session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    scene_id = str(payload.get("sceneId") or "")
+    take_id = str(payload.get("takeId") or "")
+    if not scene_id:
+        raise ApiError(ErrorCode.E_VALIDATION, "sceneId 必填")
+    result = (audio_svc.clear_scene_primary(proj.root, scene_id) if not take_id
+              else audio_svc.set_scene_primary(proj.root, scene_id, take_id))
+    audit(session, "audio.scene_primary", proj.root, after=result)
+    return result
+
+
+@router.post("/projects/{project_id}/audio/takes/{take_id}/process")
+async def audio_process_take(project_id: int, take_id: str, payload: dict | None = None,
+                             session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    take = await asyncio.to_thread(audio_svc.process_take, proj.root, take_id, payload or {})
+    audit(session, "audio.process", proj.root, after={"take": take_id,
+          "processing": take.get("processing")})
+    return {"take": take}
+
+
+@router.get("/projects/{project_id}/audio/takes/{take_id}/file")
+async def audio_take_file(project_id: int, take_id: str, processed: bool = False,
+                          session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    p = audio_svc.take_path(proj.root, take_id, processed=processed)
+    return FileResponse(p, filename=p.name)
+
+
+@router.post("/projects/{project_id}/audio/concat")
+async def audio_concat_preview(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    tl = docs_svc.doc_payload(session, project_id, proj.root, "timeline")["content"]
+    profile = docs_svc.doc_payload(session, project_id, proj.root, "profile")["content"]
+    out = Path(proj.root) / "card" / "audio" / "preview_concat.wav"
+    result = await asyncio.to_thread(
+        audio_svc.concat_voice, proj.root, tl.get("scenes") or [],
+        float(profile.get("duration") or 0), out)
+    if not result:
+        raise ApiError(ErrorCode.E_VALIDATION, "还没有场景 Take；先在 Take 上点“设为场景”", status=409)
+    return {**result, "url": f"/api/projects/{project_id}/audio/concat/file"}
+
+
+@router.get("/projects/{project_id}/audio/concat/file")
+async def audio_concat_file(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    p = Path(proj.root) / "card" / "audio" / "preview_concat.wav"
+    if not p.exists():
+        raise ApiError(ErrorCode.E_NOT_FOUND, "拼接预览尚未生成", status=404)
+    return FileResponse(p, filename="concat-preview.wav")
+
+
+@router.get("/projects/{project_id}/audio/onset")
+async def audio_onset(project_id: int, takeId: str, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    onsets = await asyncio.to_thread(audio_svc.detect_onsets, proj.root, takeId)
+    return {"takeId": takeId, "onsets": onsets, "count": len(onsets)}
+
+
+@router.get("/projects/{project_id}/audio/markers")
+async def audio_markers_get(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    return audio_svc.load_markers(proj.root)
+
+
+@router.post("/projects/{project_id}/audio/markers")
+async def audio_markers_save(project_id: int, payload: dict,
+                             session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    data = audio_svc.save_markers(proj.root, payload.get("markers") or [],
+                                  payload.get("onsets") or [])
+    audit(session, "audio.markers", proj.root, after={"markers": len(data["markers"])})
+    return data
+
+
+@router.get("/projects/{project_id}/audio/mix")
+async def audio_mix_get(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    return audio_svc.load_mix(proj.root)
+
+
+@router.post("/projects/{project_id}/audio/mix")
+async def audio_mix_save(project_id: int, payload: dict,
+                         session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    data = audio_svc.save_mix(proj.root, payload)
+    audit(session, "audio.mix", proj.root, after=data)
+    return data
 
 
 @router.get("/projects/{project_id}/audio/waveform")

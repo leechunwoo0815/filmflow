@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.7.2"  # R3.0：新项目 B02/B03 优先 Run 快照 timeline（二次 Run 不再读旧任务卡）
+EXECUTOR_VERSION = "2.8.0"  # R3.0 FR-35：processed take / scene concat / loudness+stem settings
 
 
 def canonical(obj) -> str:

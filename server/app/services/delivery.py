@@ -412,6 +412,7 @@ async def run_delivery(job_id: int) -> None:
         # QC
         p16, p9 = await asyncio.to_thread(_probe, master16), await asyncio.to_thread(_probe, master9)
         loud = await asyncio.to_thread(_loudness, master16)
+        target_lufs = float(audio_svc.load_mix(root).get("targetLufs", -16.0))
         from PIL import Image
         c16, c9 = Image.open(cover16).size, Image.open(cover9).size
         checks = {
@@ -420,7 +421,7 @@ async def run_delivery(job_id: int) -> None:
             "duration": abs(p16["duration"] - float(profile.get("duration") or 0)) <= 0.05
                         and abs(p9["duration"] - float(profile.get("duration") or 0)) <= 0.05,
             "audio": p16["audioCodec"] is not None and p9["audioCodec"] is not None,
-            "lufs": loud["lufs"] is not None and -17.0 <= loud["lufs"] <= -15.0,
+            "lufs": loud["lufs"] is not None and target_lufs - 1.0 <= loud["lufs"] <= target_lufs + 1.0,
             "truePeak": loud["truePeak"] is not None and loud["truePeak"] <= -1.5,
             "captions": srt_meta["count"] > 0 and srt_meta["maxLineChars"] <= 16
                         and srt_meta["maxCharsPerSec"] <= MAX_CAPTION_CPS,
