@@ -642,8 +642,8 @@ curl -s http://127.0.0.1:7860/api/queue
 - 真实 DB：`~/.filmflow/filmflow.db`。2026-11-03 已清理为 14 个真实项目；重跑验收脚本会新建项目，
   完成后需按 §7.4 清理。
 - 测试 DB：`/tmp/filmflow-test-home/filmflow.db`（可删，下次 pytest 重建）。**但 integration 用例
-  连的是 `:7860` 真实服务**，会往真实 DB/workspace 写 `it-*` 项目；本次已清理 217/218/219、
-  `it-wizard-226`、`it-engine-227`。跑完全量测试如需干净基线：先备份 DB，再删除对应
+  连的是 `:7860` 真实服务**，会往真实 DB/workspace 写 `it-*` 项目；本次已清理所有 `it-*`
+  项目/目录（最后一轮为 228–230）。跑完全量测试如需干净基线：先备份 DB，再删除对应
   workflow/run/projectdoc/project 行与目录。
 - DB 备份：`filmflow-before-orphan-cleanup-20261103-125802.db`（40MB）、
   `filmflow-before-handoff-check-20261103.db`（19MB）、`…before-fr36-test-cleanup…`（27MB）、
@@ -660,7 +660,7 @@ curl -s http://127.0.0.1:7860/api/queue
 另有仓库外参考项目 `rumor-39s`。
 DB 共 14 个项目记录（含 rumor-39s）。重跑验收后按同一策略清理；不要直接 `rm -rf` 正在用的项目。
 当前演示：202（时间轴）、174（审片/40s）、188（Take）、211（音频 v2 + 资产/run 275）、
-215（5s 交付）、216（黄金 5s）、223（FR-36 黄金 run 282）、227（FR-37 模板实例）。
+215（5s 交付）、216（黄金 5s）、223（FR-36 黄金 run 282）、227（FR-37 模板实例 + FR-39 QA）。
 
 - 风格库 76MB 外置，不入 git。
 - **磁盘现状（2026-11-03 FR-37 后）**：`filmflow-projects` 2.1GB（13 个目录）、
@@ -699,7 +699,7 @@ DB 共 14 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
 9. **交付 9:16**：当前 Scene DSL 重排（非智能裁切/主体检测）；复杂版式可能 `approximate`。
 10. **非 riso 新项目**：ink/code-video 仍 Contract 1.0，C01 阻断；R2.0/R2.5 范围外。
 11. **测试污染真实 DB**：integration 用例直连 `:7860`，跑全量 pytest 会新增 `it-*` 项目/目录
-    （本次已清理 217–222 与 it-* 目录）；清理前先备份 DB 并确认无运行中 Job。
+    （本次已清理全部 it-*；清理前先备份 DB 并确认无运行中 Job）。
 12. **F02 固定 9222**：端口被占会启动失败；排查 `lsof -i :9222`。
 13. **UI i18n**：新页面中文优先；不要破坏既有 zh/en 切换。
 14. **R3.5 未含**：FR-40/41 与 R4；不要把未开始项写成已完成。FR-36/37/39 v1 已做。
