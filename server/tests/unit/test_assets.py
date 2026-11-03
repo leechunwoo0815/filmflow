@@ -24,6 +24,9 @@ from app.services import timeline_ops as tl  # noqa: E402
 from app.services.project_docs import build_script_doc  # noqa: E402
 
 
+LIC = {"source": "自制", "type": "CC0"}
+
+
 def _png(color=(200, 30, 40)) -> str:
     buf = io.BytesIO()
     Image.new("RGB", (16, 9), color).save(buf, "PNG")
@@ -55,12 +58,12 @@ def test_import_50_images_dedupes_and_metadata(env):
     session, proj, root = env
     data = _png()
     first, deduped = assets.import_asset(session, "project", root, "x.png", data,
-                                         name="图一", tags=["封面"])
+                                         name="图一", tags=["封面"], license=LIC)
     assert deduped is False and first.kind == "image"
     assert first.meta_json["width"] == 16 and first.meta_json["height"] == 9
     assert assets._thumb_path(first) and assets._thumb_path(first).exists()
     for i in range(49):
-        same, dup = assets.import_asset(session, "project", root, f"copy{i}.png", data)
+        same, dup = assets.import_asset(session, "project", root, f"copy{i}.png", data, license=LIC)
         assert dup is True and same.id == first.id
     rows = session.exec(select(Asset).where(Asset.project_id == proj.id,
                                             Asset.sha256 == first.sha256)).all()
@@ -69,8 +72,10 @@ def test_import_50_images_dedupes_and_metadata(env):
 
 def test_usage_delete_guard_and_replace(env):
     session, proj, root = env
-    old, _ = assets.import_asset(session, "project", root, "old.png", _png((10, 20, 30)))
-    new, _ = assets.import_asset(session, "project", root, "new.png", _png((30, 40, 50)))
+    old, _ = assets.import_asset(session, "project", root, "old.png", _png((10, 20, 30)),
+                                license=LIC)
+    new, _ = assets.import_asset(session, "project", root, "new.png", _png((30, 40, 50)),
+                                license=LIC)
     content = {"schema": "filmflow.timeline/2", "fps": 24, "duration": 4.0,
                "scenes": [{"id": "S01", "start": 0, "end": 2, "layers": [
                    {"id": "img01", "type": "image", "assetSha": old.sha256,
@@ -249,7 +254,7 @@ def test_walk_refs_covers_nested_lists_and_font_shas():
 
 def test_scan_usages_covers_docs_templates_and_run_snapshots(usage_env):
     session, proj, root, run, docs, rows, tpls = usage_env
-    asset, _ = assets.import_asset(session, "project", root, "a.png", _png((9, 9, 9)))
+    asset, _ = assets.import_asset(session, "project", root, "a.png", _png((9, 9, 9)), license=LIC)
     rows.append(asset)
     sha = asset.sha256
     _add_doc(session, docs, proj, "timeline",
@@ -283,7 +288,7 @@ def test_scan_usages_covers_docs_templates_and_run_snapshots(usage_env):
 
 def test_delete_blocked_by_template_only(usage_env):
     session, proj, root, run, docs, rows, tpls = usage_env
-    asset, _ = assets.import_asset(session, "project", root, "solo.png", _png((8, 8, 8)))
+    asset, _ = assets.import_asset(session, "project", root, "solo.png", _png((8, 8, 8)), license=LIC)
     rows.append(asset)
     tpl = Template(kind="project", name="仅模板引用", content_json={"assetShas": [asset.sha256]})
     session.add(tpl)
@@ -297,7 +302,7 @@ def test_delete_blocked_by_template_only(usage_env):
 
 def test_delete_blocked_by_run_snapshot_only(usage_env):
     session, proj, root, run, docs, rows, tpls = usage_env
-    asset, _ = assets.import_asset(session, "project", root, "ghost.png", _png((7, 7, 7)))
+    asset, _ = assets.import_asset(session, "project", root, "ghost.png", _png((7, 7, 7)), license=LIC)
     rows.append(asset)
     _write_snapshot(root, run.id, {"docs": {"timeline": {"content": {"scenes": [
         {"id": "S01", "fontSha": asset.sha256}]}}}})
@@ -305,3 +310,71 @@ def test_delete_blocked_by_run_snapshot_only(usage_env):
     with pytest.raises(ApiError) as e:
         assets.delete_asset(session, asset.id)
     assert e.value.detail["details"]["usages"][0]["source"] == "run"
+
+
+def test_import_requires_license_for_every_kind(env):
+    session, proj, root = env
+    with pytest.raises(ApiError) as e:
+        assets.import_asset(session, "project", root, "no-lic.png", _png((1, 2, 3)))
+    assert e.value.detail["code"] == "E_ASSET_LICENSE"
+    with pytest.raises(ApiError) as e2:
+        assets.import_asset(session, "project", root, "old.png", _png((1, 2, 4)),
+                            license={"source": "买断", "type": "商业授权",
+                                     "expires": "2020-01-01"})
+    assert "已过期" in e2.value.detail["message"]
+    with pytest.raises(ApiError) as e3:
+        assets.import_asset(session, "project", root, "bad.png", _png((1, 2, 5)),
+                            license={"source": "买断", "type": "商业授权", "expires": "明年"})
+    assert "ISO" in e3.value.detail["message"]
+    ok, _ = assets.import_asset(session, "project", root, "ok.png", _png((1, 2, 6)),
+                                license={"source": "买断", "type": "商业授权",
+                                         "expires": "2099-12-31"})
+    rows = session.exec(select(Asset).where(Asset.project_id == proj.id)).all()
+    for a in rows:
+        Path(a.path).unlink(missing_ok=True)
+        session.delete(a)
+    session.commit()
+    assert ok.kind == "image"
+
+
+def test_license_can_be_stripped_only_while_unused(env):
+    session, proj, root = env
+    loose, _ = assets.import_asset(session, "project", root, "loose.png", _png((40, 40, 40)),
+                                   license={"source": "自制", "type": "CC0"})
+    doc = _add_doc(session, [], proj, "timeline",
+                   {"scenes": [{"id": "S01", "layers": [
+                       {"id": "img01", "assetSha": loose.sha256}]}]})
+    with pytest.raises(ApiError) as e:
+        assets.update_asset(session, loose.id, {"license": {"source": "", "type": ""}})
+    assert e.value.detail["code"] == "E_ASSET_LICENSE"
+    assert "正被引用" in e.value.detail["message"]
+    doc.content_json = {"scenes": [{"id": "S01"}]}
+    session.add(doc)
+    session.commit()
+    assets.update_asset(session, loose.id, {"license": {"source": "", "type": ""}})
+    tightened = assets.update_asset(session, loose.id, {"license": {
+        "source": "素材库", "type": "商业授权", "expires": "2099-12-31"}})
+    assert tightened.license_json["type"] == "商业授权"
+
+
+def test_rights_lists_run_assets_and_flags_license_gaps(env):
+    from app.services import delivery
+
+    session, proj, root = env
+    licensed, _ = assets.import_asset(session, "project", root, "lic.png", _png((50, 50, 50)),
+                                      license={"source": "自制", "type": "CC0"})
+    bare, _ = assets.import_asset(session, "project", root, "bare.png", _png((60, 60, 60)),
+                                  license={"source": "自制", "type": "CC0"})
+    assets.update_asset(session, bare.id, {"license": {"source": "", "type": ""}})
+    snapshot = {"docs": {"timeline": {"content": {"scenes": [
+        {"id": "S01", "layers": [{"assetSha": licensed.sha256}]},
+        {"id": "S02", "layers": [{"assetSha": bare.sha256}]},
+        {"id": "S03", "fontSha": "0" * 64}]}}}}
+    items, gaps = delivery._asset_rights(session, snapshot)
+    by_sha = {i["sha256"]: i for i in items}
+    assert set(by_sha) == {licensed.sha256, bare.sha256}
+    assert by_sha[licensed.sha256]["type"] == "CC0"
+    assert by_sha[bare.sha256]["type"] == ""
+    assert len(gaps) == 2
+    assert any("bare" in g or "缺少许可" in g for g in gaps)
+    assert any("资产记录已不存在" in g for g in gaps)

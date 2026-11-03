@@ -244,6 +244,7 @@ function AssetsInner() {
             <div className="mt-2">图片 PNG/JPG/WebP/SVG · 音频 WAV/MP3/M4A · 字体 TTF/OTF/WOFF2 · 视频 MP4/MOV</div>
           </div>
           <div className="mt-3 space-y-2 text-xs">
+            <div className="text-dim">许可来源与类型必填——缺许可的素材不能入库，也不能进片。</div>
             <label className="block">标签（逗号分隔）
               <input className="w-full mt-1" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="封面, 证据" />
             </label>

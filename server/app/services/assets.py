@@ -6,6 +6,7 @@ import hashlib
 import json
 import mimetypes
 import subprocess
+from datetime import date
 from pathlib import Path
 from urllib.parse import quote
 from xml.etree import ElementTree as ET
@@ -73,6 +74,29 @@ def _license(value) -> dict:
     if not isinstance(value, dict):
         raise ApiError(ErrorCode.E_VALIDATION, "license 必须是对象")
     return {k: str(value.get(k) or "") for k in ("source", "type", "expires", "author", "notes")}
+
+
+def license_gap(lic: dict) -> str:
+    """许可是否足以商用；返回缺口描述，空串表示合格。"""
+    if not str(lic.get("source") or "").strip():
+        return "缺少许可来源（source）"
+    if not str(lic.get("type") or "").strip():
+        return "缺少许可类型（type）"
+    exp = str(lic.get("expires") or "").strip()
+    if exp:
+        try:
+            if date.fromisoformat(exp[:10]) < date.today():
+                return f"许可已过期（{exp[:10]}）"
+        except ValueError:
+            return f"许可到期日不是 ISO 日期：{exp}"
+    return ""
+
+
+def asset_license_ok(asset: Asset) -> tuple[bool, str]:
+    lic = asset.license_json or {}
+    gap = license_gap(lic)
+    name = (asset.meta_json or {}).get("name") or Path(asset.path).name
+    return (not gap, f"{name}：{gap}" if gap else "")
 
 
 def _image_meta(path: Path, ext: str) -> dict:
@@ -195,8 +219,10 @@ def import_asset(session: Session, scope: str, project_root: str | Path | None,
         raise ApiError(ErrorCode.E_ASSET_KIND, f"扩展名 {ext} 是 {real_kind}，不是 {kind}")
     raw = _decode(data_b64)
     lic = _license(license)
-    if real_kind == "font" and (not lic.get("source") or not lic.get("type")):
-        raise ApiError(ErrorCode.E_ASSET_LICENSE, "字体资产必须填写许可来源和类型")
+    gap = license_gap(lic)
+    if gap:
+        raise ApiError(ErrorCode.E_ASSET_LICENSE,
+                       f"资产入库需要许可信息：{gap}（来源/类型必填，到期日须未过期）")
     sha = hashlib.sha256(raw).hexdigest()
     if scope == "project":
         if not project_root:
@@ -430,7 +456,13 @@ def update_asset(session: Session, asset_id: int, payload: dict) -> Asset:
     if "tags" in payload:
         asset.tags_json = [str(t).strip() for t in (payload.get("tags") or []) if str(t).strip()][:20]
     if "license" in payload:
-        asset.license_json = _license(payload.get("license"))
+        new_lic = _license(payload.get("license"))
+        gap = license_gap(new_lic)
+        if gap and scan_usages(session, sha=asset.sha256, project_ids=None,
+                               include_history=True).get(asset.sha256):
+            raise ApiError(ErrorCode.E_ASSET_LICENSE,
+                           f"资产正被引用，不能清空/削弱许可：{gap}")
+        asset.license_json = new_lic
     if "archived" in payload:
         asset.archived = bool(payload.get("archived"))
     asset.meta_json = meta

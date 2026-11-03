@@ -38,11 +38,16 @@ function QaInner() {
   const doFix = async (issue: any, s: any) => {
     let payload = { ...(s.params || {}) };
     if (s.action === "fill_license") {
-      const source = prompt("许可来源（如 自制 / CC0 / 购买）", "自制");
+      const source = prompt("许可来源（必填，如 自制 / 购买订单号 / 素材库账号）");
       if (source === null) return;
-      const license = prompt("许可类型（如 CC0 / OFL / 商业授权）", "CC0");
+      const license = prompt("许可类型（必填，如 CC0 / OFL-1.1 / 商业授权）");
       if (license === null) return;
-      payload = { source, license, authorized: true, expires: "" };
+      const expires = prompt("到期日（可留空，ISO 日期，如 2099-12-31）") || "";
+      if (prompt("确认你已核实上述许可允许本片商用发布？输入 YES 确认") !== "YES") {
+        setMsg("未确认授权，已取消填写许可");
+        return;
+      }
+      payload = { source, license, expires, authorized: true };
     }
     setBusy(true); setMsg("");
     try {
@@ -113,8 +118,8 @@ function QaInner() {
                 </div>
                 <div className="flex flex-wrap gap-1 mt-2">
                   {(issue.suggestions || []).map((s: any) => (
-                    s.kind === "auto" ? (
-                      <button key={s.action} className="btn-primary" disabled={busy}
+                    (s.kind === "auto" || s.kind === "confirm") ? (
+                      <button key={s.action} className={s.kind === "confirm" ? "btn" : "btn-primary"} disabled={busy}
                         data-testid={`qa-fix-${issue.category}-${s.action}`}
                         onClick={() => doFix(issue, s)}>{s.label}</button>
                     ) : (

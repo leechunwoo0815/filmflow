@@ -17,7 +17,8 @@ from sqlmodel import Session, select
 from ..config import detect_chrome
 from ..engine.scene.compiler import compile_scene
 from ..engine.snapshot import ensure_run_snapshot
-from ..models import Approval, Artifact, Job, NodeRun, Project, Run
+from ..models import Approval, Artifact, Asset, Job, NodeRun, Project, Run
+from . import assets as assets_svc
 from . import audio as audio_svc
 from . import engines as engines_svc
 from . import jobs as jobs_svc
@@ -268,16 +269,39 @@ def _file_sha(path: Path) -> str:
     return h.hexdigest()
 
 
-def _ensure_run_documents_match(session: Session, run: Run, root: Path, project_id: int) -> None:
+def _ensure_run_documents_match(session: Session, run: Run, root: Path, project_id: int) -> dict:
     """交付必须基于与所选 Run 一致的文档；Run 后再改文案会产出画面与字幕不符的 zip。"""
     snapshot = ensure_run_snapshot(session, run, str(root))
     snap_tl = ((snapshot.get("docs") or {}).get("timeline") or {}).get("content") or {}
     if not snap_tl:
-        return
+        return snapshot
     current_tl = docs_svc.doc_payload(session, project_id, str(root), "timeline")["content"]
     if docs_svc.content_hash(snap_tl) != docs_svc.content_hash(current_tl):
         raise RuntimeError("E_DELIVERY_GATE: 当前 timeline 与所选 Run 快照不一致；"
                            "请用该 Run 重跑 F02/G07，或基于当前文档新建 Run 后再交付")
+    return snapshot
+
+
+def _asset_rights(session: Session, snapshot: dict | None) -> tuple[list[dict], list[str]]:
+    """Run 快照里真实用到的资产 → 许可清单；缺口列表非空即不许交付。"""
+    refs = assets_svc.walk_refs((snapshot or {}).get("docs") or {})
+    items, gaps = [], []
+    for sha in sorted({s for s, _f, _p in refs}):
+        asset = session.exec(select(Asset).where(
+            Asset.sha256 == sha, Asset.archived == False)).first()  # type: ignore[arg-type]
+        if not asset:
+            gaps.append(f"{sha[:12]}…：资产记录已不存在，无法证明许可")
+            continue
+        ok, why = assets_svc.asset_license_ok(asset)
+        if not ok:
+            gaps.append(why)
+        items.append({
+            "sha256": sha, "kind": asset.kind, "scope": asset.scope,
+            "name": (asset.meta_json or {}).get("name") or Path(asset.path).name,
+            "source": (asset.license_json or {}).get("source", ""),
+            "type": (asset.license_json or {}).get("type", ""),
+            "expires": (asset.license_json or {}).get("expires", "")})
+    return items, gaps
 
 
 async def run_delivery(job_id: int) -> None:
@@ -301,8 +325,9 @@ async def run_delivery(job_id: int) -> None:
             jobs_svc.start_job(session, job_id, "delivery")
             ctx = pv.resolve_context(session, project.id or 0)
             profile = ctx.profile
+            snap: dict | None = None
             if not ctx.imported:
-                _ensure_run_documents_match(session, run, root, project.id or 0)
+                snap = _ensure_run_documents_match(session, run, root, project.id or 0)
                 ensure_final_ready(session, run, root, False, profile)
                 g07 = session.exec(select(NodeRun).where(
                     NodeRun.run_id == run_id, NodeRun.node_id == "G07")).first()  # type: ignore[arg-type,union-attr]
@@ -310,6 +335,10 @@ async def run_delivery(job_id: int) -> None:
                     raise RuntimeError(
                         "E_DELIVERY_GATE: G07 未通过（需先完成交付打包/审批与 master QC），"
                         "再生成交付包")
+            if ctx.imported:
+                snap_p = root / "runs" / str(run_id) / "docs" / "snapshot.json"
+                snap = json.loads(snap_p.read_text(encoding="utf-8")) if snap_p.exists() else None
+            rights_assets, rights_gaps = _asset_rights(session, snap)
             task_p = root / "runs" / str(run_id) / "docs" / "task.json"
             task = json.loads(task_p.read_text(encoding="utf-8")) if task_p.exists() else {}
         hb = asyncio.create_task(_heartbeat(job_id))
@@ -388,10 +417,17 @@ async def run_delivery(job_id: int) -> None:
         ok, why = audio_svc.license_ok(lic)
         if not ok:
             raise RuntimeError(f"E_LICENSE_MISSING: {why}")
+        if rights_gaps:
+            raise RuntimeError("E_LICENSE_MISSING: 资产许可不完整——" + "；".join(rights_gaps[:6]))
         engine_id = ctx.engine_id
-        rights = {"schema": "filmflow.rights/1", "font": {"family": "Noto Sans SC", "license": "OFL"},
+        fonts = [a for a in rights_assets if a["kind"] == "font"]
+        rights = {"schema": "filmflow.rights/2", "assets": rights_assets,
                   "style": {"engine": engine_id, "engineSha": ctx.engine_sha},
-                  "music": lic, "generatedAt": _now()}
+                  "music": lic,
+                  "fallbackFont": ({"family": "Noto Sans SC", "license": "OFL-1.1",
+                                    "role": "渲染器内置兜底，未作为资产入库"}
+                                   if not fonts else None),
+                  "generatedAt": _now()}
         (outdir / "rights.json").write_text(json.dumps(rights, ensure_ascii=False, indent=1), encoding="utf-8")
         # manifest
         files = [master16, master9, captions, cover16, cover9,

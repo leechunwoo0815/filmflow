@@ -64,6 +64,8 @@ def main() -> int:
         try:
             page.goto(f"{WEB}/assets?project={PID}", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_selector('div[data-testid^="asset-"]', timeout=30000)
+            page.get_by_placeholder("自制 / CC0 / 购买").fill("system")
+            page.get_by_placeholder("CC0 / OFL / 商业授权").fill("system")
             page.set_input_files('[data-testid="asset-file-input"]', [str(png), str(wav)])
             page.wait_for_selector(f'text={image_name}', timeout=30000)
             page.wait_for_selector(f'text={sfx_name}', timeout=30000)
@@ -72,11 +74,9 @@ def main() -> int:
             sfx = next(a for a in items if a["name"] == sfx_name and a["kind"] == "audio")
             asset_ids += [img["id"], sfx["id"]]
             image_sha = img["sha256"]
-            print("✓ 1. UI 上传图片/SFX", flush=True)
+            print("✓ 1. UI 上传图片/SFX（许可必填）", flush=True)
 
             assert font.exists(), font
-            page.get_by_placeholder("自制 / CC0 / 购买").fill("system")
-            page.get_by_placeholder("CC0 / OFL / 商业授权").fill("system")
             page.set_input_files('[data-testid="asset-file-input"]', [str(font)])
             font_item = None
             for _ in range(60):

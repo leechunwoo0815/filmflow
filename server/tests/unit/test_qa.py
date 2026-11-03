@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
 from sqlmodel import Session, select
 
 SERVER = Path(__file__).resolve().parents[2]
@@ -107,3 +108,47 @@ def test_classify_node_messages():
     assert qa._classify_node("C03", "字体缺字：中") == "font_missing"
     assert qa._classify_node("G05", "E_LICENSE_MISSING: 缺少音乐来源") == "license_missing"
     assert qa._classify_node("C01", "引擎不可用") == "engine_unavailable"
+
+
+def test_license_fix_requires_explicit_authorization_and_flags_unlicensed_asset(tmp_path: Path):
+    import base64
+
+    from app.errors import ApiError
+    from app.services import assets as assets_svc
+
+    png = base64.b64encode(bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+        "890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082")).decode()
+    session, proj = _project(tmp_path)
+    asset = None
+    try:
+        lic = next(i for i in qa.analyze(session, proj)["issues"]
+                   if i["category"] == "license_missing")
+        spec = next(s for s in lic["suggestions"] if s["action"] == "fill_license")
+        assert spec["kind"] == "confirm" and "authorized" not in (spec.get("params") or {})
+        with pytest.raises(ApiError) as e:
+            qa.apply_fix(session, proj, lic["id"], "fill_license",
+                         {"source": "自制", "license": "CC0", "expires": ""})
+        assert "authorized" in e.value.detail["message"]
+
+        asset, _ = assets_svc.import_asset(session, "project", proj.root, "qa.png", png,
+                                           license={"source": "自制", "type": "CC0"})
+        assets_svc.update_asset(session, asset.id, {"license": {"source": "", "type": ""}})
+        payload = docs.doc_payload(session, proj.id, proj.root, "timeline")
+        content = payload["content"]
+        content["scenes"][0]["layers"] = [{"id": "img1", "type": "image",
+                                           "assetSha": asset.sha256,
+                                           "box": [0, 0, 100, 100]}]
+        docs.save_doc(session, proj.id, "timeline", content, payload["version"])
+        issues = qa.analyze(session, proj)["issues"]
+        bad = next(i for i in issues if i["category"] == "asset_license_missing")
+        assert bad["location"]["sceneId"] == "S01" and "缺少许可" in bad["reason"]
+        assert any(s["action"] == "open_assets" for s in bad["suggestions"])
+    finally:
+        if asset:
+            Path(asset.path).unlink(missing_ok=True)
+            row = session.get(type(asset), asset.id)
+            if row:
+                session.delete(row)
+                session.commit()
+        _cleanup(session, proj)

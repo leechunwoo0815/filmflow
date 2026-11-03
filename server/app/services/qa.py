@@ -20,7 +20,7 @@ FIX_SCHEMA = "filmflow.qa-fixes/1"
 CATEGORIES = (
     "text_overflow", "font_missing", "black_frame", "missing_frame", "motion_spike",
     "static_too_long", "lufs_out", "tp_out", "sync_out", "license_missing",
-    "engine_unavailable", "missing_asset", "qa_generic",
+    "asset_license_missing", "engine_unavailable", "missing_asset", "qa_generic",
 )
 _NODE_IMPACT = {
     "text_overflow": {"nodes": ["D01", "D02", "E03", "F02"], "gates": ["D03", "D05", "E07"],
@@ -37,6 +37,7 @@ _NODE_IMPACT = {
     "tp_out": {"nodes": ["G05", "G06", "G07"], "gates": ["G07"], "seconds": 8},
     "sync_out": {"nodes": ["G02", "G06", "G07"], "gates": ["G07"], "seconds": 15},
     "license_missing": {"nodes": ["G05", "G07"], "gates": ["G07"], "seconds": 2},
+    "asset_license_missing": {"nodes": ["G07"], "gates": ["G07"], "seconds": 2},
     "engine_unavailable": {"nodes": ["C01"], "gates": [], "seconds": 60},
     "qa_generic": {"nodes": [], "gates": [], "seconds": 10},
 }
@@ -51,6 +52,7 @@ _TITLES = {
     "tp_out": "真峰超限",
     "sync_out": "口播/画面对齐偏差",
     "license_missing": "音频许可缺失",
+    "asset_license_missing": "资产许可缺失",
     "engine_unavailable": "引擎不可用",
     "missing_asset": "资产缺失",
     "qa_generic": "QA 失败",
@@ -157,10 +159,17 @@ def _node_suggestions(category: str, node_id: str, scene_id: str = "") -> list[d
             {"action": "open_review", "label": "查看静帧", "kind": "manual",
              "href": f"/review?project={{projectId}}&run={{runId}}"},
         ]
+    if category == "asset_license_missing":
+        return [
+            {"action": "open_assets", "label": "补齐资产许可", "kind": "manual",
+             "href": f"/assets?project={{projectId}}"},
+        ]
     if category == "license_missing":
         return [
-            {"action": "fill_license", "label": "填写许可并保存", "kind": "auto",
-             "params": {"source": "", "license": "", "authorized": True, "expires": ""}},
+            {"action": "fill_license", "label": "填写许可并保存", "kind": "confirm",
+             "params": {"source": "", "license": "", "expires": ""}},
+            {"action": "open_assets", "label": "检查资产许可", "kind": "manual",
+             "href": f"/assets?project={{projectId}}"},
             {"action": "open_audio", "label": "打开音频许可", "kind": "manual",
              "href": f"/audio?project={{projectId}}"},
         ]
@@ -263,6 +272,16 @@ def analyze(session: Session, project: Project, run_id: int | None = None) -> di
         for sha, lid, kind in refs:
             if not sha:
                 continue
+            row = session.exec(select(assets_svc.Asset).where(
+                assets_svc.Asset.sha256 == sha,
+                assets_svc.Asset.archived == False)).first()  # type: ignore[arg-type]
+            if row:
+                lic_ok, lic_why = assets_svc.asset_license_ok(row)
+                if not lic_ok:
+                    add(_issue("asset_license_missing", scene_id=sid, layer_id=lid,
+                               reason=lic_why,
+                               suggestions=_node_suggestions("asset_license_missing", ""),
+                               path=f"/assets?project={project.id}"))
             if not assets_svc.resolve_for_project(session, root, sha):
                 add(_issue("missing_asset", scene_id=sid, layer_id=lid,
                            reason=f"{kind} 资产 {sha[:12]} 缺失或不在当前项目",
@@ -433,7 +452,7 @@ def apply_fix(session: Session, project: Project, issue_id: str, action: str,
     issue = next((i for i in result["issues"] if i["id"] == issue_id), None)
     if not issue:
         raise ValueError("QA 问题已不存在或已刷新")
-    auto = [s for s in issue["suggestions"] if s.get("kind") == "auto"]
+    auto = [s for s in issue["suggestions"] if s.get("kind") in ("auto", "confirm")]
     spec = next((s for s in auto if s.get("action") == action), None)
     if not spec:
         raise ValueError(f"动作 {action} 不是该问题的安全自动修复")
