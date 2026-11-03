@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
 > 更新时间：2026-11-02 · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/38）已交付；FR-36/37 下一批**
-> 当前代码基线：R3.0 代码 `1d2fcf6`（tag `r3.0-takes`；v1 基础 tag `r3.0-creation`）；R2.5 基线 `b7591bd`。
+> 当前代码基线：R3.0 代码 `7a0ee2c`（tag `r3.0-audio`；`r3.0-takes`/`r3.0-creation` 为前序）；R2.5 基线 `b7591bd`。
 > **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008/0009。**
 > 上下文压缩后继续开发时：从 §6.5 的 R3 下一批（FR-36 → FR-37）开始，不要回滚 R2/R3 已完成部分。
 
@@ -80,6 +80,7 @@ uv run --project server python scripts/e2e_audio_v2.py              # 音频 v2 
 | R2.5 FR-31 tag | `r2_5-onboarding` → `b7591bd` |
 | R3.0 v1 tag | `r3.0-creation` → `7ecf84a` |
 | R3.0 FR-38 tag | `r3.0-takes` → `1d2fcf6` |
+| R3.0 FR-35 tag | `r3.0-audio` → `7a0ee2c` |
 | R2.0 起始 tag | `r2-edge-fix` → `4f9e381` |
 | R2.0 Scene DSL | `r2-scene-dsl` → `53e6462` |
 | R2.0 增量 | `r2-incremental` → `07b5237` |
@@ -581,7 +582,7 @@ curl -s http://127.0.0.1:7860/api/queue
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。
 - [ ] R2.5 review/audio/delivery verifier 全绿。
 - [ ] `verify_r3.py`、`verify_r3_camera.py`、`e2e_r3.py` 全绿。
-- [ ] 打开 `/timeline?project=202&run=252`、`/player?project=174&run=223`、`/takes?project=188`。
+- [ ] 打开 `/timeline?project=202&run=252`、`/player?project=174&run=223`、`/takes?project=188`、`/audio?project=211`。
 - [ ] 读 §5、§6、§9；确认下一步是 R3 下一批 FR-35→FR-36→FR-37，不重做已完成 FR。
 - [ ] 申报完成必须附：测试输出、产物路径+sha/时长、UI 截图/curl。
 

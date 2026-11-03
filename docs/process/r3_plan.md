@@ -1,6 +1,6 @@
 # R3.0 创作闭环 v1（FR-32/33/34/35/38）
 
-> 代码：`1d2fcf6` + FR-35 增量；EXECUTOR_VERSION 2.8.0。tag 见 `git log`。
+> 代码：`7a0ee2c` / tag `r3.0-audio`（前序 `r3.0-takes`/`r3.0-creation`）；EXECUTOR_VERSION 2.8.0。
 
 > 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。老板要求继续后续开发，明早验收。
 > 本文覆盖 FR-32/33/34/35/38；FR-36 资产库、FR-37 模板/系列留到下一批，
