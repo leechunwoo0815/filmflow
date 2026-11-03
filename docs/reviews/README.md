@@ -14,4 +14,8 @@
 
 ## 当前结论
 
-**Conditional Go 的 P0 Gate 已达成**。P0-1、P0-2、P0-3、P0-5、P0-4a、P0-4b 已完成并有回归证据（完整 `pytest server/tests` **189 passed**，integration 已隔离；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；5s 原帧 golden SSIM=1.0）。15s/40s 原帧 baseline 按需生成；P1/P2/P3 继续按路线图治理。详见分析文档 §0、§4 与 `HANDOFF.md` §0.5/§0.6。
+**Conditional Go 的 P0 Gate 已达成；P1 治理已完成 14 项**。P0-1、P0-2、P0-3、P0-5、P0-4a、P0-4b 已完成并有回归证据（完整 `pytest server/tests` **189 passed**，integration 已隔离；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；5s 原帧 golden SSIM=1.0）。15s/40s 原帧 baseline 按需生成；P1/P2/P3 继续按路线图治理。详见分析文档 §0、§4 与 `HANDOFF.md` §0.5/§0.6。
+
+> **P1 进度（2026-11-03 20:00）**：✅ 02/03/04/05/07/08/13/14/15/16/17/18/22 + 部分 06/19/23；
+> ⛔ 未做 09（多步写事务）/10（ErrorBoundary）/11（时间轴虚拟化与实测）/12（非整数 fps）/21（fresh clone 实测）；CI 仍无（P1-20 部分）。
+> 逐项证据与落点见 `HANDOFF.md` §0.6 状态表；本轮破坏性语义变更见 §0.6.1，运维/复现坑见 §0.7。
