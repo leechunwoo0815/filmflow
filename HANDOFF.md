@@ -1,10 +1,10 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-03（FR-37 交接） · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/36/37/38）已交付；下一批 R3.5（FR-39/40/41）或等待裁决**
-> 复核基线：FR-37 代码 `f887424`（tag `r3.0-templates`）；前序 FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）、`r3.0-takes`/`r3.0-creation`；R2.5 基线 `b7591bd`。
-> 测试 **133 passed**；`EXECUTOR_VERSION=2.9.1`；DB 14 个项目、`filmflow-projects` 13 个目录。
-> **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008/0009/0010。**
-> 上下文压缩后继续开发时：从 §6.5 的 R3.5（FR-39/40/41）开始；不要提前做 R4，不要回滚已完成部分。
+> 更新时间：2026-11-03（FR-39 交接） · **R2.0/R2.5 已完成；R3.0 v1（FR-32–38）+ R3.5 FR-39 已交付；下一批 FR-40/41 或等待裁决**
+> 复核基线：FR-39 代码见 tag `r3.5-qa`；前序 FR-37 `f887424`（`r3.0-templates`）、FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）；R2.5 基线 `b7591bd`。
+> 测试 **137 passed**；`EXECUTOR_VERSION=2.9.2`；DB 14 个项目、`filmflow-projects` 13 个目录。
+> **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
+> 上下文压缩后继续开发时：从 §6.5 的 R3.5（FR-40/41）开始；不要提前做 R4，不要回滚已完成部分。
 
 ---
 
@@ -25,7 +25,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 133 passed
+cd server && uv run pytest tests -q                       # 137 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -51,6 +51,8 @@ uv run --project server python scripts/verify_r3_assets.py          # 资产库/
 uv run --project server python scripts/e2e_assets.py                # 资产库 UI
 uv run --project server python scripts/verify_r3_templates.py       # 模板/场景/系列
 uv run --project server python scripts/e2e_templates.py             # 模板 UI
+uv run --project server python scripts/verify_r3_qa.py              # QA 修复建议
+uv run --project server python scripts/e2e_qa.py                     # QA UI
 ```
 
 > 注意：`pytest` 含 integration 用例，会连已运行的 `:7860` 真实服务并创建 `it-*` 项目/目录；
@@ -58,11 +60,11 @@ uv run --project server python scripts/e2e_templates.py             # 模板 UI
 
 ### 0.3 当前下一步（按优先级）
 
-1. **验收状态**：R2.5 §6.4 全绿；R3.0 v1 §3.5/§3.6/§3.7 全绿（2026-11-03，**133 passed**）。
-   证据命令见 §0.2，计划见 `docs/process/r3_plan.md`。
-2. **下一批候选**：R3.5 FR-39 QA 修复建议 / FR-40 命令面板 / FR-41 本地创作辅助；
+1. **验收状态**：R2.5 §6.4 全绿；R3.0 v1 §3.5–§3.7 + R3.5 FR-39 §3.8 全绿
+   （2026-11-03，**137 passed**）。证据命令见 §0.2，计划见 `docs/process/r3_plan.md`。
+2. **下一批候选**：R3.5 FR-40 命令面板/通知、FR-41 本地规则式创作辅助；
    等老板选批，不虚报已开始。
-3. R3.0 v1 含 FR-32/33/34/35/36/37/38；`/timeline`、`/player`、`/takes`、`/audio`、`/assets`、`/templates` 已可用。
+3. R3.0 v1 含 FR-32–38；`/timeline`、`/player`、`/takes`、`/audio`、`/assets`、`/templates`、`/qa` 已可用。
 4. **不要开始 R4**（多规格矩阵/平台发布/批量/photo 引擎）。
 
 ### 0.4 不要做的事
@@ -70,7 +72,7 @@ uv run --project server python scripts/e2e_templates.py             # 模板 UI
 - 不要重写 RunEngine 的 caps / 门 / 三类边 / content_hash / 断点续跑；46 节点/93 边不变。
 - 不要新增 DAG 节点；R2.5 的审阅/音频/交付都在服务/页面层。
 - 不要把新项目回退 `legacy_entry`；只有 `meta.imported=true` 可走 v1 harness。
-- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 **2.9.1**）。
+- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 **2.9.2**）。
 - 不要用“页面能点”代替真实产物；完成申报必须附测试、产物路径/哈希、UI 截图/curl。
 - 不要跑 `verify_r2_recovery.py` 时同时使用工作台（它会 kill -9 并重启 dev.sh）。
 
@@ -92,6 +94,7 @@ uv run --project server python scripts/e2e_templates.py             # 模板 UI
 | R3.0 FR-35 tag | `r3.0-audio` → `7a0ee2c` |
 | R3.0 FR-36 tag | `r3.0-assets` → `900076b` |
 | R3.0 FR-37 tag | `r3.0-templates` → `f887424` |
+| R3.5 FR-39 tag | `r3.5-qa` → 当前 HEAD |
 | R2.0 起始 tag | `r2-edge-fix` → `4f9e381` |
 | R2.0 Scene DSL | `r2-scene-dsl` → `53e6462` |
 | R2.0 增量 | `r2-incremental` → `07b5237` |
@@ -99,9 +102,9 @@ uv run --project server python scripts/e2e_templates.py             # 模板 UI
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **133 passed**（unit 114 / integration 12 / BDD 7） |
-| EXECUTOR_VERSION | **2.9.1**（FR-36 资产/图片/字体/SFX + 音频设置缓存键） |
-| UI E2E | 8 场景全绿（约 16s）；FR-31/FR-33/FR-35/FR-36/FR-37 冒烟另 10 组 |
+| 测试 | **137 passed**（unit 118 / integration 12 / BDD 7） |
+| EXECUTOR_VERSION | **2.9.2**（FR-39 text_scale；FR-36 资产/SFX 缓存键） |
+| UI E2E | 8 场景全绿（约 16s）；FR-31/FR-33/FR-35/FR-36/FR-37/FR-39 冒烟另 11 组 |
 
 ### 1.2 R2.0（已验收，8 FR）
 
@@ -376,6 +379,25 @@ PASS: R2.5 FR-28 40s 交付验收通过（run 305.4s / delivery 190.0s）
   - 演示：`/templates`、`/templates?project=227`、`/timeline?project=227`（模板实例，lock v1）。
 - **边界**：系列同步 ≤5；模板升级不增删场景/不迁移文案；模板源资产复制占磁盘；模板删除不删实例。
 
+### 3.8 FR-39 QA 修复建议 v1（2026-11-03）
+
+- `server/app/services/qa.py`：聚合 timeline 校验、NodeRun 失败消息、E06 motion 指标、
+  资产解析与音频许可；输出稳定 issue（category/位置/原因/建议/影响/fixable）。
+- 安全动作：扩场景 +0.5s、字号 −10%（`scene.text_scale`）、标点附近换行、
+  target LUFS、填许可、重跑 failed 节点；改文案/删场景/换风格/重对齐只给 manual 链接。
+- 撤销：`card/qa_fixes.json` 保存 before/after/afterVersion/verified；timeline 修复后若又有变化，
+  自动撤销会被拒绝，避免覆盖新编辑。报告统计 attempts/applied/active/verified/undone/successRate；
+  误报率明确标注需下一次成功 Run 复核。
+- UI `/qa`：问题卡、位置/影响、自动按钮、manual 跳转、修复记录/撤销；画布/帮助入口。
+- 证据：
+  - `verify_r3_qa.py`（project 227）：text_overflow → 扩场景 → 即时验证 → 撤销；
+    许可修复→验证→撤销；缺资产定位；报告 attempts=5/undone=5/successRate=1.0。
+  - `e2e_qa.py`：QA 页问题卡、扩场景按钮、即时验证、UI 撤销。
+  - `test_qa.py` 3 项 + `text_scale` 编译断言；**137 tests**。
+  - `EXECUTOR_VERSION=2.9.2`（text_scale）；preview `preview-1.7.0`；46 节点/边不变。
+- 边界：impact 秒数是粗估；视觉溢出没有独立检测；manual 动作不自动；导入项目只读；
+  retry 仍受 RunEngine/门/锁约束；falsePositive 需成功 Run 复核。
+
 ---
 
 ## 4. 架构与关键文件
@@ -445,7 +467,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 
 ### 4.6 缓存/锁（必须理解）
 
-- `EXECUTOR_VERSION=2.9.1`；改执行器必须升。
+- `EXECUTOR_VERSION=2.9.2`；改执行器必须升。
 - `DOC_NODES` 缓存含 `doc_snapshot_sha`；`PROFILE_NODES` 含 `renderProfilesSha`；
   `PROJECT_LOCAL_NODES={D01,D02,E03,E04,E05,F02,F04,G01,G05,G07}` 含 `projectRoot`。
 - **G01/G05/G06/G07** 额外含 `projectInputsSha`（audio.json/audio.mix.json）与 G01/G05 的
@@ -471,16 +493,17 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 | 音频 | `server/app/services/audio.py` |
 | 资产 | `server/app/services/assets.py`、`web/src/app/assets/page.tsx` |
 | 模板 | `server/app/services/templates.py`、`web/src/app/templates/page.tsx` |
+| QA | `server/app/services/qa.py`、`web/src/app/qa/page.tsx` |
 | SFX | `server/app/engine/executors/pipeline.py`（G05 `_timeline_sfx`/`_build_sfx_stem`） |
 | 交付 | `server/app/services/delivery.py` |
-| UI | `web/src/app/{review,audio,assets,templates,delivery,help,page.tsx}`、`canvas/page.tsx` |
+| UI | `web/src/app/{review,audio,assets,templates,qa,delivery,help,page.tsx}`、`canvas/page.tsx` |
 | 黄金 | `fixtures/golden/`、`scripts/golden_run.py` |
 
 ---
 
 ## 5. 踩坑清单（按优先级，必须看）
 
-1. **EXECUTOR_VERSION**：改任何执行器行为必须升版；当前 2.9.1，否则缓存返回旧行为。
+1. **EXECUTOR_VERSION**：改任何执行器行为必须升版；当前 2.9.2，否则缓存返回旧行为。
 2. **task 快照回退**：B06 同文档缓存命中时不会写 `runs/<id>/docs/task.json`；`_task_path` 必须回退
    只读 `card/task.json`，否则 D01 空场景、D03/D04 失败。
 3. **timeline 持久化**：materialize/首次快照落 timeline doc；编辑 script 不得重建 timeline，
@@ -521,7 +544,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 22. **React 19 UI**：Playwright 用 click+keyboard.type，`fill()` 不触发 onChange。
 23. **manual alignment**：whisper 缺失必须显式 `manual`，不要伪装词级；本机无 whisper model。
 24. **单进程 Job**：启动恢复会杀 `/tmp/ff-*` Chrome/项目 ffmpeg；不要多 worker。
-25. **范围边界**：R2.0/R2.5/R3.0 v1 已完成，不要重做；下一批 R3.5（FR-39/40/41）；
+25. **范围边界**：R2.0/R2.5/R3.0 v1 已完成，不要重做；FR-39 已完成，下一批 R3.5（FR-40/41）；
     **不要提前做 R4**（多规格矩阵/平台发布/批量 CSV/photo 引擎）。
 
 ---
@@ -558,7 +581,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
   失败 `E_QC_*` 阻断并给修复建议；不渲染 9:16、不生成 zip。
 - **DeliveryService**：显式 post-run 作业（API/页面）；非导入项目必须已有 G07 `succeeded/cached`，
   否则 `E_DELIVERY_GATE`；完整包 QC 失败则 Job 失败；manifest 记录 G07 master sha + 全部文件 sha。
-- 代价：G07 QC 最初升到 2.6.6；当前总版本 2.9.1；普通 Run 只多一次 ffprobe/ebur128。
+- 代价：G07 QC 最初升到 2.6.6；当前总版本 2.9.2；普通 Run 只多一次 ffprobe/ebur128。
 
 ### 6.4 R2.5 DoD（收尾时逐项打勾）
 
@@ -570,11 +593,10 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
-### 6.5 下一批（R3.5；未开始）
+### 6.5 下一批（R3.5；FR-39 已完成）
 
-1. **FR-39 QA 修复建议** / **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**；
-   由老板选批，未开始不虚报。
-2. FR-36/37 v1 已完成（§3.6/§3.7、ADR-0010/0011）；其边界见 §9。
+1. **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**；由老板选批，未开始不虚报。
+2. FR-36/37/39 v1 已完成（§3.6–§3.8、ADR-0010/0011/0012）；其边界见 §9。
 3. **不要提前做 R4**（批量 CSV/多规格矩阵/平台发布/photo 引擎）。
 
 ---
@@ -609,6 +631,8 @@ curl -s 'http://127.0.0.1:7860/api/assets?scope=project&projectId=<id>'
 curl -s 'http://127.0.0.1:7860/api/assets?scope=global'
 curl -s 'http://127.0.0.1:7860/api/templates?kind=scene'
 curl -s 'http://127.0.0.1:7860/api/projects/<id>/template-lock'
+curl -s 'http://127.0.0.1:7860/api/projects/<id>/qa'
+curl -s 'http://127.0.0.1:7860/api/projects/<id>/qa/report'
 curl -s http://127.0.0.1:7860/api/projects/<id>/deliveries/<run>
 curl -s http://127.0.0.1:7860/api/queue
 ```
@@ -653,10 +677,10 @@ DB 共 14 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
 - 46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；边数 93。
 - Chrome 全局串行 1 个（`chrome-queue=1`）；ffmpeg 独占；预览不新开第二个浏览器。
 - 新项目禁止 `legacy_entry`；只有 `meta.imported=true` 可走 v1 harness。
-- 改执行器行为必须升 `EXECUTOR_VERSION`（2.9.1）。
+- 改执行器行为必须升 `EXECUTOR_VERSION`（2.9.2）。
 - 路径白名单/禁止路径穿越；FrameServer 只服务 `/engine`、`/project` 与 `/global-assets`。
 - 76MB 风格库/示例 mp4 不入 git；`vendor/fy-code-animation` 只查方法，不 import。
-- R3.0 v1 含 FR-32/33/34/35/36/37/38；R3.5 下一批；R4 不提前做。
+- R3.0 v1 含 FR-32–38；R3.5 FR-39 已完成，FR-40/41 下一批；R4 不提前做。
 - UI 自动化用系统 Chrome + 键盘输入（React 19 `fill()` 不触发 onChange）。
 
 ---
@@ -678,11 +702,11 @@ DB 共 14 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
     （本次已清理 217–222 与 it-* 目录）；清理前先备份 DB 并确认无运行中 Job。
 12. **F02 固定 9222**：端口被占会启动失败；排查 `lsof -i :9222`。
 13. **UI i18n**：新页面中文优先；不要破坏既有 zh/en 切换。
-14. **R3 v1 未含**：R3.5（FR-39/40/41）与 R4；不要把未开始项写成已完成。FR-36/37 v1 已做。
+14. **R3.5 未含**：FR-40/41 与 R4；不要把未开始项写成已完成。FR-36/37/39 v1 已做。
 15. **时间轴撤销**：UI 历史 50 步；30 步只验证了文档版本恢复；长链 UI 连点未自动化。
 16. **时间轴性能**：100 场景 ops 服务端 <0.2s；浏览器 60fps 未实测。
 17. **审片批注**：项目级 review.json（不按 Run 分桶）；Take 对比已做，但无音频波形对齐与帧差图。
-18. **R3 版本**：EXECUTOR_VERSION 2.9.1；D01/E03/E04 已加入 project-local 缓存；
+18. **R3 版本**：EXECUTOR_VERSION 2.9.2；D01/E03/E04 已加入 project-local 缓存；
     新项目二次 Run 的 B02/B03 必须读 Run 快照 timeline，不能读旧 card/task.json。
 19. **A03 扫描**：风格库扫描已改 `asyncio.to_thread`，但版本升级/首次索引仍可能耗时数分钟；
     不要把同步扫描塞回事件循环。
@@ -701,16 +725,17 @@ DB 共 14 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **133 passed**（含 integration：需 `./dev.sh` 已启动，
+- [ ] `cd server && uv run pytest tests -q` → **137 passed**（含 integration：需 `./dev.sh` 已启动，
       会创建 `it-*` 测试项目，见 §7.3）。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。
 - [ ] R2.5 review/audio/delivery verifier 全绿。
 - [ ] `verify_r3.py`、`verify_r3_camera.py`、`e2e_r3.py`、`verify_r3_assets.py`、`e2e_assets.py` 全绿。
 - [ ] `verify_r3_templates.py`、`e2e_templates.py` 全绿。
+- [ ] `verify_r3_qa.py`、`e2e_qa.py` 全绿。
 - [ ] 打开 `/timeline?project=202&run=252`、`/player?project=174&run=223`、`/takes?project=188`、
-      `/audio?project=211`、`/assets?project=211`、`/templates?project=227`。
-- [ ] 读 §5、§6、§9；确认下一步是 R3.5（FR-39/40/41），不重做 R2/R3 已完成 FR。
+      `/audio?project=211`、`/assets?project=211`、`/templates?project=227`、`/qa?project=227`。
+- [ ] 读 §5、§6、§9；确认下一步是 R3.5 FR-40/41，不重做 R2/R3 已完成 FR。
 - [ ] 申报完成必须附：测试输出、产物路径+sha/时长、UI 截图/curl。
 
 ---
@@ -727,6 +752,7 @@ DB 共 14 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
 | `docs/adr/ADR-0006-preview-service.md` | 预览服务设计 |
 | `docs/adr/ADR-0010-asset-library.md` | FR-36 资产库/图片/字体/SFX 决策 |
 | `docs/adr/ADR-0011-template-series.md` | FR-37 项目/场景模板/系列决策 |
+| `docs/adr/ADR-0012-qa-repair.md` | FR-39 QA 分类/安全修复/撤销决策 |
 | `docs/process/r2-plan.md` | R2.0 阶段计划 |
 | `fixtures/golden/` | 5s/15s/40s 黄金 fixture/baseline |
 | `../filmflow-web-agent-prompt.md` | 规格宪法（仓库外） |

@@ -245,6 +245,16 @@ def validate(doc: dict, script: dict | None = None) -> dict:
             errors.append({"code": "E_ASSET_FONT", "sceneId": sid,
                            "message": f"{sid} fontSha 必须是字符串",
                            "fix": "重新选择字体资产"})
+        try:
+            scale = float(s.get("text_scale") or 1.0)
+            if not 0.7 <= scale <= 1.3:
+                errors.append({"code": "E_TEXT_SCALE", "sceneId": sid,
+                               "message": f"{sid} text_scale 必须在 0.7..1.3",
+                               "fix": "恢复到 100%"})
+        except (TypeError, ValueError):
+            errors.append({"code": "E_TEXT_SCALE", "sceneId": sid,
+                           "message": f"{sid} text_scale 必须是数字",
+                           "fix": "恢复到 100%"})
     return {"ok": not errors, "errors": errors, "warnings": warnings,
             "duration": doc.get("duration", 0), "frames": doc.get("frames", 0)}
 
@@ -439,6 +449,20 @@ def set_camera(doc: dict, script: dict, scene_id: str, keyframes: list[dict],
     return doc
 
 
+def set_text_scale(doc: dict, script: dict, scene_id: str, scale: float) -> dict:
+    _, scene = _scene_by_id(doc, scene_id)
+    try:
+        value = round(float(scale), 3)
+    except (TypeError, ValueError):
+        raise TimelineOpError("E_TEXT_SCALE", "text_scale 必须是数字", 409)
+    if not 0.7 <= value <= 1.3:
+        raise TimelineOpError("E_TEXT_SCALE", "text_scale 必须在 0.7..1.3", 409)
+    scene["text_scale"] = value
+    normalize(doc, script)
+    _ensure_valid(doc, script, allow_read_overflow=True)
+    return doc
+
+
 def set_transition(doc: dict, script: dict, scene_id: str, transition: str,
                    duration: float | None = None) -> dict:
     _, scene = _scene_by_id(doc, scene_id)
@@ -616,6 +640,8 @@ def apply(doc: dict, script: dict, op: str, payload: dict) -> tuple[dict, dict]:
     elif op == "set_camera":
         set_camera(new, script, scene_id, payload.get("keyframes") or [],
                    payload.get("anchor"), str(payload.get("note") or ""))
+    elif op == "set_text_scale":
+        set_text_scale(new, script, scene_id, float(payload.get("scale") or 1.0))
     elif op == "set_transition":
         set_transition(new, script, scene_id, str(payload.get("transition") or ""),
                        payload.get("duration"))

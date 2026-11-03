@@ -35,6 +35,7 @@ from ..services import review_comments as review_svc
 from ..services import takes as takes_svc
 from ..services import timeline_ops as tl_svc
 from ..services import templates as tpl_svc
+from ..services import qa as qa_svc
 from ..services import delivery as delivery_svc
 from ..services import jobs as jobs_svc
 from ..services import project_docs as docs_svc
@@ -1459,6 +1460,68 @@ async def gates_pending(run_id: int, session: Session = Depends(get_session)):
                 item["review"].update({"stills": stills, "contactSheet": contact, "diff": diff})
         out.append(item)
     return {"items": out}
+
+
+# ---------- QA 修复建议（FR-39） ----------
+
+@router.get("/projects/{project_id}/qa")
+async def project_qa(project_id: int, runId: int | None = None,
+                     session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    return qa_svc.analyze(session, proj, runId)
+
+
+@router.get("/runs/{run_id}/qa")
+async def run_qa(run_id: int, session: Session = Depends(get_session)):
+    run = session.get(Run, run_id)
+    if not run:
+        raise not_found("Run")
+    wf = session.get(Workflow, run.workflow_id)
+    if not wf:
+        raise not_found("Workflow")
+    proj = _project_or_404(session, wf.project_id)
+    return qa_svc.analyze(session, proj, run_id)
+
+
+@router.post("/projects/{project_id}/qa/fix")
+async def project_qa_fix(project_id: int, payload: dict,
+                         session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    if docs_svc.is_imported(session, project_id):
+        raise ApiError(ErrorCode.E_VALIDATION, "导入项目只读，不能应用 QA 修复", status=409)
+    try:
+        entry = qa_svc.apply_fix(
+            session, proj, str(payload.get("issueId") or ""),
+            str(payload.get("action") or ""), payload.get("payload") or {},
+            int(payload["runId"]) if payload.get("runId") is not None else None)
+    except ValueError as e:
+        raise ApiError(ErrorCode.E_VALIDATION, f"E_QA_FIX: {e}", status=409)
+    audit(session, "qa.fix", f"{project_id}:{payload.get('issueId')}",
+          after={"action": payload.get("action"), "result": entry.get("verified")})
+    return {"fix": entry, "qa": qa_svc.analyze(
+        session, proj, entry.get("runId"))}
+
+
+@router.post("/projects/{project_id}/qa/undo")
+async def project_qa_undo(project_id: int, payload: dict,
+                          session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    if docs_svc.is_imported(session, project_id):
+        raise ApiError(ErrorCode.E_VALIDATION, "导入项目只读，不能撤销 QA 修复", status=409)
+    try:
+        entry = qa_svc.undo_fix(session, proj, str(payload.get("fixId") or ""))
+    except ValueError as e:
+        raise ApiError(ErrorCode.E_VALIDATION, f"E_QA_UNDO: {e}", status=409)
+    audit(session, "qa.undo", f"{project_id}:{payload.get('fixId')}")
+    return {"fix": entry, "qa": qa_svc.analyze(session, proj, entry.get("runId"))}
+
+
+@router.get("/projects/{project_id}/qa/report")
+async def project_qa_report(project_id: int, session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    return qa_svc.report(proj)
 
 
 # ---------- 资产库（FR-36） ----------

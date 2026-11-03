@@ -123,6 +123,9 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
         title_size = size
         title_max = w - 320
         cross = {"x": w - 152, "y": 128}
+    scale = float(scene.get("text_scale") or 1.0)
+    if 0.7 <= scale <= 1.3:
+        title_size = max(48, int(round(title_size * scale)))
     layers = [
         {"id": "L_card", "type": "component", "z": 0,
          "component": "paper-card",

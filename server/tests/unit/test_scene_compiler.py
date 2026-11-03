@@ -71,6 +71,16 @@ def test_vertical_layout_is_reflowed():
     assert not validate_program(prog)
 
 
+def test_text_scale_reduces_title_size():
+    script = build_script_doc("风从纸上起。")
+    base = compile_scene(_scene(), script, TOKENS, PROFILE)
+    scaled = compile_scene({**_scene(), "text_scale": 0.9}, script, TOKENS, PROFILE)
+    b = next(layer for layer in base["layers"] if layer["id"] == "L_title")
+    s = next(layer for layer in scaled["layers"] if layer["id"] == "L_title")
+    assert s["style"]["size"] == round(b["style"]["size"] * 0.9)
+    assert not validate_program(scaled)
+
+
 def test_compiler_is_deterministic():
     script = build_script_doc("一句话。")
     a = compile_scene(_scene(), script, TOKENS, PROFILE)

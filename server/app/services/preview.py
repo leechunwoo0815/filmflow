@@ -32,7 +32,7 @@ from ..engine.render_manifest import scene_hash
 from ..engine.scene.canonical import content_hash
 from ..engine.scene.compiler import compile_scene
 
-RENDERER_VER = "preview-1.6.0"  # 资产图片/字体预加载；out spec 进缓存键
+RENDERER_VER = "preview-1.7.0"  # text_scale + 资产图片/字体预加载；out spec 进缓存键
 PREVIEW_PROFILES = render_profiles_svc.DEFAULT_PROFILES
 CACHE_LIMIT_BYTES = 500 * 1024 * 1024
 HTML_PATH = Path(__file__).resolve().parents[3] / "engines/riso/entry/film_spec.html"

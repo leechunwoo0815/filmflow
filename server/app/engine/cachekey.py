@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.9.1"  # FR-36：资产渲染/场景 SFX + 音频设置纳入 G01/G05/G06/G07 缓存键
+EXECUTOR_VERSION = "2.9.2"  # FR-39：场景 text_scale 影响编译/渲染；QA 修复可撤销
 
 
 def canonical(obj) -> str:

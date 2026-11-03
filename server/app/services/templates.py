@@ -125,7 +125,8 @@ def project_template_content(*, profile: dict, timeline: dict, style_id: str = "
         total += dur
         item = {"duration": dur, "id": s.get("id")}
         for key in ("meaning", "operation", "camera", "camera_keyframes", "camera_anchor",
-                    "transition", "transition_duration", "layers", "audio_layers", "fontSha"):
+                    "transition", "transition_duration", "layers", "audio_layers", "fontSha",
+                    "text_scale"):
             if s.get(key) not in (None, "", [], {}):
                 item[key] = deepcopy(s[key])
         scenes.append(item)
@@ -155,7 +156,8 @@ def scene_template_content(scene: dict, *, keep_text: bool = False,
                "meaning": scene.get("meaning", ""), "operation": scene.get("operation", ""),
                "camera": scene.get("camera", ""), "transition": scene.get("transition", "cut"),
                "transition_duration": scene.get("transition_duration", 0.5)}
-    for key in ("camera_keyframes", "camera_anchor", "layers", "audio_layers", "fontSha"):
+    for key in ("camera_keyframes", "camera_anchor", "layers", "audio_layers", "fontSha",
+                "text_scale"):
         if scene.get(key) not in (None, [], {}):
             content[key] = deepcopy(scene[key])
     return content
@@ -194,7 +196,7 @@ def build_timeline_from_content(content: dict, script: dict, profile: dict) -> d
                  "camera": ts.get("camera", ""), "transition": ts.get("transition", ""),
                  "read_seconds": dur, "last_text_at": round(t + dur, 3)}
         for key in ("camera_keyframes", "camera_anchor", "transition_duration",
-                    "layers", "audio_layers", "fontSha"):
+                    "layers", "audio_layers", "fontSha", "text_scale"):
             if ts.get(key) not in (None, "", [], {}):
                 scene[key] = deepcopy(ts[key])
         scenes.append(scene)
@@ -216,7 +218,8 @@ def overlay_template(current_timeline: dict, content: dict,
     tpl_scenes = content.get("timeline", {}).get("scenes") or []
     for scene, ts in zip(doc.get("scenes") or [], tpl_scenes):
         for key in ("camera", "camera_keyframes", "camera_anchor", "transition",
-                    "transition_duration", "layers", "audio_layers", "fontSha", "operation"):
+                    "transition_duration", "layers", "audio_layers", "fontSha", "operation",
+                    "text_scale"):
             if key in ts:
                 scene[key] = deepcopy(ts[key])
             elif key in ("layers", "audio_layers", "fontSha", "camera_keyframes",
