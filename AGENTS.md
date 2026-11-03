@@ -5,7 +5,7 @@
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
 > 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（逻辑约 75MiB；mp4 为稀疏文件，磁盘分配约 9.3MiB；库不入 git）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
-> **当前进度（2026-11-03 FR-39 + 专家审查 P0 Gate）**：R2.0/R2.5 已完成；**R3.0 v1（FR-32–38）+ R3.5 FR-39 QA 修复建议已完成**（完整 `pytest server/tests` **164 passed**；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`）。**P0-1/P0-2/P0-3/P0-5/P0-4a/P0-4b 已完成**（15s/40s 原帧 baseline 按需生成）；下一步进入 P1 治理，FR-40/41 可选择开工；详见 `HANDOFF.md` §0.5/§0.6 与 `docs/reviews/2026-11-03-expert-review-analysis.md`。R4 不做。
+> **当前进度（2026-11-03 FR-39 + 专家审查 P0 Gate）**：R2.0/R2.5 已完成；**R3.0 v1（FR-32–38）+ R3.5 FR-39 QA 修复建议已完成**（完整 `pytest server/tests` **169 passed**；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`）。**P0-1/P0-2/P0-3/P0-5/P0-4a/P0-4b 已完成**（15s/40s 原帧 baseline 按需生成）；下一步进入 P1 治理，FR-40/41 可选择开工；详见 `HANDOFF.md` §0.5/§0.6 与 `docs/reviews/2026-11-03-expert-review-analysis.md`。R4 不做。
 > **完整接手 prompt**：[`QODER_PROMPT.md`](QODER_PROMPT.md)（历史 prompt；新 Agent 先看 HANDOFF §0/§6）。
 
 ## 这个仓库是什么
@@ -48,7 +48,7 @@ R3.0 v1（FR-32–38）+ R3.5 FR-39。下一批：FR-40/41；不提前做 R4。
 
 ```bash
 ./dev.sh
-cd server && uv run pytest tests -q                       # 137 项（R3.0 v1 + FR-36/37/39）
+cd server && uv run pytest tests -q                       # 169 项（含 integration 真实出片冒烟 + P0/P1 回归）
 uv run --project server python scripts/e2e_ui.py          # UI 8 场景 ~15s
 uv run --project server python scripts/e2e_onboarding.py  # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py        # API 冒烟：46 / 93

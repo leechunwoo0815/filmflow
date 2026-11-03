@@ -2,7 +2,7 @@
 
 > 更新时间：2026-11-03（FR-39 + 专家审查） · **R2.0/R2.5 已完成；R3.0 v1（FR-32–38）+ R3.5 FR-39 已交付；专家审查为 Conditional Go，先修 P0 再开 FR-40/41**
 > 复核基线：FR-39 代码 `3bb81a0`（tag `r3.5-qa`）；前序 FR-37 `f887424`（`r3.0-templates`）、FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）；R2.5 基线 `b7591bd`。
-> 测试 **164 passed（unit 144 + integration 13 + BDD 7）**；integration 已改用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；P0-4b 验证新增 r2/golden 项目后 DB **32 个项目 / 26 个目录**（审计/验证残留，清理前先读 §0.5）。
+> 测试 **169 passed（unit 149 + integration 13 + BDD 7）**；integration 已改用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；P0-4b 验证新增 r2/golden 项目后 DB **32 个项目 / 26 个目录**（审计/验证残留，清理前先读 §0.5）。
 > **先读本文 §0（尤其 §0.5 专家审查 P0）、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
 > 上下文压缩后继续开发时：先修 §0.5 的 P0 阻塞，再开 §6.5 的 FR-40/41；不要提前做 R4，不要回滚已完成部分。
 
@@ -25,7 +25,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 164 passed
+cd server && uv run pytest tests -q                       # 169 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -103,11 +103,15 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 - **P0-5 已完成**：`extend_scene` 现在同步 timeline + profile（duration/frames）；profile 写入失败会补偿回滚 timeline；QA 的 `verified=null/documentVerified=true/requiresRerun=true`，不再宣称成片已验证；`retry_run` 改为 fork 新 Run 而非复用旧快照；撤销同步恢复 profile；QA 报告增加 `pendingRerun`。
 - **P1-14 代码修复**：`verify_r2_profiles.py` 的 contact sheet 排序不再 None/str 崩溃，SSIM 选点加入 `2.45/2.55` 转场窗口；因会创建 5s 项目，待后续验收批次实跑。
 - **版本**：`EXECUTOR_VERSION=2.9.3`；preview `1.8.0`（旧缓存自动失效）。
-- **测试**：完整 `pytest server/tests -q` **164 passed**（unit 144 + integration 13 + BDD 7）。
+- **测试**：完整 `pytest server/tests -q` **169 passed**（unit 149 + integration 13 + BDD 7）。
 - **P0-4a 已完成**：新增 `server/tests/integration/test_render_smoke.py`，在隔离服务中创建 1s 项目并真实执行 Chrome 预览、ffmpeg 编码和 SSIM 对比；断言 draft 输出 960×540/12fps/12 帧，SSIM ≥0.95。
 - **P0-4b 已补齐**：新增 `scripts/verify_r2_incremental.py --project 5s|15s|40s`（已实跑 5s：run2 66/120=55%，前 54 帧不变，49.8s < 53.8s）；`golden_run.py --resolution original` 生成 1920×1080 baseline 并实跑 6 帧 SSIM=1.0；报告归档 `docs/reports/r2-incremental/5s-run303.json`、`docs/reports/golden/5s-original-run306.json`。
 - **P0-4b 边界**：15s/40s 原帧 baseline 尚未更新（避免额外 4.3GB/数十分钟渲染），脚本支持 `--project 40s --scene-index 2`；本次未实跑，不能声称 40s 当前机器复现。
-- **下一步**：P1 安全/数据/缓存项按计划继续；FR-40/41 可选择开工。
+- **P1 基础批次已开始**：A05 仅在 `imported` 或 `style_decision` 存在时自动批准；SQLite 改 WAL + synchronous=NORMAL；`FILMFLOW_WORKSPACE_ROOTS` 支持单路径/逗号/JSON；测试 HOME 改为每次 pytest 独立临时库并在结束后清理。
+- **P1-13 交付文档一致性门禁**：`delivery.run_delivery` 在 final 校验前比对**当前 timeline 内容哈希**与**所选 Run 快照 timeline 哈希**，不一致则 `E_DELIVERY_GATE` 拒绝出片（防止"改完时间轴仍交付旧片"）。`server/tests/unit/test_p1_foundations.py` 两项单测覆盖拒绝/放行分支；并用生产库真实快照跑过一遍：22 个含 timeline 的 Run 中 18 个一致放行、4 个真实漂移（run 237/253/254@project 188、run 266@project 211）被拦，判定与哈希比对**零分歧**、无误拦；另在 run 198 注入合成漂移确认抛 `E_DELIVERY_GATE`。
+- **P1-08 时间轴冲突保稿**：`/timeline` 保存遇 `E_DOC_CONFLICT`（409）时不再静默重载丢弃本地编辑；保留草稿并弹出冲突条，提供「只看服务端」（拉新版本）与「保留本地并重试」（对服务端最新版本重放本次操作）两条出路；冲突期间暂停自动保存。
+- **P1-06 边界**：`foreign_keys=ON` 暂不开启；现有删除路径和 schema 没有完整级联，开启后测试会暴露未清理外键。需单独批次修迁移/级联/删除顺序。
+- **下一步**：P1 数据/缓存/媒体治理；FR-40/41 可选择开工。
 
 ---
 
@@ -135,7 +139,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **164 passed**（unit 144 / integration 13 / BDD 7）；integration 已隔离 |
+| 测试 | **169 passed**（unit 149 / integration 13 / BDD 7）；integration 已隔离 |
 | EXECUTOR_VERSION | **2.9.3**（P0-2 转场统一；P1-02/03/04 缓存键） |
 | UI E2E | 8 场景全绿（约 16s）；FR-31/FR-33/FR-35/FR-36/FR-37/FR-39 冒烟另 11 组 |
 
@@ -624,7 +628,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
 - [x] FR-28 16:9+9:16+SRT+封面+QC+zip；R2.5 5s 26.2s / 40s 190.0s（2.8.0 5s 24.1s）
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
-- [x] 102 tests（R2.5 收口时；当前 **164 tests = unit 144 + integration 13 + BDD 7**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
+- [x] 102 tests（R2.5 收口时；当前 **169 tests = unit 149 + integration 13 + BDD 7**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
@@ -765,7 +769,7 @@ curl -s http://127.0.0.1:7860/api/queue
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **164 passed（unit 144 + integration 13 + BDD 7）**
+- [ ] `cd server && uv run pytest tests -q` → **169 passed（unit 149 + integration 13 + BDD 7）**
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。
 - [ ] R2.5 review/audio/delivery verifier 全绿。

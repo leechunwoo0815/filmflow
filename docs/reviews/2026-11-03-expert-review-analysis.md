@@ -221,8 +221,8 @@ P3 共 26 条，主题包括：模块级单例/配置未接线/组件扩展点�
 
 1. **P0-3**：integration 独立服务/DB；skipif 读 settings；conftest 环境断言；连续两次 pytest DB 不变。
 2. **P0-5**：extend_scene 同步 profile；retry_run fork；验证回滚；E2E。
-3. **P1-08**：timeline 409 保留 draft + 展示 diff + 强制覆盖。
-4. **P1-13**：9:16 变体读 Run 快照，或交付前校验 timeline hash。
+3. **P1-08**：timeline 409 保留 draft + 展示 diff + 强制覆盖。✅ 已完成（保留草稿 + 「只看服务端 / 保留本地并重试」，冲突期间暂停自动保存）。
+4. **P1-13**：9:16 变体读 Run 快照，或交付前校验 timeline hash。✅ 已完成（交付前比对当前 timeline 与 Run 快照哈希；生产库 22 个真实快照回归：18 放行 / 4 真实漂移拦截，零分歧）。
 5. **P1-15/P1-16/P1-17**：资产引用面、许可强制、QA 撤销链。
 6. **P1-14/P1-19**：修 `verify_r2_profiles.py` 排序崩溃；验收脚本自建自删，不硬编码演示 ID。
 

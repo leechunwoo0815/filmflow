@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 
 from ..config import detect_chrome
 from ..engine.scene.compiler import compile_scene
+from ..engine.snapshot import ensure_run_snapshot
 from ..models import Approval, Artifact, Job, NodeRun, Project, Run
 from . import audio as audio_svc
 from . import engines as engines_svc
@@ -267,6 +268,18 @@ def _file_sha(path: Path) -> str:
     return h.hexdigest()
 
 
+def _ensure_run_documents_match(session: Session, run: Run, root: Path, project_id: int) -> None:
+    """交付必须基于与所选 Run 一致的文档；Run 后再改文案会产出画面与字幕不符的 zip。"""
+    snapshot = ensure_run_snapshot(session, run, str(root))
+    snap_tl = ((snapshot.get("docs") or {}).get("timeline") or {}).get("content") or {}
+    if not snap_tl:
+        return
+    current_tl = docs_svc.doc_payload(session, project_id, str(root), "timeline")["content"]
+    if docs_svc.content_hash(snap_tl) != docs_svc.content_hash(current_tl):
+        raise RuntimeError("E_DELIVERY_GATE: 当前 timeline 与所选 Run 快照不一致；"
+                           "请用该 Run 重跑 F02/G07，或基于当前文档新建 Run 后再交付")
+
+
 async def run_delivery(job_id: int) -> None:
     from ..db import engine as db_engine
     job = None
@@ -289,6 +302,7 @@ async def run_delivery(job_id: int) -> None:
             ctx = pv.resolve_context(session, project.id or 0)
             profile = ctx.profile
             if not ctx.imported:
+                _ensure_run_documents_match(session, run, root, project.id or 0)
                 ensure_final_ready(session, run, root, False, profile)
                 g07 = session.exec(select(NodeRun).where(
                     NodeRun.run_id == run_id, NodeRun.node_id == "G07")).first()  # type: ignore[arg-type,union-attr]

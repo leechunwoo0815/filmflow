@@ -62,6 +62,7 @@ function TimelineInner() {
   const [previewErr, setPreviewErr] = useState("");
   const [resize, setResize] = useState<{ id: string; end: number } | null>(null);
   const [dragId, setDragId] = useState("");
+  const [conflict, setConflict] = useState<null | { op: string; extra: any; opts: any; serverVersion: number | null }>(null);
   const opRef = useRef<any>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLTextAreaElement | null>(null);
@@ -128,11 +129,12 @@ function TimelineInner() {
     try {
       const r = await api<any>(`/projects/${projectId}/timeline/ops`, {
         method: "POST",
-        body: JSON.stringify({ op, baseVersion: version, ...extra, ...(opts.force ? { force: true } : {}) }),
+        body: JSON.stringify({ op, baseVersion: opts.baseVersion ?? version, ...extra, ...(opts.force ? { force: true } : {}) }),
       });
       setHistory((h) => [...h.slice(-49), { content: doc, version }]);
       setFuture([]);
       applyResponse(r);
+      setConflict(null);
       if (opts.message) setMsg(opts.message);
     } catch (e: any) {
       const m = String(e.message || e);
@@ -141,16 +143,34 @@ function TimelineInner() {
         setSaving(false);
         return runOp(op, extra, { ...opts, force: true });
       }
-      if (m.includes("DOC_CONFLICT") || m.includes("文档版本")) {
-        await load();
-        setMsg("文档已被其他窗口修改，已刷新");
+      if (e.code === "E_DOC_CONFLICT" || m.includes("DOC_CONFLICT") || m.includes("文档版本")) {
+        setConflict({ op, extra, opts, serverVersion: e.details?.current_version ?? null });
+        setMsg("文档已被其他窗口修改。你的本地编辑和待应用操作已保留。");
       } else setMsg(m);
     } finally { setSaving(false); }
   }, [doc, version, projectId, load]);
   opRef.current = runOp;
 
+  const refreshConflict = async () => {
+    if (!window.confirm("刷新会丢弃当前本地编辑，仅查看服务端版本。继续？")) return;
+    setConflict(null);
+    await load();
+    setMsg("已切换到服务端版本");
+  };
+  const overwriteConflict = async () => {
+    if (!conflict) return;
+    try {
+      const fresh = await api<any>(`/projects/${projectId}/docs/timeline`);
+      setDoc(fresh.content); setVersion(fresh.version); setValidation(fresh.validation || null);
+      await runOp(conflict.op, conflict.extra, { ...conflict.opts, baseVersion: fresh.version, message: "已基于最新服务端版本重新应用本地操作" });
+      setConflict(null);
+    } catch (e: any) {
+      setMsg(String(e.message || e));
+    }
+  };
+
   useEffect(() => {
-    if (!selected || textDraft === sceneText(selected, script)) return;
+    if (!selected || conflict || textDraft === sceneText(selected, script)) return;
     const timer = setTimeout(() => {
       opRef.current?.("set_text", { sceneId: selected.id, text: textDraft }, { quiet: true });
     }, 700);
@@ -404,6 +424,14 @@ function TimelineInner() {
           <a className="btn" href="/help">帮助</a>
         </div>
       </header>
+      {conflict && (
+        <div className="px-3 py-2 text-xs border-b border-line bg-gold/10" data-testid="timeline-conflict">
+          <b>文档冲突</b>
+          <span className="text-dim ml-2">服务端版本 {conflict.serverVersion ?? "已更新"}；本地编辑未丢失。</span>
+          <button className="btn ml-3" onClick={refreshConflict}>只看服务端</button>
+          <button className="btn ml-2" onClick={overwriteConflict}>保留本地并重试</button>
+        </div>
+      )}
       {msg && <div className="px-3 py-1 text-xs text-gold border-b border-line">{msg}</div>}
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
