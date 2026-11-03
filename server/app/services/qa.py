@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -356,8 +357,10 @@ def _timeline_before(session: Session, project: Project) -> dict:
     doc = docs_svc.doc_payload(session, pid, project.root, "timeline")
     profile = docs_svc.get_doc(session, pid, "profile")
     profile_content = profile.content_json if profile else docs_svc.default_doc(session, pid, project.root, "profile")
-    return {"kind": "timeline", "version": doc["version"], "content": doc["content"],
-            "profileVersion": profile.version if profile else 0, "profileContent": profile_content}
+    # 深拷贝：修复动作会原地改同一份 content dict，共享引用会让 before==after，撤销链失效
+    return {"kind": "timeline", "version": doc["version"], "content": deepcopy(doc["content"]),
+            "profileVersion": profile.version if profile else 0,
+            "profileContent": deepcopy(profile_content)}
 
 
 def _apply(session: Session, project: Project, issue: dict, action: str,
@@ -397,7 +400,8 @@ def _apply(session: Session, project: Project, issue: dict, action: str,
                 break
             new = tl_svc.set_text(content, script, sid, text[:cut] + "\n" + text[cut:], force=True)
         saved, _ = docs_svc.save_doc(session, pid, "timeline", new, doc["version"], "qa-fix")
-        after_state = {"kind": "timeline", "version": saved.version}
+        after_state = {"kind": "timeline", "version": saved.version,
+                       "hash": docs_svc.content_hash(saved.content_json)}
         if action == "extend_scene":
             before = before_state or _timeline_before(session, project)
             profile_content = dict(before.get("profileContent") or {})
@@ -415,7 +419,8 @@ def _apply(session: Session, project: Project, issue: dict, action: str,
                     pass
                 raise ValueError(f"配置文件更新失败，已尝试回滚时间轴：{e}")
             after_state.update({"profileVersion": profile_saved.version,
-                                "profileContent": profile_content})
+                                "profileContent": profile_content,
+                                "profileHash": docs_svc.content_hash(profile_saved.content_json)})
         return after_state, {"sceneId": sid}
     if action == "set_lufs":
         target = float(payload.get("target") or -16)
@@ -492,11 +497,30 @@ def apply_fix(session: Session, project: Project, issue_id: str, action: str,
              "requiresRerun": requires_rerun, "nextAction": next_action,
              "before": before_state,
              "after": after_state, "afterVersion": after_state.get("version"),
-             "afterProfileVersion": after_state.get("profileVersion"), "extra": extra}
+             "afterHash": after_state.get("hash"),
+             "afterProfileVersion": after_state.get("profileVersion"),
+             "afterProfileHash": after_state.get("profileHash"), "extra": extra}
     data = _read_fixes(project.root)
     data["items"].append(entry)
     _write_fixes(project.root, data)
     return entry
+
+
+def _require_undo_head(data: dict, entry: dict, current_value, expected_hash,
+                       legacy_version, current_version, label: str) -> None:
+    """撤销按 LIFO：内容仍等于该次修复结果（链顶）才允许自动回退。"""
+    if expected_hash is not None:
+        if current_value == expected_hash:
+            return
+    elif legacy_version is None or current_version == legacy_version:
+        return
+    head = next((x for x in reversed(data["items"])
+                 if x.get("result") == "applied" and not x.get("undone")
+                 and (x.get("before") or {}).get("kind") == "timeline"
+                 and x.get("afterHash")), None)
+    hint = (f"；请先撤销 {head['id']}（{head.get('action')}）"
+            if head and head["id"] != entry.get("id") else "")
+    raise ValueError(f"{label}在该修复之后又被改动，只能按倒序撤销最新一次{hint}")
 
 
 def undo_fix(session: Session, project: Project, fix_id: str) -> dict:
@@ -507,16 +531,20 @@ def undo_fix(session: Session, project: Project, fix_id: str) -> dict:
     before = entry.get("before") or {}
     kind = before.get("kind")
     if kind == "timeline":
-        current = docs_svc.doc_payload(session, project.id or 0, project.root, "timeline")
-        if entry.get("afterVersion") is not None and current["version"] != entry["afterVersion"]:
-            raise ValueError("时间轴在修复后又发生变化，不能自动撤销；请手动恢复")
-        docs_svc.save_doc(session, project.id or 0, "timeline", before["content"],
+        pid = project.id or 0
+        current = docs_svc.doc_payload(session, pid, project.root, "timeline")
+        _require_undo_head(data, entry, docs_svc.content_hash(current["content"]),
+                           entry.get("afterHash"), entry.get("afterVersion"),
+                           current["version"], "时间轴")
+        docs_svc.save_doc(session, pid, "timeline", before["content"],
                           current["version"], "qa-undo")
         if before.get("profileContent") is not None:
-            profile = docs_svc.get_doc(session, project.id or 0, "profile")
-            if entry.get("afterProfileVersion") is not None and profile and profile.version != entry["afterProfileVersion"]:
-                raise ValueError("配置文件在修复后又发生变化，不能自动撤销；请手动恢复")
-            docs_svc.save_doc(session, project.id or 0, "profile", before["profileContent"],
+            profile = docs_svc.get_doc(session, pid, "profile")
+            profile_hash = docs_svc.content_hash(profile.content_json) if profile else None
+            _require_undo_head(data, entry, profile_hash, entry.get("afterProfileHash"),
+                               entry.get("afterProfileVersion"),
+                               profile.version if profile else None, "配置文件")
+            docs_svc.save_doc(session, pid, "profile", before["profileContent"],
                               profile.version if profile else 0, "qa-undo")
     elif kind == "mix":
         audio_svc.save_mix(project.root, before.get("content") or {})

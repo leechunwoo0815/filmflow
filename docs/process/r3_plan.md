@@ -164,11 +164,12 @@ QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
   连续 pytest 生产 DB 不变。
 - **P0-5**：`extend_scene` 同步 timeline + profile（失败补偿回滚）；QA `verified=null/documentVerified=true/requiresRerun=true`；`retry_run` fork 新 Run；撤销同步恢复 profile；报告增加 `pendingRerun`。
 - **P0-4a**：新增 `test_render_smoke.py`，真实 Chrome + ffmpeg + SSIM，断言 1s draft 输出 960×540/12fps/12 帧且帧一致性 ≥0.95。
-- **测试**：完整 `pytest server/tests -q` **177 passed**（unit 157 + integration 13 + BDD 7），连跑生产 DB 不变。
+- **测试**：完整 `pytest server/tests -q` **178 passed**（unit 158 + integration 13 + BDD 7），连跑生产 DB 不变。
 - **P0-4b 已补齐**：`verify_r2_incremental.py --project 5s|15s|40s`、`golden_run.py --resolution original`、`docs/reports/` JSON 归档；已实跑 5s 增量和 5s 原帧 golden。15s/40s 原帧 baseline 按需生成，本次未跑 40s。
 - **P1-13 交付门禁**：`run_delivery` 先比对当前 timeline 哈希与所选 Run 快照哈希，漂移即 `E_DELIVERY_GATE` 拒绝出片（2 项单测）。
 - **P1-08 时间轴冲突保稿**：409 `E_DOC_CONFLICT` 保留本地草稿并弹出「只看服务端 / 保留本地并重试」，冲突期间暂停自动保存。
 - **P1-15 资产引用面**：`scan_usages` 通用递归扫全部项目文档 + `Template.content_json` + Run 快照；`delete_asset` 含历史快照；`/assets` 标注来源；真实 HTTP 验证「仅剩模板引用时删除被 409 拦」。
+- **P1-17 QA 撤销链**：修复记录写入 `afterHash/afterProfileHash`，撤销按链顶（内容仍等于该次修复结果）逐级倒序回退；`_timeline_before` 深拷贝修掉 before==after 的引用别名 bug；`verify_r3_qa.py` 实跑 5 步全绿。
 - **P1-16/P1-18 许可强制**：所有资产种类入库都要 source+type（到期日须未过期）；被引用资产不可清空许可；`rights.json` 由 Run 快照真实资产生成并有缺口即拒交付；QA 新增 `asset_license_missing`，`fill_license` 去掉 `authorized` 预置、UI 需显式 YES。
 - **P1 基础批次已开始**：A05 守卫、SQLite WAL/同步、workspace roots env、pytest 每次独立临时 DB；foreign_keys 暂不开启。
 - **下一步**：P1 数据/缓存/媒体治理；FR-40/41 可选择开工。

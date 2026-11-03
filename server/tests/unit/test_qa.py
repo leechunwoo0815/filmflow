@@ -152,3 +152,48 @@ def test_license_fix_requires_explicit_authorization_and_flags_unlicensed_asset(
                 session.delete(row)
                 session.commit()
         _cleanup(session, proj)
+
+
+def test_undo_chain_is_multi_step_and_lifo(tmp_path: Path):
+    session = Session(engine)
+    proj = Project(name=f"qa-chain-{tmp_path.name}", root=str(tmp_path))
+    session.add(proj)
+    session.commit()
+    session.refresh(proj)
+    script = docs.build_script_doc(
+        "第一句话很长很长很长需要更多时间才能读完。第二句话也很长很长很长需要更多时间才能读完。")
+    docs.save_doc(session, proj.id, "script", script, 0)
+    docs.save_doc(session, proj.id, "profile", {
+        "schema": "filmflow.profile/1", "width": 1920, "height": 1080,
+        "fps": 24, "duration": 2.0, "frames": 48}, 0)
+    saved_tl, _ = docs.save_doc(session, proj.id, "timeline", {
+        "schema": "filmflow.timeline/2", "fps": 24, "duration": 2.0, "frames": 48,
+        "events": [], "tracks": [],
+        "scenes": [{"id": "S01", "start": 0.0, "end": 1.0, "source_span": [0],
+                    "read_seconds": 1.0, "last_text_at": 0.0},
+                   {"id": "S02", "start": 1.0, "end": 2.0, "source_span": [1],
+                    "read_seconds": 1.0, "last_text_at": 1.0}]}, 0)
+    original_hash = docs.content_hash(saved_tl.content_json)
+    try:
+        overs = [i for i in qa.analyze(session, proj)["issues"]
+                 if i["category"] == "text_overflow"]
+        assert {o["location"]["sceneId"] for o in overs} == {"S01", "S02"}
+        fix_a = qa.apply_fix(session, proj, overs[0]["id"], "scale_text", {"sceneId": "S01"})
+        s02 = next(i for i in qa.analyze(session, proj)["issues"]
+                   if i["category"] == "text_overflow" and i["location"]["sceneId"] == "S02")
+        fix_b = qa.apply_fix(session, proj, s02["id"], "scale_text", {"sceneId": "S02"})
+        assert docs.content_hash(fix_b["before"]["content"]) == fix_a["afterHash"]
+        assert fix_a["afterHash"] and fix_b["afterHash"] and fix_a["afterHash"] != fix_b["afterHash"]
+
+        with pytest.raises(ValueError) as e:
+            qa.undo_fix(session, proj, fix_a["id"])
+        assert "倒序" in str(e.value) and fix_b["id"] in str(e.value)
+
+        qa.undo_fix(session, proj, fix_b["id"])
+        qa.undo_fix(session, proj, fix_a["id"])
+        current = docs.doc_payload(session, proj.id, proj.root, "timeline")
+        assert docs.content_hash(current["content"]) == original_hash
+        report = qa.report(proj)
+        assert report["undone"] == 2 and report["active"] == 0
+    finally:
+        _cleanup(session, proj)
