@@ -22,6 +22,7 @@ from . import engines as engines_svc
 from . import jobs as jobs_svc
 from . import preview as pv
 from . import project_docs as docs_svc
+from . import takes as takes_svc
 from .render_profiles import ensure_final_ready
 
 
@@ -476,8 +477,13 @@ def create_job(session: Session, project: Project, run_id: int | None = None,
     if not run_id:
         from ..models import Workflow
         wf = session.exec(select(Workflow).where(Workflow.project_id == project.id)).first()  # type: ignore[arg-type,union-attr]
-        run = session.exec(select(Run).where(Run.workflow_id == (wf.id if wf else -1))
-                           .order_by(Run.id.desc())).first() if wf else None  # type: ignore[arg-type,union-attr]
+        current = takes_svc.current_run(project.root)
+        run = session.get(Run, current) if current else None
+        if run and run.workflow_id != (wf.id if wf else -1):
+            run = None
+        if not run:
+            run = session.exec(select(Run).where(Run.workflow_id == (wf.id if wf else -1))
+                               .order_by(Run.id.desc())).first() if wf else None  # type: ignore[arg-type,union-attr]
         if not run:
             raise RuntimeError("项目没有 Run")
         run_id = run.id

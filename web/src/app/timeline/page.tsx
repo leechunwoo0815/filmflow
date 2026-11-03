@@ -311,6 +311,7 @@ function TimelineInner() {
           <span className="font-mono text-sm">{fmtTC(playhead, fps)} <span className="text-dim">/ {fmtTC(duration, fps)}</span></span>
           <button className="btn" onClick={() => setPlaying((p) => p ? 0 : 1)}>{playing ? "暂停" : "播放"}</button>
           <a className="btn" href={`/player?project=${projectId}${runId ? `&run=${runId}` : ""}`}>审片</a>
+          <a className="btn" href={`/takes?project=${projectId}`}>Take 对比</a>
           <a className="btn" href="/help">帮助</a>
         </div>
       </header>

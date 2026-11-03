@@ -15,7 +15,7 @@
 实测（rumor-39s 导入全链，Run #1）：46/46 节点 succeeded · 49 产物 · 9 条审批记录（含驳回→重批历史）· master.mp4 = 69.9MB · 三引擎可生产 61 条。
 
 > ⚠️ 以上是**导入参考片**的实测。R2.0 参数化链路正在按 [docs/process/r2-plan.md](docs/process/r2-plan.md) 实施：
-> Phase 1 边表/Contract v2、Phase 2 文档模型与 Run 快照、Phase 3 5s 新项目参数化静帧 + `film_spec` 逐帧渲染（120 帧 / 5.000s / F05 通过）、Phase 4 场景级增量（改 S02 只渲 66/120 帧，S01 复用）、Phase 5 PreviewService（F02 运行中 CDP 附加 p50 1.31s/p95 1.44s，5s 片段 12.7s，缓存 5ms）、Phase 6 draft/review/final 档位（D02 双静帧、E05 720p/24、F02 only-final、切档不重跑）、Phase 7 持久化 Job 与 kill -9 恢复（F02 22.3s 恢复）、Phase 8 黄金项目/视觉回归（5s/15s/40s SSIM 1.0，干净 rumor 46/46）已完成；R2.0 DoD 通过。R2.5 已完成 FR-26 全场景静帧审阅（contact sheet/逐场门禁/review diff）、FR-27 音频工作台（waveform/对齐/许可/G05 Stems）、FR-28 交付 v1（5s 26.2s / 40s 190.0s，9 文件/QC/zip/9:16）与 FR-31 新手引导（模板音频占位/标题预演/只读示例/Studio 引导）。**R3.0 创作闭环 v1** 已交付 FR-32 时间轴（拖拽/ripple/分割/相机/转场/250ms 预览）、FR-33 审片播放器（帧锚定批注/导出导入/审片包）、FR-34 相机关键帧；FR-35/36/37/38 下一批。
+> Phase 1 边表/Contract v2、Phase 2 文档模型与 Run 快照、Phase 3 5s 新项目参数化静帧 + `film_spec` 逐帧渲染（120 帧 / 5.000s / F05 通过）、Phase 4 场景级增量（改 S02 只渲 66/120 帧，S01 复用）、Phase 5 PreviewService（F02 运行中 CDP 附加 p50 1.31s/p95 1.44s，5s 片段 12.7s，缓存 5ms）、Phase 6 draft/review/final 档位（D02 双静帧、E05 720p/24、F02 only-final、切档不重跑）、Phase 7 持久化 Job 与 kill -9 恢复（F02 22.3s 恢复）、Phase 8 黄金项目/视觉回归（5s/15s/40s SSIM 1.0，干净 rumor 46/46）已完成；R2.0 DoD 通过。R2.5 已完成 FR-26 全场景静帧审阅（contact sheet/逐场门禁/review diff）、FR-27 音频工作台（waveform/对齐/许可/G05 Stems）、FR-28 交付 v1（5s 26.2s / 40s 190.0s，9 文件/QC/zip/9:16）与 FR-31 新手引导（模板音频占位/标题预演/只读示例/Studio 引导）。**R3.0 创作闭环 v1** 已交付 FR-32 时间轴（拖拽/ripple/分割/相机/转场/250ms 预览）、FR-33 审片播放器（帧锚定批注/导出导入/审片包）、FR-34 相机关键帧、FR-38 Take 对比（评分/当前/同步/差异/采纳/分支）；FR-35/36/37 下一批。
 
 ## 快速开始
 
@@ -31,7 +31,7 @@
 
 ```bash
 cd server
-uv run pytest tests -q   # 117（干净环境首跑；部分集成需 API 在跑）
+uv run pytest tests -q   # 119（干净环境首跑；部分集成需 API 在跑）
 uv run --project server python scripts/smoke_m1.py    # M0/M1 API 全链冒烟（需服务在跑）
 uv run --project server python scripts/e2e_ui.py      # Playwright UI E2E（8 场景，需 ./dev.sh 在跑）
 uv run --project server python scripts/verify_r2_5s_incremental.py  # R2.0 5s 参数化 + 增量验收
@@ -47,6 +47,8 @@ uv run --project server python scripts/verify_r2_5_delivery_40s.py  # FR-28 40s 
 uv run --project server python scripts/verify_r3.py                 # R3 时间轴+审片
 uv run --project server python scripts/verify_r3_camera.py          # R3 相机 final 一致性
 uv run --project server python scripts/e2e_r3.py                    # R3 UI 冒烟
+uv run --project server python scripts/verify_r3_takes.py           # Take 对比验收
+uv run --project server python scripts/e2e_takes.py                 # Take UI 冒烟
 uv run --project server python scripts/drive_run.py <run> <project>   # 全链驱动（自动批门）
 ```
 

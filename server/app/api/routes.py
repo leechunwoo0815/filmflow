@@ -28,6 +28,7 @@ from ..services import preview as preview_svc
 from ..services import audio as audio_svc
 from ..services import onboarding as onboarding_svc
 from ..services import review_comments as review_svc
+from ..services import takes as takes_svc
 from ..services import timeline_ops as tl_svc
 from ..services import delivery as delivery_svc
 from ..services import jobs as jobs_svc
@@ -1563,6 +1564,196 @@ async def project_timeline_ops(project_id: int, payload: dict,
     return {**docs_svc.doc_payload(session, project_id, proj.root, "timeline"),
             "op": op, "diff": diff, "impact": _doc_impact("timeline"),
             "validation": meta["validation"]}
+
+
+def _take_runs(session: Session, project_id: int) -> list[Run]:
+    wf = session.exec(select(Workflow).where(Workflow.project_id == project_id)).first()  # type: ignore[arg-type,union-attr]
+    if not wf:
+        return []
+    return session.exec(select(Run).where(Run.workflow_id == wf.id)
+                        .order_by(Run.id.desc())).all()  # type: ignore[arg-type]
+
+
+def _take_run(session: Session, project_id: int, run_id: int) -> tuple[Project, Run]:
+    proj = _project_or_404(session, project_id)
+    run = session.get(Run, run_id)
+    if not run or run.workflow_id not in {w.id for w in session.exec(
+            select(Workflow).where(Workflow.project_id == project_id)).all()}:
+        raise ApiError(ErrorCode.E_NOT_FOUND, "Take/Run 不属于该项目", status=404)
+    return proj, run
+
+
+def _take_still(session: Session, run_id: int) -> dict | None:
+    rows = session.exec(select(Artifact).where(
+        Artifact.run_id == run_id, Artifact.node_id == "D02", Artifact.type == "PNG")).all()  # type: ignore[arg-type]
+    for a in rows:
+        if (a.meta_json or {}).get("profile") == "review" and Path(a.path).exists():
+            return {"artifact": a.id, "url": f"/api/artifacts/{a.id}/file"}
+    return None
+
+
+def _take_source_docs(session: Session, proj: Project, run: Run) -> tuple[dict, dict, dict]:
+    """Run 快照 docs → (script, timeline, profile)；imported 回退 task/copy。"""
+    root = Path(proj.root)
+    docs = root / "runs" / str(run.id) / "docs"
+    def _read(name: str) -> dict:
+        p = docs / name
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+    snapshot = _read("snapshot.json")
+    script = _read("script.doc.json")
+    timeline = _read("timeline.doc.json")
+    task = _read("task.json")
+    if not task:
+        try:
+            task = json.loads((root / "card" / "task.json").read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            task = {}
+    if not script:
+        copy = ""
+        try:
+            copy = (root / "card" / "copy.txt").read_text(encoding="utf-8")
+        except OSError:
+            pass
+        if not copy and task.get("scenes"):
+            copy = "".join(str(sc.get("meaning") or "") for sc in task["scenes"])
+        script = docs_svc.build_script_doc(copy) if copy else {}
+    if not timeline and task.get("scenes"):
+        fps = int(task.get("fps") or 24)
+        scenes = task["scenes"]
+        timeline = {
+            "schema": docs_svc.SCHEMAS["timeline"], "fps": fps,
+            "duration": float((task.get("film") or {}).get("duration") or
+                              (scenes[-1].get("end") if scenes else 0)),
+            "frames": int((task.get("film") or {}).get("frames") or 0),
+            "scenes": scenes, "events": task.get("events") or [], "tracks": [],
+        }
+    profile = snapshot.get("profile") or {}
+    if not profile:
+        try:
+            profile = json.loads((root / "project.profile.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            profile = {}
+    return script, timeline, profile
+
+
+@router.get("/projects/{project_id}/takes")
+async def project_takes(project_id: int, includeHidden: bool = False,
+                        session: Session = Depends(get_session)):
+    proj = _project_or_404(session, project_id)
+    videos = _review_videos(session, project_id)
+    out = []
+    for run in _take_runs(session, project_id):
+        meta = takes_svc.item(proj.root, run.id or 0)
+        if meta["hidden"] and not includeHidden:
+            continue
+        out.append({**meta, "status": run.status,
+                    "createdAt": str(run.started_at or run.finished_at or ""),
+                    "parentRunId": run.parent_run_id,
+                    "videos": [v for v in videos if v["runId"] == run.id],
+                    "still": _take_still(session, run.id or 0)})
+    out.sort(key=lambda x: (x["score"] is not None, x["score"] or 0, x["runId"]), reverse=True)
+    return {"currentRunId": takes_svc.current_run(proj.root), "items": out}
+
+
+@router.patch("/projects/{project_id}/takes/{run_id}")
+async def project_take_update(project_id: int, run_id: int, payload: dict,
+                              session: Session = Depends(get_session)):
+    proj, _ = _take_run(session, project_id, run_id)
+    take = takes_svc.update(proj.root, run_id, payload)
+    audit(session, "take.update", f"{project_id}:run:{run_id}", after=take)
+    return take
+
+
+@router.post("/projects/{project_id}/takes/{run_id}/promote")
+async def project_take_promote(project_id: int, run_id: int,
+                               session: Session = Depends(get_session)):
+    proj, _ = _take_run(session, project_id, run_id)
+    result = takes_svc.promote(proj.root, run_id)
+    audit(session, "take.promote", f"{project_id}:run:{run_id}", after=result)
+    return result
+
+
+@router.delete("/projects/{project_id}/takes/{run_id}")
+async def project_take_delete(project_id: int, run_id: int,
+                              session: Session = Depends(get_session)):
+    proj, _ = _take_run(session, project_id, run_id)
+    take = takes_svc.delete(proj.root, run_id)
+    audit(session, "take.delete", f"{project_id}:run:{run_id}", after=take)
+    return take
+
+
+@router.post("/projects/{project_id}/takes/{run_id}/branch")
+async def project_take_branch(project_id: int, run_id: int, payload: dict | None = None,
+                              session: Session = Depends(get_session)):
+    proj, source = _take_run(session, project_id, run_id)
+    script, timeline, profile = _take_source_docs(session, proj, source)
+    if not timeline.get("scenes"):
+        raise ApiError(ErrorCode.E_VALIDATION, "该 Take 没有可复制的 timeline 快照", status=409)
+    if script.get("text"):
+        current = docs_svc.get_doc(session, project_id, "script")
+        docs_svc.save_doc(session, project_id, "script", script,
+                          current.version if current else 0,
+                          payload.get("author", "take-branch") if payload else "take-branch")
+    current_tl = docs_svc.get_doc(session, project_id, "timeline")
+    tl_svc.normalize(timeline, script)
+    docs_svc.save_doc(session, project_id, "timeline", timeline,
+                      current_tl.version if current_tl else 0, "take-branch")
+    if profile:
+        current_pf = docs_svc.get_doc(session, project_id, "profile")
+        docs_svc.save_doc(session, project_id, "profile",
+                          {"schema": docs_svc.SCHEMAS["profile"], **profile},
+                          current_pf.version if current_pf else 0, "take-branch")
+    new_run = Run(workflow_id=source.workflow_id, parent_run_id=source.id)
+    session.add(new_run)
+    session.commit()
+    session.refresh(new_run)
+    audit(session, "take.branch", f"{project_id}:run:{run_id}",
+          after={"newRunId": new_run.id, "parentRunId": source.id})
+    return {"runId": new_run.id, "parentRunId": source.id}
+
+
+@router.post("/projects/{project_id}/takes/{run_id}/adopt-scene")
+async def project_take_adopt_scene(project_id: int, run_id: int, payload: dict,
+                                   session: Session = Depends(get_session)):
+    proj, source = _take_run(session, project_id, run_id)
+    scene_id = str(payload.get("sceneId") or "")
+    if not scene_id:
+        raise ApiError(ErrorCode.E_VALIDATION, "sceneId 必填")
+    source_script, source_timeline, _profile = _take_source_docs(session, proj, source)
+    source_scene = next((s for s in source_timeline.get("scenes", []) if s.get("id") == scene_id), None)
+    if not source_scene:
+        raise ApiError(ErrorCode.E_NOT_FOUND, f"源 Take 没有场景 {scene_id}", status=404)
+    from ..engine.scene.compiler import scene_text
+    target = docs_svc.doc_payload(session, project_id, proj.root, "timeline")
+    target_script = docs_svc.doc_payload(session, project_id, proj.root, "script")["content"]
+    scene = next((s for s in target["content"].get("scenes", []) if s.get("id") == scene_id), None)
+    if not scene:
+        raise ApiError(ErrorCode.E_NOT_FOUND, f"当前项目没有场景 {scene_id}", status=404)
+    text = scene_text(source_scene, source_script)
+    if not text:
+        raise ApiError(ErrorCode.E_VALIDATION, "源场景没有可采纳的文字", status=409)
+    scene["text"] = text
+    scene["source_span"] = []
+    scene["meaning"] = source_scene.get("meaning") or scene.get("meaning") or ""
+    scene["operation"] = source_scene.get("operation") or scene.get("operation") or ""
+    for key in ("camera", "camera_keyframes", "camera_anchor"):
+        if key in source_scene:
+            scene[key] = source_scene[key]
+    tl_svc.normalize(target["content"], target_script)
+    validation = tl_svc.validate(target["content"], target_script)
+    if not validation["ok"]:
+        raise ApiError(ErrorCode.E_VALIDATION, validation["errors"][0]["message"],
+                       status=409, details={"validation": validation})
+    doc, diff = docs_svc.save_doc(session, project_id, "timeline", target["content"],
+                                  target["version"], "take-adopt")
+    audit(session, "take.adopt_scene", f"{project_id}:run:{run_id}:{scene_id}",
+          after={"version": doc.version})
+    return {"sceneId": scene_id, "sourceRunId": run_id, "text": text,
+            **docs_svc.doc_payload(session, project_id, proj.root, "timeline"),
+            "diff": diff, "validation": validation}
 
 
 @router.post("/projects/{project_id}/docs/timeline/rebuild")

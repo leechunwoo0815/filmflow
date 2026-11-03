@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.7.1"  # R3.0：D01/E03/E04 写项目文件，必须 project-local 缓存
+EXECUTOR_VERSION = "2.7.2"  # R3.0：新项目 B02/B03 优先 Run 快照 timeline（二次 Run 不再读旧任务卡）
 
 
 def canonical(obj) -> str:

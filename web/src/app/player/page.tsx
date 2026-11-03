@@ -194,6 +194,7 @@ function PlayerInner() {
     <main className="min-h-screen bg-bg text-txt p-4">
       <header className="flex items-center gap-2 mb-3">
         <a className="btn" href={`/timeline?project=${projectId}&run=${params.get("run") || ""}`}>← 时间轴</a>
+        <a className="btn" href={`/takes?project=${projectId}`}>Take 对比</a>
         <b>审片 · 项目 {projectId}</b>
         <span className="text-dim text-xs">未解决 {openCount} / {comments.length}</span>
         {review.videos?.length ? (

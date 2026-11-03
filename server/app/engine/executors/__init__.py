@@ -255,12 +255,14 @@ async def b01(ctx):
 async def b02(ctx):
     """场景图：imported 读快照 task.json；新项目读快照 timeline.doc，缺省则确定性构建。"""
     task_p = _task_path(ctx)
-    if task_p.exists():
+    timeline_p = _run_doc_file(ctx, "timeline.doc.json")
+    if ctx.get("run_imported") and task_p.exists():
         scenes = _read_json(task_p).get("scenes", [])
+    elif timeline_p.exists():
+        scenes = _read_json(timeline_p).get("scenes", [])
     else:
-        timeline_p = _run_doc_file(ctx, "timeline.doc.json")
-        if timeline_p.exists():
-            scenes = _read_json(timeline_p).get("scenes", [])
+        if task_p.exists():
+            scenes = _read_json(task_p).get("scenes", [])
         else:
             draft = _project_file(ctx, "card/scenes_draft.json")
             scenes = _read_json(draft).get("scenes", []) if draft.exists() else []
@@ -285,11 +287,13 @@ async def b02(ctx):
 @executor("event-table")
 async def b03(ctx):
     task_p = _task_path(ctx)
-    if task_p.exists():
+    timeline_p = _run_doc_file(ctx, "timeline.doc.json")
+    if ctx.get("run_imported") and task_p.exists():
         events = _read_json(task_p).get("events", [])
     else:
-        timeline_p = _run_doc_file(ctx, "timeline.doc.json")
         events = _read_json(timeline_p).get("events", []) if timeline_p.exists() else []
+        if not events and task_p.exists():
+            events = _read_json(task_p).get("events", [])
         if not events:
             u = _upstream_json(ctx, ["B02"])
             for s in (u.get("B02") or {}).get("scenes", []):
