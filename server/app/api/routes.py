@@ -43,6 +43,9 @@ from ..services import render_profiles as profiles_svc
 from ..services import recommend as rec_svc
 from ..services import style_index as idx_svc
 
+
+from .schemas import (AssetImportIn, AssetReplaceIn, AssetUpdateIn, DocRestoreIn,
+                      DocSaveIn, ProjectCreateIn, QaFixIn, QaUndoIn, TimelineOpIn)
 router = APIRouter(prefix="/api")
 
 
@@ -273,23 +276,20 @@ def _require_workspace_root(rp: Path) -> None:
 
 
 @router.post("/projects")
-async def projects_create(payload: dict, session: Session = Depends(get_session)):
-    name, root = payload.get("name", "").strip(), payload.get("root", "").strip()
-    if not name or not root:
-        raise ApiError(ErrorCode.E_VALIDATION, "name/root 必填")
-    rp = Path(root).resolve()
+async def projects_create(payload: ProjectCreateIn, session: Session = Depends(get_session)):
+    rp = Path(payload.root.strip()).resolve()
     _require_workspace_root(rp)
     if not rp.is_dir():
         raise ApiError(ErrorCode.E_VALIDATION, f"目录不存在：{rp}")
     p = session.exec(select(Project).where(Project.root == str(rp))).first()  # type: ignore[arg-type,union-attr]
     if p is None:
-        p = Project(name=name, root=str(rp))
+        p = Project(name=payload.name.strip(), root=str(rp))
         session.add(p)
         session.commit()
         session.refresh(p)
     wf = _ensure_workflow(session, p)
     run = _ensure_run(session, wf)
-    audit(session, "project.create", root, after={"id": p.id})
+    audit(session, "project.create", str(rp), after={"id": p.id})
     return {"project": table_dict(p), "workflow_id": wf.id, "run_id": run.id}
 
 
@@ -302,7 +302,8 @@ async def projects_import(payload: dict, session: Session = Depends(get_session)
     task_p = rp / "card" / "task.json"
     if not task_p.exists():
         raise ApiError(ErrorCode.E_VALIDATION, f"缺少 card/task.json：{rp}")
-    created = await projects_create({"name": payload.get("name") or rp.name, "root": str(rp)}, session)
+    created = await projects_create(ProjectCreateIn(name=payload.get("name") or rp.name,
+                                                      root=str(rp)), session)
     proj = session.get(Project, created["project"]["id"])
     task = json.loads(task_p.read_text(encoding="utf-8-sig"))
     wf = session.get(Workflow, created["workflow_id"])
@@ -438,9 +439,9 @@ async def drafts_materialize(draft_id: int, session: Session = Depends(get_sessi
     brief_title = str((payload.get("brief") or {}).get("title") or "").strip()
     if brief_title and project_name in ("", "向导草稿"):
         project_name = brief_title
-    created = await projects_create({"name": project_name or "第一条片",
-                                     "root": payload.get("root") or str(_default_project_root(project_name or "第一条片"))},
-                                    session)
+    created = await projects_create(ProjectCreateIn(
+        name=project_name or "第一条片",
+        root=payload.get("root") or str(_default_project_root(project_name or "第一条片"))), session)
     proj = session.get(Project, created["project"]["id"])
     wf = session.get(Workflow, created["workflow_id"])
     graph = wf.graph_json or {}
@@ -1484,37 +1485,35 @@ async def run_qa(run_id: int, session: Session = Depends(get_session)):
 
 
 @router.post("/projects/{project_id}/qa/fix")
-async def project_qa_fix(project_id: int, payload: dict,
+async def project_qa_fix(project_id: int, payload: QaFixIn,
                          session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
     if docs_svc.is_imported(session, project_id):
         raise ApiError(ErrorCode.E_VALIDATION, "导入项目只读，不能应用 QA 修复", status=409)
     try:
-        entry = qa_svc.apply_fix(
-            session, proj, str(payload.get("issueId") or ""),
-            str(payload.get("action") or ""), payload.get("payload") or {},
-            int(payload["runId"]) if payload.get("runId") is not None else None)
+        entry = qa_svc.apply_fix(session, proj, payload.issueId, payload.action,
+                                 payload.payload, payload.runId)
     except ValueError as e:
         raise ApiError(ErrorCode.E_VALIDATION, f"E_QA_FIX: {e}", status=409)
-    audit(session, "qa.fix", f"{project_id}:{payload.get('issueId')}",
-          after={"action": payload.get("action"), "result": entry.get("verified")})
+    audit(session, "qa.fix", f"{project_id}:{payload.issueId}",
+          after={"action": payload.action, "result": entry.get("verified")})
     return {"fix": entry, "qa": qa_svc.analyze(
         session, proj, entry.get("runId"))}
 
 
 @router.post("/projects/{project_id}/qa/undo")
-async def project_qa_undo(project_id: int, payload: dict,
+async def project_qa_undo(project_id: int, payload: QaUndoIn,
                           session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
     if docs_svc.is_imported(session, project_id):
         raise ApiError(ErrorCode.E_VALIDATION, "导入项目只读，不能撤销 QA 修复", status=409)
     try:
-        entry = qa_svc.undo_fix(session, proj, str(payload.get("fixId") or ""))
+        entry = qa_svc.undo_fix(session, proj, payload.fixId)
     except ValueError as e:
         raise ApiError(ErrorCode.E_VALIDATION, f"E_QA_UNDO: {e}", status=409)
-    audit(session, "qa.undo", f"{project_id}:{payload.get('fixId')}")
+    audit(session, "qa.undo", f"{project_id}:{payload.fixId}")
     return {"fix": entry, "qa": qa_svc.analyze(session, proj, entry.get("runId"))}
 
 
@@ -1554,14 +1553,13 @@ async def assets_list(scope: str = "global", projectId: int | None = None,
 
 
 @router.post("/assets")
-async def assets_import(payload: dict, session: Session = Depends(get_session)):
-    scope = str(payload.get("scope") or "global")
-    proj = _asset_project(session, payload.get("projectId")) if scope == "project" else None
+async def assets_import(payload: AssetImportIn, session: Session = Depends(get_session)):
+    scope = payload.scope
+    proj = _asset_project(session, payload.projectId) if scope == "project" else None
     asset, deduped = await asyncio.to_thread(
         assets_svc.import_asset, session, scope, proj.root if proj else None,
-        str(payload.get("filename") or "asset.bin"), str(payload.get("data") or ""),
-        str(payload.get("kind") or ""), str(payload.get("name") or ""),
-        payload.get("tags") or [], payload.get("license") or {}, str(payload.get("author") or ""))
+        payload.filename, payload.data, payload.kind, payload.name,
+        payload.tags, payload.license, payload.author)
     usages = assets_svc.scan_usages(
         session, sha=asset.sha256,
         project_ids=[asset.project_id] if asset.scope == "project" else None).get(asset.sha256, [])
@@ -1580,9 +1578,10 @@ async def assets_get(asset_id: int, session: Session = Depends(get_session)):
 
 
 @router.patch("/assets/{asset_id}")
-async def assets_update(asset_id: int, payload: dict,
+async def assets_update(asset_id: int, payload: AssetUpdateIn,
                         session: Session = Depends(get_session)):
-    asset = await asyncio.to_thread(assets_svc.update_asset, session, asset_id, payload)
+    body = {k: v for k, v in payload.model_dump().items() if v is not None}
+    asset = await asyncio.to_thread(assets_svc.update_asset, session, asset_id, body)
     audit(session, "asset.update", str(asset_id),
           after={"name": (asset.meta_json or {}).get("name"), "archived": asset.archived})
     usages = assets_svc.scan_usages(
@@ -1639,10 +1638,10 @@ async def assets_font_check(asset_id: int, payload: dict,
 
 
 @router.post("/assets/{asset_id}/replace")
-async def assets_replace(asset_id: int, payload: dict,
+async def assets_replace(asset_id: int, payload: AssetReplaceIn,
                          session: Session = Depends(get_session)):
     old = assets_svc.get_asset(session, asset_id)
-    new = assets_svc.get_asset(session, int(payload.get("assetId") or 0))
+    new = assets_svc.get_asset(session, payload.assetId)
     if old.kind != new.kind:
         raise ApiError(ErrorCode.E_ASSET_KIND, "替换资产必须同类型")
     if old.id == new.id:
@@ -2161,12 +2160,11 @@ async def project_doc_get(project_id: int, kind: str, session: Session = Depends
 
 
 @router.put("/projects/{project_id}/docs/{kind}")
-async def project_doc_put(project_id: int, kind: str, payload: dict,
+async def project_doc_put(project_id: int, kind: str, payload: DocSaveIn,
                           session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    doc, diff = docs_svc.save_doc(session, project_id, kind, payload.get("content") or {},
-                                  int(payload.get("base_version", 0)),
-                                  payload.get("author", "local"))
+    doc, diff = docs_svc.save_doc(session, project_id, kind, payload.content,
+                                  payload.base_version, payload.author)
     audit(session, "doc.save", f"{project_id}:{kind}",
           after={"version": doc.version, "diff": diff[:50]})
     return {**docs_svc.doc_payload(session, project_id, proj.root, kind),
@@ -2185,45 +2183,45 @@ async def project_doc_versions(project_id: int, kind: str, session: Session = De
 
 
 @router.post("/projects/{project_id}/docs/{kind}/restore")
-async def project_doc_restore(project_id: int, kind: str, payload: dict,
+async def project_doc_restore(project_id: int, kind: str, payload: DocRestoreIn,
                               session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    doc, diff = docs_svc.restore_doc(session, project_id, kind, int(payload.get("version", 0)),
-                                     payload.get("author", "local"))
+    doc, diff = docs_svc.restore_doc(session, project_id, kind, payload.version, payload.author)
     audit(session, "doc.restore", f"{project_id}:{kind}",
-          after={"version": doc.version, "restored_from": payload.get("version")})
+          after={"version": doc.version, "restored_from": payload.version})
     return {**docs_svc.doc_payload(session, project_id, proj.root, kind),
             "diff": diff, "impact": _doc_impact(kind)}
 
 
 @router.post("/projects/{project_id}/timeline/ops")
-async def project_timeline_ops(project_id: int, payload: dict,
+async def project_timeline_ops(project_id: int, payload: TimelineOpIn,
                                session: Session = Depends(get_session)):
     """FR-32：时间轴操作（乐观锁 + 读时/相机校验）。"""
     proj = _project_or_404(session, project_id)
+    body = payload.model_dump()
     current = docs_svc.doc_payload(session, project_id, proj.root, "timeline")
-    base = int(payload.get("baseVersion") if payload.get("baseVersion") is not None
+    base = int(body["baseVersion"] if body.get("baseVersion") is not None
                else current["version"])
     script = docs_svc.doc_payload(session, project_id, proj.root, "script")["content"]
-    op = str(payload.get("op") or "")
+    op = body["op"]
     if op in ("add_image", "add_sfx", "set_font"):
-        sha = str(payload.get("assetSha") or "")
+        sha = str(body.get("assetSha") or "")
         expected = {"add_image": "image", "add_sfx": "audio", "set_font": "font"}[op]
         asset = session.exec(select(Asset).where(Asset.sha256 == sha)).first() if sha else None
         if asset and asset.kind != expected:
             raise ApiError(ErrorCode.E_ASSET_KIND,
                            f"资产 {asset.id} 是 {asset.kind}，不能用于 {expected}", status=409)
     try:
-        content, meta = tl_svc.apply(current["content"], script, op, payload)
+        content, meta = tl_svc.apply(current["content"], script, op, body)
     except tl_svc.TimelineOpError as e:
         raise ApiError(ErrorCode.E_VALIDATION, f"{e.code}: {e.message}",
                        status=e.status, details=e.details)
     except (TypeError, ValueError) as e:
         raise ApiError(ErrorCode.E_VALIDATION, f"E_TIMELINE_OP: {e}", status=400)
     doc, diff = docs_svc.save_doc(session, project_id, "timeline", content, base,
-                                  payload.get("author", "timeline"))
+                                  str(body.get("author") or "timeline"))
     audit(session, f"timeline.{op}", f"{project_id}:timeline",
-          after={"version": doc.version, "scene": payload.get("sceneId")})
+          after={"version": doc.version, "scene": body.get("sceneId")})
     return {**docs_svc.doc_payload(session, project_id, proj.root, "timeline"),
             "op": op, "diff": diff, "impact": _doc_impact("timeline"),
             "validation": meta["validation"]}
