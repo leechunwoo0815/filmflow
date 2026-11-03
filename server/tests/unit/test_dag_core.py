@@ -1,8 +1,6 @@
 """DAG 核心单元测试：节点表/边表/caps/缓存键/失效传播/锁。对应规格 §3.1 §4.8 §5.2 §5.3。"""
 import asyncio
 
-import pytest
-
 from app.engine import caps as caps_mod
 from app.engine import edges
 from app.engine.cachekey import gate_content_hash, node_cache_key

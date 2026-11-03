@@ -1,6 +1,9 @@
 """FR-22 规划器：改一句只脏 S03；改时长级联；改转场脏前后两场。"""
 from app.engine.render_manifest import (
-    build_manifest, build_plan, dirty_ranges, plan_dirty,
+    build_manifest,
+    build_plan,
+    dirty_ranges,
+    plan_dirty,
 )
 
 PROFILE = {"width": 1920, "height": 1080, "fps": 24, "duration": 39.5, "frames": 948}

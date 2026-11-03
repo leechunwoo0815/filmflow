@@ -9,7 +9,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from sqlmodel import Session, select, text
+from sqlmodel import Session, select
 
 from ..config import settings
 from ..db import engine

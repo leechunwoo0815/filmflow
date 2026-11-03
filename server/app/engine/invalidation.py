@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from .cachekey import gate_content_hash
-from .edges import EDGES, N, UPSTREAM, data_descendants
+from .edges import EDGES, UPSTREAM, N, data_descendants
 
 
 def propagate(node_id: str, params_by_node: dict[str, dict],

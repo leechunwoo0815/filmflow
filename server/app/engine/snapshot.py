@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlmodel import Session, select
@@ -83,7 +83,7 @@ def ensure_run_snapshot(session: Session, run: Run, project_root: str) -> dict:
     snapshot = {
         "schema": SNAPSHOT_SCHEMA, "run_id": run.id, "imported": imported,
         "profile": profile, "render_profiles": render_profiles, "docs": docs,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
     snapshot["doc_snapshot_sha"] = content_hash({
         "docs": docs, "profile": profile, "render_profiles": render_profiles,

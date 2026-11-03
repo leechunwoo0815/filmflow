@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import math
-import subprocess
 import threading
 from pathlib import Path
 from urllib.parse import quote
@@ -110,7 +108,7 @@ class FrameServer:
                 return
             except Exception:
                 from ...errors import ApiError, ErrorCode
-                raise ApiError(ErrorCode.E_PORT_BUSY, f"8787 被占用且不可复用")
+                raise ApiError(ErrorCode.E_PORT_BUSY, "8787 被占用且不可复用")
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
 
@@ -536,7 +534,7 @@ async def d04(ctx):
 @executor("gate")
 async def gate_noop(ctx):
     """人工门占位执行体：真实状态由 Approval 驱动（RunEngine 检查）。"""
-    return None
+    return
 
 
 # ---------- E 分镜 ----------
@@ -1296,7 +1294,6 @@ def _timeline_sfx(ctx) -> list[dict]:
 
 
 async def _build_sfx_stem(ctx, sfx: list[dict], duration: float, gain_db: float) -> dict:
-    from ...services.artifacts import register, store_file
     raw = _project_file(ctx, "card/stems/sfx.raw.wav")
     raw.parent.mkdir(parents=True, exist_ok=True)
     if not sfx:

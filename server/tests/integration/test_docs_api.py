@@ -1,7 +1,5 @@
 """FR-25 API：文档版本、409 冲突、回滚、新项目 task.json 只读。"""
 import json
-import shutil
-from pathlib import Path
 
 
 def _req(client, method, path, payload=None):

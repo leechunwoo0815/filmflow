@@ -43,7 +43,7 @@ _STILL_GEN: dict[tuple[int, str], int] = {}
 _INTERACTIVE = 0
 _PAGE_SEM = asyncio.Semaphore(2)
 _STATS = {"hits": 0, "misses": 0, "renders": 0}
-_JOBS: dict[str, "PreviewJob"] = {}
+_JOBS: dict[str, PreviewJob] = {}
 
 
 # ---------- 上下文 ----------
@@ -436,7 +436,7 @@ class PreviewRenderer:
                     await asyncio.wait_for(
                         LOCK_MANAGER.acquire("chrome-queue", self.holder), timeout=3.0)
                     self._held_lock = True
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     raise ApiError(ErrorCode.E_PREVIEW_BUSY, "Chrome 忙，预览稍后自动刷新",
                                    status=429, details={"retry_after_ms": 1500})
                 chrome = detect_chrome()
@@ -796,7 +796,7 @@ async def _ffmpeg_encode(frames_dir: Path, fps: int, out: Path, crf: int, preset
                 proc.terminate()
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=5)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     proc.kill()
             raise asyncio.CancelledError
         if proc.returncode != 0:

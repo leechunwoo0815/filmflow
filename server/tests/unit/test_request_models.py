@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.main import app  # noqa: E402
+from app.main import app
 
 HEADERS = {"Origin": "http://127.0.0.1:3000"}
 

@@ -2,13 +2,12 @@
 """
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
 
 from .config import settings
-from .models import TABLES
 
 engine = create_engine(
     f"sqlite:///{settings.db_path}",

@@ -28,8 +28,8 @@ def test_workspace_root_rejects_sibling_prefix():
 
 def test_asset_file_svg_blocked_scripts(monkeypatch, tmp_path):
     """P3：SVG 资产必须带 CSP sandbox + nosniff（存储型脚本执行面关死）。"""
-    import httpx
     from fastapi.testclient import TestClient
+
     from app.main import app
     c = TestClient(app, base_url="http://127.0.0.1")
     import base64

@@ -14,15 +14,14 @@ from sqlmodel import Session, select
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.db import engine  # noqa: E402
-from app.engine.scene.compiler import compile_scene  # noqa: E402
-from app.engine.scene.schema import validate_program  # noqa: E402
-from app.errors import ApiError  # noqa: E402
-from app.models import Asset, Project, ProjectDoc, Run, Template, Workflow  # noqa: E402
-from app.services import assets  # noqa: E402
-from app.services import timeline_ops as tl  # noqa: E402
-from app.services.project_docs import build_script_doc  # noqa: E402
-
+from app.db import engine
+from app.engine.scene.compiler import compile_scene
+from app.engine.scene.schema import validate_program
+from app.errors import ApiError
+from app.models import Asset, Project, ProjectDoc, Run, Template, Workflow
+from app.services import assets
+from app.services import timeline_ops as tl
+from app.services.project_docs import build_script_doc
 
 LIC = {"source": "自制", "type": "CC0"}
 

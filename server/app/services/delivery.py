@@ -6,22 +6,19 @@ import hashlib
 import json
 import shutil
 import subprocess
-import time
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlmodel import Session, select
 
 from ..config import detect_chrome
-from ..engine.fpscalc import fps_rational, frames_for, norm_fps
+from ..engine.fpscalc import fps_rational, norm_fps
 from ..engine.scene.compiler import compile_scene
-from ..engine.snapshot import ensure_run_snapshot  # imported 项目快照兜底仍用
 from ..models import Approval, Artifact, Asset, Job, NodeRun, Project, Run
 from . import assets as assets_svc
 from . import audio as audio_svc
-from . import engines as engines_svc
 from . import jobs as jobs_svc
 from . import preview as pv
 from . import project_docs as docs_svc
@@ -43,7 +40,7 @@ MAX_CAPTION_CPS = 9.0
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _run_cmd(argv: list[str], timeout: float = 600) -> subprocess.CompletedProcess:

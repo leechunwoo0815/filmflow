@@ -10,7 +10,7 @@ SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 FEATURES = SERVER.parent / "bdd" / "features"
 
-from pytest_bdd import given, scenarios, then, when  # noqa: E402
+from pytest_bdd import given, scenarios, then, when
 
 scenarios(str(FEATURES / "r2-workbench.feature"))
 
@@ -86,6 +86,7 @@ def frame_ratio():
 @given("队列中有 batch 与 preview 两种 Job", target_fixture="queue_ctx")
 def jobs_in_queue():
     from sqlmodel import Session, delete
+
     from app.db import engine
     from app.models import Job
     from app.services import jobs as jobs_svc

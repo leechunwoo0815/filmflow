@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import update
@@ -216,7 +216,7 @@ def diff_docs(a, b, path: str = "$") -> list[dict]:
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 MAX_REVISIONS_PER_DOC = 100  # P2-07：版本链上限，防长编辑会话无限增长

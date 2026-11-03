@@ -4,9 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ..config import settings
 from ..errors import ApiError, ErrorCode
-from ..engine.cachekey import bytes_sha256
 
 REQUIRED_CONTRACT_FIELDS = ["engine_id", "families", "version", "entry", "capabilities", "fixtures"]
 REQUIRED_ENTRIES = ["still", "film"]
@@ -100,6 +98,7 @@ def engine_for_family(family: str) -> dict | None:
 def refresh_style_engine_status() -> None:
     """引擎注册变化后刷新 styles.engine_status / preview_status。"""
     from sqlmodel import Session, select
+
     from ..db import engine as db_engine
     from ..models import Style
     with Session(db_engine) as session:

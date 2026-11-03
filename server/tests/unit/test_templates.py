@@ -7,9 +7,9 @@ from pathlib import Path
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.services import templates as tpl  # noqa: E402
-from app.services import timeline_ops as tl  # noqa: E402
-from app.services.project_docs import build_script_doc  # noqa: E402
+from app.services import templates as tpl
+from app.services import timeline_ops as tl
+from app.services.project_docs import build_script_doc
 
 
 def _timeline() -> dict:

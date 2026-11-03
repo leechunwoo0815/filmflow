@@ -5,9 +5,9 @@ import asyncio
 import json
 import os
 import signal
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Awaitable, Callable
 
 ProgressCB = Callable[[float, str], Awaitable[None]]
 
@@ -102,7 +102,7 @@ class ProcessRunner:
         timed_out = False
         try:
             await asyncio.wait_for(self._proc.wait(), timeout=timeout if timeout > 0 else None)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             timed_out = True
             await self._terminate()
         if self._cancel_requested and self._proc.returncode is None:
@@ -135,7 +135,7 @@ class ProcessRunner:
             self._proc.send_signal(signal.SIGTERM)
             try:
                 await asyncio.wait_for(self._proc.wait(), timeout=5)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._proc.kill()
                 await self._proc.wait()
         except ProcessLookupError:

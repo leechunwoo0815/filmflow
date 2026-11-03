@@ -1,7 +1,7 @@
 """Scene DSL 编译器：文本来自 script、base/motion 静态一致、12 组件 schema。"""
 from app.engine.scene.canonical import canonical
 from app.engine.scene.compiler import compile_scene, static_program
-from app.engine.scene.components import COMPONENTS, COMPONENT_NAMES, validate_props
+from app.engine.scene.components import COMPONENT_NAMES, COMPONENTS, validate_props
 from app.engine.scene.schema import validate_program
 from app.services.project_docs import build_script_doc
 

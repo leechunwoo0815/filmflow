@@ -141,6 +141,7 @@ def ensure_final_ready(session, run, project_root: str | Path, imported: bool,
                        "final manifest 的 fps/frames 与当前项目 profile 不一致", status=409)
     if int(manifest.get("run_id") or 0) != run.id:
         from sqlmodel import select
+
         from ..models import NodeRun
         row = session.exec(select(NodeRun).where(
             NodeRun.run_id == run.id, NodeRun.node_id == "F02")).first()  # type: ignore[arg-type,union-attr]

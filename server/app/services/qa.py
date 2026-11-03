@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import json
-import re
 import uuid
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlmodel import Session, select
@@ -61,7 +60,7 @@ _TITLES = {
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def fixes_path(root: str | Path) -> Path:
@@ -136,7 +135,7 @@ def _text_suggestions(scene_id: str) -> list[dict]:
         {"action": "wrap_text", "label": "自动换行", "kind": "auto",
          "params": {"sceneId": scene_id}},
         {"action": "open_timeline", "label": "打开时间轴", "kind": "manual",
-         "href": f"/timeline?project={{projectId}}"},
+         "href": "/timeline?project={projectId}"},
     ]
 
 
@@ -147,44 +146,44 @@ def _node_suggestions(category: str, node_id: str, scene_id: str = "") -> list[d
             {"action": "set_lufs", "label": f"目标设为 {target} LUFS", "kind": "auto",
              "params": {"target": target}},
             {"action": "open_audio", "label": "打开音频工作台", "kind": "manual",
-             "href": f"/audio?project={{projectId}}"},
+             "href": "/audio?project={projectId}"},
         ]
     if category == "font_missing":
         return [
             {"action": "open_assets", "label": "检查/替换字体", "kind": "manual",
-             "href": f"/assets?project={{projectId}}"},
+             "href": "/assets?project={projectId}"},
             {"action": "open_timeline", "label": "换字体", "kind": "manual",
-             "href": f"/timeline?project={{projectId}}"},
+             "href": "/timeline?project={projectId}"},
         ]
     if category in ("black_frame", "missing_frame"):
         return [
             {"action": "retry_run", "label": "重跑失败节点", "kind": "auto", "params": {}},
             {"action": "open_review", "label": "查看静帧", "kind": "manual",
-             "href": f"/review?project={{projectId}}&run={{runId}}"},
+             "href": "/review?project={projectId}&run={runId}"},
         ]
     if category == "asset_license_missing":
         return [
             {"action": "open_assets", "label": "补齐资产许可", "kind": "manual",
-             "href": f"/assets?project={{projectId}}"},
+             "href": "/assets?project={projectId}"},
         ]
     if category == "license_missing":
         return [
             {"action": "fill_license", "label": "填写许可并保存", "kind": "confirm",
              "params": {"source": "", "license": "", "expires": ""}},
             {"action": "open_assets", "label": "检查资产许可", "kind": "manual",
-             "href": f"/assets?project={{projectId}}"},
+             "href": "/assets?project={projectId}"},
             {"action": "open_audio", "label": "打开音频许可", "kind": "manual",
-             "href": f"/audio?project={{projectId}}"},
+             "href": "/audio?project={projectId}"},
         ]
     if category in ("motion_spike", "static_too_long"):
         return [
             {"action": "open_timeline", "label": "调整场景/相机", "kind": "manual",
-             "href": f"/timeline?project={{projectId}}"},
+             "href": "/timeline?project={projectId}"},
         ]
     if category == "sync_out":
         return [
             {"action": "open_audio", "label": "重新对齐口播", "kind": "manual",
-             "href": f"/audio?project={{projectId}}"},
+             "href": "/audio?project={projectId}"},
         ]
     if category == "engine_unavailable":
         return [
@@ -194,13 +193,13 @@ def _node_suggestions(category: str, node_id: str, scene_id: str = "") -> list[d
     if category == "missing_asset":
         return [
             {"action": "open_assets", "label": "重新链接资产", "kind": "manual",
-             "href": f"/assets?project={{projectId}}"},
+             "href": "/assets?project={projectId}"},
             {"action": "open_timeline", "label": "删除/替换图层", "kind": "manual",
-             "href": f"/timeline?project={{projectId}}"},
+             "href": "/timeline?project={projectId}"},
         ]
     if node_id:
         return [{"action": "open_canvas", "label": "打开节点画布", "kind": "manual",
-                 "href": f"/canvas?project={{projectId}}&run={{runId}}"}]
+                 "href": "/canvas?project={projectId}&run={runId}"}]
     return []
 
 
@@ -393,7 +392,7 @@ def _apply(session: Session, project: Project, issue: dict, action: str,
             if "\n" in text:
                 raise ValueError("已经有换行")
             cut = len(text) // 2
-            for d in range(0, 12):
+            for d in range(12):
                 for cand in (cut + d, cut - d):
                     if 0 < cand < len(text) and text[cand - 1] in "，。！？；,;!? ":
                         cut = cand

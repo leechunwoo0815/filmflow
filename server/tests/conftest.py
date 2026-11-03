@@ -11,9 +11,9 @@ os.environ["FILMFLOW_HOME"] = str(_TEST_HOME)
 SERVER_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVER_DIR))
 
-import pytest  # noqa: E402
+import pytest
 
-from app.config import detect_chrome, detect_ffmpeg, settings  # noqa: E402
+from app.config import detect_chrome, detect_ffmpeg, settings
 
 
 def pytest_addoption(parser):

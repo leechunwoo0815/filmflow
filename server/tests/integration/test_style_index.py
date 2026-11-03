@@ -23,7 +23,7 @@ def test_scan_real_library(isolated_db):
 
 
 def test_matrix_and_fts(isolated_db):
-    from app.services.style_index import scan_library, library_status
+    from app.services.style_index import library_status, scan_library
     scan_library()
     st = library_status()
     assert st["indexed"] and st["total_styles"] == 341
@@ -32,6 +32,7 @@ def test_matrix_and_fts(isolated_db):
     assert m["cover_complete"] + m["cover_incomplete"] == 193
     # 「水墨」经同义词扩展命中 Z 集全部（规格 §7.0 同义词）
     from sqlmodel import Session
+
     from app.db import engine
     from app.services.search import search_styles
     with Session(engine) as s:
@@ -43,7 +44,7 @@ def test_matrix_and_fts(isolated_db):
 
 def test_matrix_measured_consistency(isolated_db):
     """解析器 v1.0 实测矩阵（ADR-0002 终版：词典扩展后）：218 complete / 123 补标。"""
-    from app.services.style_index import scan_library, library_status
+    from app.services.style_index import library_status, scan_library
     scan_library()
     m = library_status()["matrix"]
     assert m["cover_complete"] + m["nocover_complete"] == 218
@@ -55,6 +56,7 @@ def test_matrix_measured_consistency(isolated_db):
 def test_k_collection_incomplete(isolated_db):
     """夹具 9：K 集任一条 tokens 残缺 → 不进推荐。"""
     from sqlmodel import Session, select
+
     from app.db import engine
     from app.models import Style
     from app.services.style_index import scan_library
@@ -71,6 +73,7 @@ def test_k_collection_incomplete(isolated_db):
 def test_id_scheme_matches_fixture(isolated_db):
     """D1 决定：O88/L28 形态的 ID 存在。"""
     from sqlmodel import Session, select
+
     from app.db import engine
     from app.models import Style
     from app.services.style_index import scan_library

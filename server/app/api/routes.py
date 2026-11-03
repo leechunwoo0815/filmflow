@@ -3,54 +3,84 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy.orm.attributes import flag_modified
-from sse_starlette.sse import EventSourceResponse
 from sqlmodel import Session, select
+from sse_starlette.sse import EventSourceResponse
 
 from ..config import settings
 from ..db import engine, get_session
 from ..engine import edges
-from ..engine.fpscalc import frames_for, norm_fps
 from ..engine import runengine as re_mod
 from ..engine.cachekey import gate_content_hash
+from ..engine.fpscalc import frames_for, norm_fps
 from ..engine.invalidation import impact_preview
 from ..errors import ApiError, ErrorCode, not_found
 from ..events import emit, subscribe, unsubscribe
-from ..models import (Approval, Artifact, Asset, AuditLog, Draft, Job, Metric, NodeRun,
-                      Project, ProjectDoc, Run, Style, StylePick, Template, Workflow,
-                      WorkflowVersion, table_dict)
-from ..services import environment as env_svc
-from ..services import engines as engines_svc
-from ..services import preview as preview_svc
+from ..models import (
+    Approval,
+    Artifact,
+    Asset,
+    AuditLog,
+    Draft,
+    Job,
+    Metric,
+    NodeRun,
+    Project,
+    ProjectDoc,
+    Run,
+    Style,
+    StylePick,
+    Template,
+    Workflow,
+    WorkflowVersion,
+    table_dict,
+)
 from ..services import assets as assets_svc
 from ..services import audio as audio_svc
-from ..services import onboarding as onboarding_svc
-from ..services import review_comments as review_svc
-from ..services import takes as takes_svc
-from ..services import timeline_ops as tl_svc
-from ..services import templates as tpl_svc
-from ..services import qa as qa_svc
 from ..services import delivery as delivery_svc
+from ..services import engines as engines_svc
+from ..services import environment as env_svc
 from ..services import jobs as jobs_svc
+from ..services import onboarding as onboarding_svc
+from ..services import preview as preview_svc
 from ..services import project_docs as docs_svc
-from ..services import render_profiles as profiles_svc
+from ..services import qa as qa_svc
 from ..services import recommend as rec_svc
+from ..services import render_profiles as profiles_svc
+from ..services import review_comments as review_svc
 from ..services import style_index as idx_svc
+from ..services import takes as takes_svc
+from ..services import templates as tpl_svc
+from ..services import timeline_ops as tl_svc
+from .schemas import (
+    AssetImportIn,
+    AssetReplaceIn,
+    AssetUpdateIn,
+    AudioAlignmentSaveIn,
+    AudioLicenseSaveIn,
+    AudioMixSaveIn,
+    DeliveryIn,
+    DocRestoreIn,
+    DocSaveIn,
+    GateDecideIn,
+    PreviewFilmIn,
+    PreviewSegmentIn,
+    PreviewStillIn,
+    ProjectCreateIn,
+    QaFixIn,
+    QaUndoIn,
+    RenderProfileUpdateIn,
+    RunPromoteIn,
+    TaskPutIn,
+    TimelineOpIn,
+)
 
-
-from .schemas import (AssetImportIn, AssetReplaceIn, AssetUpdateIn, DocRestoreIn,
-                      AudioAlignmentSaveIn, AudioLicenseSaveIn, AudioMixSaveIn,
-                      DeliveryIn, DocSaveIn, GateDecideIn, PreviewFilmIn,
-                      PreviewSegmentIn, PreviewStillIn, ProjectCreateIn, QaFixIn,
-                      QaUndoIn, RenderProfileUpdateIn, RunPromoteIn, TaskPutIn,
-                      TimelineOpIn)
 router = APIRouter(prefix="/api")
 
 
@@ -189,9 +219,10 @@ async def style_detail(style_id: str, session: Session = Depends(get_session)):
 
 @router.get("/styles/{style_id}/preview")
 async def style_preview(style_id: str, variant: str = "thumb"):
-    from sqlmodel import select
-    from ..models import StylePreview
     from fastapi.responses import FileResponse, Response
+    from sqlmodel import select
+
+    from ..models import StylePreview
     with Session(engine) as session:
         st = session.get(Style, style_id)
         # ① 预演缓存优先
@@ -484,7 +515,6 @@ async def drafts_materialize(draft_id: int, session: Session = Depends(get_sessi
     if payload.get("copy"):
         (proj_dir / "card" / "copy.txt").write_text(payload["copy"], encoding="utf-8")
     # profile 落盘（规格 §1：常数来自 profile）
-    from ..models import table_dict as td
     profile = payload.get("profile") or {"width": 1920, "height": 1080, "fps": 24,
                                          "duration": payload.get("duration", 39.5)}
     profile.setdefault("frames", round(profile.get("duration", 39.5) * profile.get("fps", 24)))
@@ -737,7 +767,7 @@ async def template_new_version(template_id: str, payload: dict,
     saved.content_json = content
     flag_modified(saved, "content_json")
     saved.version += 1
-    saved.updated_at = datetime.now(timezone.utc)
+    saved.updated_at = datetime.now(UTC)
     if payload.get("name"):
         saved.name = str(payload["name"])[:80]
     session.add(saved)
@@ -1417,7 +1447,6 @@ async def gate_decide(gate_id: str, payload: GateDecideIn,
 
 def _gate_precheck(session: Session, run_id: int, gate_id: str) -> str | None:
     if gate_id in ("D03", "D05"):
-        from ..engine.executors.pipeline import _project_file  # type: ignore
         run = session.get(Run, run_id)
         root = re_mod._project_root(session, run)
         wf = session.get(Workflow, run.workflow_id)
@@ -2602,7 +2631,7 @@ async def run_events(run_id: int, request: Request):
                 try:
                     item = await asyncio.wait_for(q.get(), timeout=15)
                     yield {"event": "message", "data": item}
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield {"event": "ping", "data": "{}"}
         finally:
             unsubscribe(run_id, q)

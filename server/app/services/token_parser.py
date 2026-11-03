@@ -25,8 +25,8 @@ COMPOSITION_WORDS = ["网格", "三栏", "两栏", "居中", "对角", "满版",
                      "grid", "layout", "构图", "版式", "symmetry", "asymmetric", "海报",
                      "透视", "前景", "背景", "画框", "粗野", "满铺",
                      "brutalism", "brutalist", "frame", "border", "columns", "poster", "billboard"]
-SCREEN_RE = re.compile(r"(?:网角|angle)[^\d]{0,6}(\d{1,2})\s*°?", re.I)
-PERIOD_RE = re.compile(r"(?:周期|period|间距)[^\d]{0,6}(\d(?:\.\d)?)\s*(?:px|像素)?", re.I)
+SCREEN_RE = re.compile(r"(?:网角|angle)[^\d]{0,6}(\d{1,2})\s*°?", re.IGNORECASE)
+PERIOD_RE = re.compile(r"(?:周期|period|间距)[^\d]{0,6}(\d(?:\.\d)?)\s*(?:px|像素)?", re.IGNORECASE)
 
 # A-G 代码样片：JS 常量直接读
 JS_CONST_RE = re.compile(r"(?:const|var|let)\s+([A-Za-z_][\w]*)\s*=\s*([\[\]{\}#\d'\",\s\.\w\-]+?);")
@@ -58,7 +58,7 @@ def _adapter_AG(text: str, tokens: dict, evidence: list[str]) -> None:
 def _adapter_L(text: str, tokens: dict, evidence: list[str]) -> None:
     """L_Lemo-Opuscar：英文小节标题后的内容加权。"""
     for kw in ("palette", "color"):
-        m = re.search(rf"{kw}\s*:?\s*([^\n]{{0,120}})", text, re.I)
+        m = re.search(rf"{kw}\s*:?\s*([^\n]{{0,120}})", text, re.IGNORECASE)
         if m:
             hexes = HEX_RE.findall(m.group(1))
             if hexes and not tokens.get("palette"):
@@ -121,7 +121,7 @@ def parse(md_text: str, collection_prefix: str = "") -> dict:
 def search_text_of(name: str, md_body: str) -> str:
     """FTS search_text：名称 + 去代码块的 md 正文 + jieba 预分词（规格 §12）。"""
     import jieba
-    no_code = re.sub(r"```.*?```", " ", md_body, flags=re.S)
+    no_code = re.sub(r"```.*?```", " ", md_body, flags=re.DOTALL)
     no_code = re.sub(r"<[^>]+>", " ", no_code)
     seg = " ".join(jieba.cut_for_search(no_code[:4000]))
     return f"{name} {no_code[:2000]} {seg}"

@@ -10,7 +10,7 @@ FEATURES = SERVER.parent / "bdd" / "features"
 
 pytestmark = pytest.mark.requires_style_library
 
-from pytest_bdd import given, parsers, scenarios, then, when  # noqa: E402
+from pytest_bdd import given, parsers, scenarios, then, when
 
 scenarios(str(FEATURES / "style-indexing.feature"))
 

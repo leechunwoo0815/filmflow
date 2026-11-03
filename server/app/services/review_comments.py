@@ -7,7 +7,7 @@ import io
 import json
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ..errors import ApiError, ErrorCode
@@ -19,7 +19,7 @@ DECISIONS = {"pass", "needs_changes"}
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def path(root: str | Path) -> Path:

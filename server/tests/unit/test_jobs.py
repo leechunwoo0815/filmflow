@@ -1,11 +1,11 @@
 """FR-29 持久化 Job：迁移、租约/心跳、启动恢复、attempts 上限。"""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlmodel import Session, select
 
 from app.db import engine, init_db
-from app.models import Job, NodeRun, Project, Run, SchemaMigration, Workflow
+from app.models import NodeRun, Project, Run, SchemaMigration, Workflow
 from app.services import jobs as jobs_svc
 
 
@@ -73,7 +73,7 @@ def test_recover_requeues_interrupted_run(tmp_path):
         job = jobs_svc.ensure_run_job(s, run_id)
         job.status = "running"
         job.attempts = 1
-        job.lease_until = datetime.now(timezone.utc) + timedelta(seconds=30)
+        job.lease_until = datetime.now(UTC) + timedelta(seconds=30)
         s.add(job); s.commit()
         rec = jobs_svc.recover(s)
         assert run_id in rec["requeued"]

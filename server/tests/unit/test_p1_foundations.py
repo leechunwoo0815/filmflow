@@ -6,7 +6,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from sqlmodel import Session, select
 
 from app.config import Settings
@@ -164,7 +163,6 @@ def test_frameserver_writes_frames_atomically(tmp_path: Path):
     (root / "out").mkdir(parents=True)
     png = b64.b64encode(b"\x89PNG\r\n\x1a\ntest").decode()
     # 8787 若被占用会复用既有服务（写别的 root）——先探测，占用则跳过断言 root 归属
-    import http.server
     srv = FrameServer(str(root))
     srv.port = 8787
     try:

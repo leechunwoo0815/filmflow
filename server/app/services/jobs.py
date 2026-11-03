@@ -6,7 +6,7 @@ import shutil
 import signal
 import subprocess
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlmodel import Session, select
@@ -20,7 +20,7 @@ ACTIVE = ("queued", "leased", "running", "retry_wait")
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _active_job(session: Session, run_id: int) -> Job | None:

@@ -102,6 +102,7 @@ async def a02(ctx):
 @executor("style-index")
 async def a03(ctx):
     import asyncio
+
     from ...services.style_index import scan_library
     report = await asyncio.to_thread(scan_library)
     _artifact_json(ctx, "index_report.json", report)
@@ -111,6 +112,7 @@ async def a03(ctx):
 async def a04(ctx):
     """为候选生成预演（有封面跳过），输出推荐 12。"""
     from sqlmodel import select
+
     from ...models import Style
     from ...services import style_index as si
     from ...services.recommend import recommend
@@ -121,8 +123,8 @@ async def a04(ctx):
     script = ctx["params"].get("script") or ""
     recs = recommend(session, script, ctx["params"].get("brief"),
                      ctx["params"].get("constraints"), seed=int(ctx["params"].get("seed", 0)))
-    from ...services import previs as pv
     from ...services import engines as eng_svc
+    from ...services import previs as pv
     from ..cachekey import file_sha256
     for r in recs:
         st = session.get(Style, r["style_id"])
@@ -231,8 +233,9 @@ def _upstream_json(ctx, names: list[str]) -> dict:
 
 def _upstream_file(ctx, node_id: str, type_: str, fallback: Path) -> Path:
     """上游文件产物优先：跨项目缓存命中时文件留在旧项目，项目内路径可能不存在。"""
-    from ...models import Artifact
     from sqlmodel import select
+
+    from ...models import Artifact
     rows = ctx["session"].exec(select(Artifact).where(
         Artifact.run_id == ctx["run_id"], Artifact.node_id == node_id,
         Artifact.type == type_)).all()  # type: ignore[arg-type]
@@ -314,7 +317,7 @@ async def b04(ctx):
         "grid": ctx["params"].get("grid", {"cols": 12, "margin_pct": {"w": 0.05, "h": 0.08}}),
         "safe_area": ctx["params"].get("safe_area", {"w": 0.05, "h": 0.08}),
         "registration_mark": [1768, 128],
-        "plates": len((visual.get("palette") or [1, 2, 3])),
+        "plates": len(visual.get("palette") or [1, 2, 3]),
         "per_scene_style": ctx["params"].get("per_scene_style", {}),
     }
     _artifact_json(ctx, "layout_tokens.json", layout)
@@ -419,8 +422,9 @@ async def c01(ctx):
     from ...services import engines as eng
     engine_id = ctx["params"].get("engine_id")
     if not engine_id:
-        from ...models import Style
         from sqlmodel import select
+
+        from ...models import Style
         dec = _read_json(_project_file(ctx, "card/style_decision.json")) if _project_file(ctx, "card/style_decision.json").exists() else {}
         st = ctx["session"].get(Style, dec.get("primary"))
         engine_id = (eng.engine_for_family(st.family) or {}).get("engine_id") if st else None
@@ -462,6 +466,7 @@ async def c01(ctx):
 async def c02(ctx):
     """获取 Noto Sans SC 变量字体（Google Fonts 官方仓，含 CJK+拉丁+希腊全子集）。"""
     import shutil
+
     from ...config import settings
     url = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf"
     d = _project_file(ctx, "fonts/src")
@@ -473,8 +478,9 @@ async def c02(ctx):
         shutil.copyfile(cache, ttf)
     if not ttf.exists():
         # 本地既有 C02 产物（内容寻址，跨项目）优先，避免无网环境阻塞
-        from ...models import Artifact
         from sqlmodel import select
+
+        from ...models import Artifact
         rows = ctx["session"].exec(select(Artifact).where(
             Artifact.node_id == "C02", Artifact.type == "TXT").order_by(Artifact.id.desc())).all()  # type: ignore[arg-type]
         for r in rows:
@@ -490,7 +496,7 @@ async def c02(ctx):
     if not cache.exists() or cache.stat().st_size < min_bytes:
         cache.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ttf, cache)
-    from ...services.artifacts import store_file, register
+    from ...services.artifacts import register, store_file
     ap, sha = store_file(ctx["project_root"], ttf, "TXT")
     register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "TXT", str(ap), sha,
              {"source": url, "bytes": ttf.stat().st_size})
@@ -501,14 +507,15 @@ async def c02(ctx):
 @executor("font-subset")
 async def c03(ctx):
     """变量字体 → instancer(900/500) → pyftsubset → 2 个 woff2；覆盖率检查 0 缺字（自动门）。"""
+    from fontTools.subset import Options, Subsetter
     from fontTools.ttLib import TTFont
     from fontTools.varLib.instancer import instantiateVariableFont
-    from fontTools.subset import Subsetter, Options
     # C02 跨项目缓存命中时，源字体在旧项目的内容寻址产物里；优先读报告/DB 里的产物路径
     c02 = (_upstream_json(ctx, ["C02"]).get("C02") or {})
     src_path = c02.get("artifact_path")
     if not src_path:
         from sqlmodel import select
+
         from ...models import Artifact
         rows = ctx["session"].exec(select(Artifact).where(
             Artifact.run_id == ctx["run_id"], Artifact.node_id == "C02",
@@ -585,4 +592,4 @@ async def c05(ctx):
 
 
 # 注册 D–G 阶段执行器（必须在 helpers 定义之后导入，避免循环引用）
-from . import pipeline as _pipeline  # noqa: E402,F401
+from . import pipeline as _pipeline  # noqa: F401

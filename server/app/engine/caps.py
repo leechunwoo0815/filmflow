@@ -1,7 +1,7 @@
 """能力（caps）机制 —— 规格 §3.1。Run 从初始集开始，随门批准单调递增。"""
 from __future__ import annotations
 
-from .edges import N, SKILL_ACTIONS
+from .edges import SKILL_ACTIONS, N
 
 INIT_CAPS = ["read", "write_plan", "logic_check"]
 

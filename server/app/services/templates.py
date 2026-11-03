@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ..engine.fpscalc import frames_for, norm_fps
@@ -258,7 +258,7 @@ def write_lock(root: str | Path, template_id: int, version: int,
                variables: list[str] | None = None) -> dict:
     data = {"schema": "filmflow.template-lock/1", "templateId": template_id,
             "version": int(version), "variables": variables or [],
-            "appliedAt": datetime.now(timezone.utc).isoformat()}
+            "appliedAt": datetime.now(UTC).isoformat()}
     p = lock_path(root)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -13,8 +13,7 @@ import shutil
 from pathlib import Path
 
 from sqlalchemy import delete as sa_delete
-from sqlmodel import select
-from sqlmodel import Session, SQLModel
+from sqlmodel import Session, SQLModel, select
 
 from ..config import settings
 from ..errors import ApiError, ErrorCode

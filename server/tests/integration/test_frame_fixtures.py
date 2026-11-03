@@ -5,13 +5,13 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 import pytest
+from PIL import Image
 
 SERVER = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVER))
 
-from app.engine.executors.pipeline import f03  # noqa: E402
+from app.engine.executors.pipeline import f03
 
 
 def _make_project(tmp_path: Path, n: int = 12) -> Path:

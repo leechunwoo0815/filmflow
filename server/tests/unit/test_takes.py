@@ -10,8 +10,8 @@ import pytest
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.errors import ApiError  # noqa: E402
-from app.services import takes as tk  # noqa: E402
+from app.errors import ApiError
+from app.services import takes as tk
 
 
 def test_metadata_score_and_note(tmp_path: Path):

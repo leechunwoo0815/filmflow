@@ -9,7 +9,7 @@ import pytest
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.engine.executors.pipeline import _validate_master_qc  # noqa: E402
+from app.engine.executors.pipeline import _validate_master_qc
 
 PROFILE = {"width": 1920, "height": 1080, "fps": 24, "duration": 40.0}
 

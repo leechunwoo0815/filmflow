@@ -7,8 +7,8 @@ from pathlib import Path
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.services import audio as audio_svc  # noqa: E402
-from app.services import onboarding  # noqa: E402
+from app.services import audio as audio_svc
+from app.services import onboarding
 
 
 def test_title_candidates_use_user_copy():

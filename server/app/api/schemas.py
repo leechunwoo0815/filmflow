@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,12 +29,12 @@ class DocRestoreIn(BaseModel):
 class TimelineOpIn(BaseModel):
     model_config = ConfigDict(extra="allow")
     op: str = Field(min_length=1, max_length=40)
-    baseVersion: Optional[int] = None
+    baseVersion: int | None = None
 
 
 class AssetImportIn(BaseModel):
     scope: Literal["global", "project"] = "global"
-    projectId: Optional[int] = None
+    projectId: int | None = None
     filename: str = Field(min_length=1, max_length=200)
     data: str = Field(min_length=1)
     kind: str = ""
@@ -45,10 +45,10 @@ class AssetImportIn(BaseModel):
 
 
 class AssetUpdateIn(BaseModel):
-    name: Optional[str] = None
-    tags: Optional[list[str]] = None
-    license: Optional[dict[str, Any]] = None
-    archived: Optional[bool] = None
+    name: str | None = None
+    tags: list[str] | None = None
+    license: dict[str, Any] | None = None
+    archived: bool | None = None
 
 
 class AssetReplaceIn(BaseModel):
@@ -59,7 +59,7 @@ class QaFixIn(BaseModel):
     issueId: str = Field(min_length=1)
     action: str = Field(min_length=1, max_length=40)
     payload: dict[str, Any] = Field(default_factory=dict)
-    runId: Optional[int] = None
+    runId: int | None = None
 
 
 class QaUndoIn(BaseModel):
@@ -70,9 +70,9 @@ class QaUndoIn(BaseModel):
 
 class PreviewStillIn(BaseModel):
     model_config = ConfigDict(extra="allow")
-    sceneId: Optional[str] = None
-    scene_id: Optional[str] = None  # 旧客户端蛇形别名，保持兼容
-    time: Optional[float] = None
+    sceneId: str | None = None
+    scene_id: str | None = None  # 旧客户端蛇形别名，保持兼容
+    time: float | None = None
     profile: str = "draft"
     watermark: bool = True
     debounce: bool = True
@@ -81,8 +81,8 @@ class PreviewStillIn(BaseModel):
 
 class PreviewSegmentIn(BaseModel):
     model_config = ConfigDict(extra="allow")
-    sceneId: Optional[str] = None
-    scene_id: Optional[str] = None
+    sceneId: str | None = None
+    scene_id: str | None = None
     start: float = Field(ge=0)
     end: float = Field(ge=0)
     profile: str = "draft"
@@ -97,27 +97,27 @@ class PreviewFilmIn(BaseModel):
 
 class DeliveryIn(BaseModel):
     model_config = ConfigDict(extra="allow")
-    runId: Optional[int] = None
-    run_id: Optional[int] = None
+    runId: int | None = None
+    run_id: int | None = None
     profile: str = "final"
 
 
 class GateDecideIn(BaseModel):
     model_config = ConfigDict(extra="allow")
-    runId: Optional[int] = None
-    run_id: Optional[int] = None  # 既有客户端两种键名都发
+    runId: int | None = None
+    run_id: int | None = None  # 既有客户端两种键名都发
     decision: Literal["approved", "rejected"]
     note: str = ""
     author: str = "local"
 
 
 class RunPromoteIn(BaseModel):
-    takeName: Optional[str] = None
+    takeName: str | None = None
 
 
 class RenderProfileUpdateIn(BaseModel):
     model_config = ConfigDict(extra="allow")
-    profiles: Optional[dict[str, Any]] = None
+    profiles: dict[str, Any] | None = None
 
 
 class TaskPutIn(BaseModel):
@@ -130,16 +130,16 @@ class AudioLicenseSaveIn(BaseModel):
     model_config = ConfigDict(extra="allow")
     source: str = ""
     license: str = ""
-    authorized: Optional[bool] = None
-    expires: Optional[str] = None
+    authorized: bool | None = None
+    expires: str | None = None
     note: str = ""
 
 
 class AudioMixSaveIn(BaseModel):
     model_config = ConfigDict(extra="allow")
-    preset: Optional[str] = None
-    targetLufs: Optional[float] = None
-    stems: Optional[dict[str, float]] = None
+    preset: str | None = None
+    targetLufs: float | None = None
+    stems: dict[str, float] | None = None
 
 
 class AudioAlignmentSaveIn(BaseModel):

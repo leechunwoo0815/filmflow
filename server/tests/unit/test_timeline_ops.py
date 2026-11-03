@@ -10,7 +10,7 @@ import pytest
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.services import timeline_ops as tl  # noqa: E402
+from app.services import timeline_ops as tl
 
 
 def script() -> dict:

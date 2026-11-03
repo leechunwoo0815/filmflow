@@ -19,10 +19,10 @@ import pytest
 from sqlmodel import Session, select
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".."))
-from app.db import engine  # noqa: E402
-from app.models import Project, ProjectDoc, Run, Workflow  # noqa: E402
-from app.services import project_docs as docs  # noqa: E402
-from app.services import qa  # noqa: E402
+from app.db import engine
+from app.models import Project, ProjectDoc, Run, Workflow
+from app.services import project_docs as docs
+from app.services import qa
 
 
 def _make_project(tmp_path: Path, name: str):
@@ -134,7 +134,6 @@ def test_take_branch_rolls_back_docs_when_run_creation_fails(tmp_path: Path, mon
 
 def test_assets_replace_rolls_back_previous_projects_on_failure(tmp_path: Path, monkeypatch):
     from app.api import routes as routes_mod
-    from app.models import Asset
     from app.services import assets as assets_svc
 
     session, pid_a, root_a = _make_project(tmp_path, "rep-1")

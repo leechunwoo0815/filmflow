@@ -17,10 +17,8 @@ def scene_ranges(scenes: list[dict], fps: float, frames: int) -> list[dict]:
         out.append({"id": s["id"], "start": float(s.get("start", 0)),
                     "end": float(s.get("end", 0)), "range": [start, end]})
     if out:
-        if out[-1]["range"][1] < frames:
-            out[-1]["range"][1] = frames
-        if out[0]["range"][0] > 0:
-            out[0]["range"][0] = 0
+        out[-1]["range"][1] = max(out[-1]["range"][1], frames)
+        out[0]["range"][0] = min(out[0]["range"][0], 0)
     return out
 
 

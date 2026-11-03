@@ -11,8 +11,8 @@ from sqlmodel import Session, SQLModel, select
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.db import MIGRATIONS, _add_columns_on, apply_migrations  # noqa: E402
-from app.models import SchemaMigration  # noqa: E402
+from app.db import MIGRATIONS, _add_columns_on, apply_migrations
+from app.models import SchemaMigration
 
 
 @pytest.fixture()

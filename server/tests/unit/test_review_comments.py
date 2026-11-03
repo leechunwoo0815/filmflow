@@ -11,8 +11,8 @@ import pytest
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.errors import ApiError  # noqa: E402
-from app.services import review_comments as rv  # noqa: E402
+from app.errors import ApiError
+from app.services import review_comments as rv
 
 
 def _add(root: Path, i: int = 0) -> dict:

@@ -57,7 +57,7 @@ def recommend(session: Session, script: str, brief: dict | None = None,
     """只从可生产集合抽取（tokens 完整 + 引擎可用）；冷启动按可用语义族铺开。"""
     candidates = session.exec(
         select(Style).where(Style.tokens_status == "complete", Style.engine_status == "available",
-                            Style.available == True)  # noqa: E712
+                            Style.available == True)
     ).all()
     if not candidates:
         return []
@@ -126,7 +126,7 @@ def similar(session: Session, style_id: str, limit: int = 8) -> list[dict]:
         return []
     kws = set(w for w in jieba.cut_for_search(me.search_text[:800]) if len(w) > 1)
     scored = []
-    for st in session.exec(select(Style).where(Style.available == True)).all():  # noqa: E712
+    for st in session.exec(select(Style).where(Style.available == True)).all():
         if st.id == style_id:
             continue
         k2 = set(w for w in jieba.cut_for_search(st.search_text[:800]) if len(w) > 1)
@@ -140,7 +140,7 @@ def similar(session: Session, style_id: str, limit: int = 8) -> list[dict]:
 
 def random_explainable(session: Session, seed: int) -> dict:
     """随机但可解释：种子入库可复现，理由注明探索依据。"""
-    cands = session.exec(select(Style).where(Style.available == True, Style.tokens_status == "complete")).all()  # noqa: E712
+    cands = session.exec(select(Style).where(Style.available == True, Style.tokens_status == "complete")).all()
     if not cands:
         return {}
     rnd = random.Random(seed)

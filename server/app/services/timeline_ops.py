@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
 
 from ..engine.scene.compiler import scene_text
 from ..engine.scene.transitions import TRANSITIONS
@@ -274,7 +273,7 @@ def _split_text(text: str, ratio: float) -> tuple[str, str]:
     if not text:
         return "", ""
     idx = max(1, min(len(text) - 1, round(len(text) * ratio)))
-    for delta in range(0, 8):
+    for delta in range(8):
         for cand in (idx + delta, idx - delta):
             if 0 < cand < len(text) and text[cand - 1] in "。！？；，,;!?":
                 idx = cand

@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlmodel import Session, select
@@ -17,7 +17,7 @@ from ..services import jobs as jobs_svc
 from ..services.render_profiles import PROFILE_NODES, profiles_sha
 from . import caps as caps_mod
 from .cachekey import EXECUTOR_VERSION, file_sha256, gate_content_hash, node_cache_key
-from .edges import UPSTREAM, N, data_descendants
+from .edges import UPSTREAM, N
 from .executors import REGISTRY
 from .locks import LockManager
 from .runner import ProcessRunner
@@ -50,7 +50,7 @@ class EngineError(RuntimeError):
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _states(session: Session, run_id: int) -> dict[str, NodeRun]:
@@ -200,8 +200,8 @@ def _engine_pack_sha(session: Session, wf: Workflow, project_root: str) -> str:
         task = Path(project_root) / "card" / "task.json"
         if task.exists():
             try:
-                engine_id = str(((json.loads(task.read_text(encoding="utf-8")).get("style") or {})
-                                 .get("engine_id") or ""))
+                engine_id = str((json.loads(task.read_text(encoding="utf-8")).get("style") or {})
+                                 .get("engine_id") or "")
             except (OSError, json.JSONDecodeError):
                 engine_id = ""
     return engines_svc.compute_pack_sha(engine_id) if engine_id else ""

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import settings
@@ -26,7 +26,7 @@ def emit(event_type: str, run_id: int | None = None, node_id: str | None = None,
         "type": event_type,
         "run_id": run_id,
         "node_id": node_id,
-        "at": datetime.now(timezone.utc).isoformat(),
+        "at": datetime.now(UTC).isoformat(),
         "payload": payload,
     }
     line = json.dumps(record, ensure_ascii=False)
@@ -42,7 +42,7 @@ def emit(event_type: str, run_id: int | None = None, node_id: str | None = None,
             conn.execute(
                 Event.__table__.insert().values(
                     run_id=run_id, node_id=node_id, type=event_type,
-                    payload_json=payload, at=datetime.now(timezone.utc),
+                    payload_json=payload, at=datetime.now(UTC),
                 )
             )
     except Exception:

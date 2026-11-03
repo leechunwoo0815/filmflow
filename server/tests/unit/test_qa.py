@@ -11,10 +11,10 @@ from sqlmodel import Session, select
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.db import engine  # noqa: E402
-from app.models import DocRevision, Project, ProjectDoc  # noqa: E402
-from app.services import project_docs as docs  # noqa: E402
-from app.services import qa  # noqa: E402
+from app.db import engine
+from app.models import DocRevision, Project
+from app.services import project_docs as docs
+from app.services import qa
 
 
 def _project(tmp_path: Path):

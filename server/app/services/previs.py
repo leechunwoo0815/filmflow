@@ -91,6 +91,7 @@ async def render_previs(style_id: str, engine_id: str, engine_sha: str,
 def placeholder_png(reason: str) -> bytes:
     """no_preview / failed 占位图：斜纹 + 文字（不伪装成预览）。"""
     import io
+
     from PIL import Image, ImageDraw
     w, h = 512, 288
     img = Image.new("RGB", (w, h), "#20242B")

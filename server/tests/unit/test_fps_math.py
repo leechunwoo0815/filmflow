@@ -17,11 +17,9 @@ _TMPROOT = tempfile.mkdtemp(prefix="ff-fps-test-")
 
 import pytest
 
-from app.engine.fpscalc import (FPS_TOL, fps_rational, frame_at, frames_for,
-                                norm_fps, time_at)
+from app.engine.fpscalc import FPS_TOL, fps_rational, frame_at, frames_for, norm_fps, time_at
 from app.engine.render_manifest import build_plan, scene_ranges
 from app.services import render_profiles as rp
-
 
 # ---------- fpscalc 基础 ----------
 
