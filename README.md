@@ -2,7 +2,7 @@
 
 本地代码动画全生命周期 Web 工作台。**46 节点 / 7 阶段 / 341 条风格库 / 3 个渲染引擎（riso · code-video · ink）/ 中英双语。**
 
-## 当前状态：参考片全链已贯通 ✅ · 新项目参数化出片进行中 ⚠️
+## 当前状态：参考片全链已贯通 ✅ · R2.0/R2.5/R3.0 v1 已完成 ✅ · FR-36/37 下一批
 
 ```
 文案 → 索引 341 → 预演/推荐 → 风格门 → tokens → 任务卡+校验门 → 引擎编译
@@ -66,7 +66,7 @@ uv run --project server python scripts/drive_run.py <run> <project>   # 全链�
 | `../filmflow-prd.md` | v1 PRD（FR-1~14 / US-01~10 / 风险） |
 | **[docs/prd/PRD-002-production-workbench.md](docs/prd/PRD-002-production-workbench.md)** | **v2 补充 PRD（30 FR / 场景 DSL / 两级执行 / 交付矩阵 / R2–R4 路线图）** |
 | `docs/tech-plan.md` | §18 九项技术方案 |
-| `docs/process/` | SDLC / Feature 拆分 / 测试策略 / **R2.0 验收报告 / R2.5 计划** |
+| `docs/process/` | SDLC / Feature 拆分 / 测试策略 / **R2.0 验收报告 / R2.5 计划 / R3 计划与验收** |
 | `bdd/features/` | 16 个中文 Gherkin 特性文件（自动化 3 场景 + 手动验收拆分） |
 | `docs/adr/` | ADR-0001 技术栈 · ADR-0002 实测矩阵 · ADR-0003 embed 上限 · ADR-0004 白天主题 · **ADR-0005 v2 裁决 D1–D7** · **ADR-0006 PreviewService** |
 

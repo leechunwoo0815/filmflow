@@ -1,6 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-03 · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/38）已交付；FR-36/37 下一批**
+> 更新时间：2026-11-03（交接复核） · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/38）已交付；FR-36/37 下一批**
+> 复核基线：代码 `7a0ee2c`（tag `r3.0-audio`）、`123 passed`、DB 12 个项目、`filmflow-projects` 11 个目录；文档 HEAD 以 `git log` 为准。
 > 当前代码基线：R3.0 代码 `7a0ee2c`（tag `r3.0-audio`；`r3.0-takes`/`r3.0-creation` 为前序）；R2.5 基线 `b7591bd`。
 > **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008/0009。**
 > 上下文压缩后继续开发时：从 §6.5 的 R3 下一批（FR-36 → FR-37）开始，不要回滚 R2/R3 已完成部分。
@@ -48,10 +49,13 @@ uv run --project server python scripts/verify_r3_audio_v2.py        # 音频 v2 
 uv run --project server python scripts/e2e_audio_v2.py              # 音频 v2 UI
 ```
 
+> 注意：`pytest` 含 integration 用例，会连已运行的 `:7860` 真实服务并创建 `it-*` 项目/目录；
+> 本次复核后已清理。跑完若要干净基线，按 §7.3 处理。
+
 ### 0.3 当前下一步（按优先级）
 
-1. **明早验收**：R2.5 §6.4 全绿；R3.0 v1 §3.5 全绿。证据命令见 §0.2，计划见
-   `docs/process/r3_plan.md`。
+1. **验收状态**：R2.5 §6.4 全绿；R3.0 v1 §3.5 全绿（2026-11-03 复核 **123 passed**）。
+   证据命令见 §0.2，计划见 `docs/process/r3_plan.md`。
 2. **R3 下一批**（未开始，不要虚报）：FR-36 资产库 → FR-37 模板/系列。
 3. R3.0 v1 含 FR-32/33/34/35/38；`/timeline`、`/player`、`/takes`、`/audio` 已可用。
 4. **不要开始 R4**（多规格矩阵/平台发布/批量/photo 引擎）。
@@ -129,6 +133,10 @@ uv run --project server python scripts/e2e_audio_v2.py              # 音频 v2 
 - FR-31 验收：project 155 / run 202（模板 15s draft），project 156 / run 203（示例克隆）。
 - 40s 交付：`filmflow-projects/r2_5-delivery40-185`（project 174 / **run 223**，2.6.6 一次通过）；
   旧证据 `r2_5-delivery40-177`（project 166 / run 213，G07 parser 修复前 retry）。
+
+> **项目 ID 口径（2026-11-03 清理后）**：§1.4/§3.4 中的 `golden-40s-134`、`r2_5-delivery-153`、
+> project 155/156 等目录已删除，ID 仅作历史证据；当前可打开的项目以 **§7.4** 为准，
+> 所有验收脚本可重新生成等价项目。
 
 ---
 
@@ -443,11 +451,14 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 22. **React 19 UI**：Playwright 用 click+keyboard.type，`fill()` 不触发 onChange。
 23. **manual alignment**：whisper 缺失必须显式 `manual`，不要伪装词级；本机无 whisper model。
 24. **单进程 Job**：启动恢复会杀 `/tmp/ff-*` Chrome/项目 ffmpeg；不要多 worker。
-25. **非法范围**：不要开始 R3（时间轴/审片/音频 v2/资产库/批量/photo）；R2.5 收尾优先。
+25. **范围边界**：R2.0/R2.5/R3.0 v1 已完成，不要重做；下一批只做 FR-36 → FR-37；
+    **不要提前做 R4**（多规格矩阵/平台发布/批量 CSV/photo 引擎）。
 
 ---
 
-## 6. 剩余工作（R2.5 收尾）
+## 6. 剩余工作（R2.5 已收口；6.5 为 R3 下一批）
+
+> 6.1–6.4 是 R2.5 收口记录（均已完成/已裁决），保留用于追溯；**真正的下一步是 6.5**。
 
 ### 6.1 FR-31 新手引导（PARTIAL → DONE）
 
@@ -485,7 +496,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
 - [x] FR-28 16:9+9:16+SRT+封面+QC+zip；R2.5 5s 26.2s / 40s 190.0s（2.8.0 5s 24.1s）
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
-- [x] 102 tests、E2E、干净 rumor 46/46 回归（run 222，90.6s）
+- [x] 102 tests（R2.5 收口时；当前 **123 tests**）、E2E、干净 rumor 46/46 回归（run 222，90.6s）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
@@ -531,7 +542,12 @@ curl -s http://127.0.0.1:7860/api/queue
 
 - 真实 DB：`~/.filmflow/filmflow.db`。2026-11-03 已清理为 12 个真实项目；重跑验收脚本会新建项目，
   完成后需按 §7.4 清理。
-- 测试 DB：`/tmp/filmflow-test-home/filmflow.db`（可删，下次 pytest 重建）。
+- 测试 DB：`/tmp/filmflow-test-home/filmflow.db`（可删，下次 pytest 重建）。**但 integration 用例
+  连的是 `:7860` 真实服务**，会往真实 DB/workspace 写 `it-*` 项目；本次已清理 217/218/219、
+  `it-wizard-226`、`it-engine-227`。跑完全量测试如需干净基线：先备份 DB，再删除对应
+  workflow/run/projectdoc/project 行与目录。
+- DB 备份：`~/.filmflow/backups/filmflow-before-orphan-cleanup-20261103-125802.db`（40MB，
+  清理前）与 `filmflow-before-handoff-check-20261103.db`（19MB，复核前）；确认无误后可删。
 - 8787 是 FrameServer；EADDRINUSE 先查健康检查/残留进程。
 - Chrome 残留：`/tmp/ff-{node}-{run_id}`、`/tmp/ff-chrome-{node}-{run_id}`；启动恢复会清理。
 - 预览缓存：`~/.filmflow/cache/preview/<project>`；交付：项目 `out/deliveries/<runId>`。
@@ -542,13 +558,13 @@ curl -s http://127.0.0.1:7860/api/queue
 `r3-audio-v2-221`、`r3-camera-199`、`r3-demo-20261103-1`、`golden-5s-217`、`golden-5s-225`、
 `rumor-clean-20261102`、`trace-x`；另有仓库外参考项目 `rumor-39s`。
 DB 共 12 个项目记录（含 rumor-39s）。重跑验收后按同一策略清理；不要直接 `rm -rf` 正在用的项目。
+当前演示：202（时间轴）、174（审片/40s）、188（Take）、211（音频 v2）、215（5s 交付）、216（黄金 5s）。
 
 - 风格库 76MB 外置，不入 git。
-- **磁盘现状（2026-11-03）**：`filmflow-projects` 约 1.0GB（11 个目录）、`~/.filmflow` 94MB、
-  `ai-v` 总计约 2.7GB；验收项目保留 174/188/202/211/215/216 等，见 §7.4。
+- **磁盘现状（2026-11-03 复核）**：`filmflow-projects` 1.0GB（11 个目录）、`~/.filmflow` 115MB
+  （含两份 DB 备份）、`rumor-39s` 897MB、源码仓库 887MB、`ai-v` 总计约 2.7GB。
 - **不要再让验收脚本无限建项目**：每次 40s 项目约 4.3GB（frames 2.7G + proxy 1.4G）；通过后
-  删除 `out/frames`、`out/proxy`，只留 film/artifacts/stills/交付包。DB 备份在
-  `~/.filmflow/backups/filmflow-before-orphan-cleanup-20261103-125802.db`（确认后可删）。
+  删除 `out/frames`、`out/proxy`，只留 film/artifacts/stills/交付包。
 
 ---
 
@@ -579,7 +595,8 @@ DB 共 12 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
 8. **40s golden**：run154 G01 因无音频失败，但 A–F/F02 成功；不要用 run 状态判断视觉回归。
 9. **交付 9:16**：当前 Scene DSL 重排（非智能裁切/主体检测）；复杂版式可能 `approximate`。
 10. **非 riso 新项目**：ink/code-video 仍 Contract 1.0，C01 阻断；R2.0/R2.5 范围外。
-11. **测试污染真实 DB**：大量 `it-*`/`r2-*`/`golden-*` project/run；清理先确认引用。
+11. **测试污染真实 DB**：integration 用例直连 `:7860`，跑全量 pytest 会新增 `it-*` 项目/目录
+    （本次复核的 217/218/219 已清理）；清理前先备份 DB 并确认无运行中 Job。
 12. **F02 固定 9222**：端口被占会启动失败；排查 `lsof -i :9222`。
 13. **UI i18n**：新页面中文优先；不要破坏既有 zh/en 切换。
 14. **R3 v1 未含**：FR-36/37；不要把这两项写成已完成。FR-35 已做，但 SFX 拖入等 FR-36。
@@ -598,7 +615,8 @@ DB 共 12 个项目记录（含 rumor-39s）。重跑验收后按同一策略清
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **123 passed**。
+- [ ] `cd server && uv run pytest tests -q` → **123 passed**（含 integration：需 `./dev.sh` 已启动，
+      会创建 `it-*` 测试项目，见 §7.3）。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。
 - [ ] R2.5 review/audio/delivery verifier 全绿。

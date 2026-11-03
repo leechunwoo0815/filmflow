@@ -2,7 +2,7 @@
 
 > 代码：`7a0ee2c` / tag `r3.0-audio`（前序 `r3.0-takes`/`r3.0-creation`）；EXECUTOR_VERSION 2.8.0。
 
-> 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。老板要求继续后续开发，明早验收。
+> 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。R3.0 v1 已于 2026-11-03 验收。
 > 本文覆盖 FR-32/33/34/35/38；FR-36 资产库、FR-37 模板/系列留到下一批，
 > 不虚报为 R3.0 全量。
 
@@ -48,7 +48,7 @@
 - [x] 100 场景 ops <0.2s（`test_timeline_ops.py`）；浏览器 100 场景 60fps 未实测。
 - [x] 10 条批注（含框选）在不同帧；点击跳帧 4.0s→4.000s；export→clear→import 恢复 10 条；
       审片包 6.8MB、内含 40.0s review.mp4 + review.json + README（`verify_r3.py` + `e2e_r3.py`）。
-- [x] **119 tests**；`e2e_ui.py`/`e2e_onboarding.py`/`e2e_r3.py`/`e2e_takes.py` 全绿；R2.5 回归（2.7.2）：
+- [x] **123 tests**（FR-35 后）；`e2e_ui.py`/`e2e_onboarding.py`/`e2e_r3.py`/`e2e_takes.py` 全绿；R2.5 回归（2.8.0）：
       5s 交付 24.1s（project 215/run 270）、干净 rumor 46/46（run 272，256.1s）、
       5s 黄金 SSIM 1.0（project 216/run 271；无音频 G 链失败不影响视觉断言）、相机 preview/final SSIM 0.989483（project 208/run 261）。
 - [x] FR-38：project 188 A=237 / B=254；视频 sha 不同；同步播放 1.324s vs 1.324s；差异面板；
