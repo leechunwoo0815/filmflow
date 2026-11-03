@@ -185,3 +185,14 @@
 - 结论：**"100 场景 60fps" 声明在本机成立**，暂不引入虚拟化（复杂度 > 收益）；HANDOFF §9.16
   由"未实测"改为"已实测 ~60fps，>300 场景或低端机再评估"。
 - 项目自建自删，计数恒 35。
+
+## 建设批 6 · P1-23 第二批 10 端点模型化（2026-11-04 03:20–03:40）
+
+- 危险度优先：`/projects/{id}/delivery`（触发交付作业）、preview still/segment/film（触发渲染）、
+  `/gates/{gate}/decide`（审批语义，decision 收敛为 Literal）、`/runs/{id}/promote`（写 CURRENT）、
+  render-profile 更新（写 render.profile.json）、task_put（imported 写卡）、音频 license/mix/alignment
+  三个落盘写。
+- 双键名兼容保留：sceneId/scene_id、runId/run_id（模型层都收，服务层语义不变）；
+  非法类型一律 422 挡在服务层前（新增 2 项测试：5 类非法体 + 别名放行）。
+- `pytest tests/unit tests/bdd` → **202 passed**。
+- 剩余 payload: dict ≈ 32 个（模板/系列/审片/takes/drafts/label 等中低危），下一批按同法迁移。

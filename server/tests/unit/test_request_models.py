@@ -86,3 +86,32 @@ def test_validation_errors_do_not_leak_stack():
         assert r.status_code == 422
         body = r.text
         assert "Traceback" not in body and "string_type" in body
+
+
+# ---------- P1-23 第二批（交付/预览/门禁/promote/档位/任务卡/音频） ----------
+
+def _post_422(c, url, body):
+    r = c.post(url, json=body)
+    assert r.status_code == 422, (r.status_code, r.text[:200])
+    assert "detail" in r.json()
+
+
+def test_batch2_models_reject_bad_types():
+    with client() as c:
+        _post_422(c, "/api/projects/1/delivery", {"runId": "不是数字"})
+        _post_422(c, "/api/projects/1/preview/still", {"sceneId": "S01", "time": "12点"})
+        _post_422(c, "/api/projects/1/preview/segment",
+                  {"sceneId": "S01", "start": "a", "end": 1.0})
+        _post_422(c, "/api/gates/D03/decide", {"run_id": 1, "decision": "随便"})
+        _post_422(c, "/api/projects/1/audio/alignment", {"segments": "不是数组"})
+
+
+def test_batch2_models_accept_legacy_aliases():
+    with client() as c:
+        # 门禁双键名兼容（runId / run_id）在模型层不报 422（服务层负责 404）
+        r = c.post("/api/gates/D03/decide", json={"runId": 999999, "decision": "approved"})
+        assert r.status_code == 404, r.status_code
+        # 预览蛇形别名 scene_id 同样不 422（进入服务层）
+        r = c.post("/api/projects/999999/preview/still",
+                   json={"scene_id": "S01"})
+        assert r.status_code == 404, r.status_code

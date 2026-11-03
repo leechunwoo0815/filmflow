@@ -64,3 +64,84 @@ class QaFixIn(BaseModel):
 
 class QaUndoIn(BaseModel):
     fixId: str = Field(min_length=1)
+
+
+# ---------- P1-23 第二批：交付/预览/门禁/升档/任务卡/音频写端点 ----------
+
+class PreviewStillIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    sceneId: Optional[str] = None
+    scene_id: Optional[str] = None  # 旧客户端蛇形别名，保持兼容
+    time: Optional[float] = None
+    profile: str = "draft"
+    watermark: bool = True
+    debounce: bool = True
+    motion: bool = False
+
+
+class PreviewSegmentIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    sceneId: Optional[str] = None
+    scene_id: Optional[str] = None
+    start: float = Field(ge=0)
+    end: float = Field(ge=0)
+    profile: str = "draft"
+    watermark: bool = True
+
+
+class PreviewFilmIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    profile: str = "draft"
+    watermark: bool = True
+
+
+class DeliveryIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    runId: Optional[int] = None
+    run_id: Optional[int] = None
+    profile: str = "final"
+
+
+class GateDecideIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    runId: Optional[int] = None
+    run_id: Optional[int] = None  # 既有客户端两种键名都发
+    decision: Literal["approved", "rejected"]
+    note: str = ""
+    author: str = "local"
+
+
+class RunPromoteIn(BaseModel):
+    takeName: Optional[str] = None
+
+
+class RenderProfileUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    profiles: Optional[dict[str, Any]] = None
+
+
+class TaskPutIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    task: dict[str, Any] = Field(default_factory=dict)
+    author: str = "local"
+
+
+class AudioLicenseSaveIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    source: str = ""
+    license: str = ""
+    authorized: Optional[bool] = None
+    expires: Optional[str] = None
+    note: str = ""
+
+
+class AudioMixSaveIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    preset: Optional[str] = None
+    targetLufs: Optional[float] = None
+    stems: Optional[dict[str, float]] = None
+
+
+class AudioAlignmentSaveIn(BaseModel):
+    segments: list[dict[str, Any]] = Field(default_factory=list)
+    author: str = "local"

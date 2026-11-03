@@ -46,7 +46,11 @@ from ..services import style_index as idx_svc
 
 
 from .schemas import (AssetImportIn, AssetReplaceIn, AssetUpdateIn, DocRestoreIn,
-                      DocSaveIn, ProjectCreateIn, QaFixIn, QaUndoIn, TimelineOpIn)
+                      AudioAlignmentSaveIn, AudioLicenseSaveIn, AudioMixSaveIn,
+                      DeliveryIn, DocSaveIn, GateDecideIn, PreviewFilmIn,
+                      PreviewSegmentIn, PreviewStillIn, ProjectCreateIn, QaFixIn,
+                      QaUndoIn, RenderProfileUpdateIn, RunPromoteIn, TaskPutIn,
+                      TimelineOpIn)
 router = APIRouter(prefix="/api")
 
 
@@ -1158,21 +1162,20 @@ async def run_render_manifest(run_id: int, session: Session = Depends(get_sessio
 # ---------- 预览（FR-23） ----------
 
 @router.post("/projects/{project_id}/preview/still")
-async def project_preview_still(project_id: int, payload: dict,
+async def project_preview_still(project_id: int, payload: PreviewStillIn,
                                 session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
-    scene_id = str(payload.get("sceneId") or payload.get("scene_id") or "")
+    scene_id = str(payload.sceneId or payload.scene_id or "")
     if not scene_id:
         raise ApiError(ErrorCode.E_VALIDATION, "sceneId 必填")
-    t = payload.get("time")
     res = await preview_svc.render_still(
         session, project_id, scene_id,
-        t=float(t) if t is not None else None,
-        profile=str(payload.get("profile") or "draft"),
-        watermark=bool(payload.get("watermark", True)),
-        debounce=bool(payload.get("debounce", True)),
-        motion=bool(payload.get("motion", False)))
+        t=payload.time,
+        profile=payload.profile,
+        watermark=payload.watermark,
+        debounce=payload.debounce,
+        motion=payload.motion)
     return Response(content=res.png, media_type="image/png", headers={
         "X-Preview-Cache": "hit" if res.cached else "miss",
         "X-Preview-Ms": str(res.ms),
@@ -1183,33 +1186,30 @@ async def project_preview_still(project_id: int, payload: dict,
 
 
 @router.post("/projects/{project_id}/preview/segment", status_code=202)
-async def project_preview_segment(project_id: int, payload: dict,
+async def project_preview_segment(project_id: int, payload: PreviewSegmentIn,
                                   session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
-    scene_id = str(payload.get("sceneId") or payload.get("scene_id") or "")
+    scene_id = str(payload.sceneId or payload.scene_id or "")
     if not scene_id:
         raise ApiError(ErrorCode.E_VALIDATION, "sceneId 必填")
-    start, end = payload.get("start"), payload.get("end")
-    if start is None or end is None:
-        raise ApiError(ErrorCode.E_VALIDATION, "start/end 必填（秒）")
     job = preview_svc.create_segment_job(
-        session, project_id, scene_id, float(start), float(end),
-        profile=str(payload.get("profile") or "draft"),
-        watermark=bool(payload.get("watermark", True)))
+        session, project_id, scene_id, payload.start, payload.end,
+        profile=payload.profile,
+        watermark=payload.watermark)
     audit(session, "preview.segment", f"project:{project_id}",
           after={"job": job.id, "scene": scene_id, "start": job.start, "end": job.end})
     return preview_svc.job_payload(job)
 
 
 @router.post("/projects/{project_id}/preview/film", status_code=202)
-async def project_preview_film(project_id: int, payload: dict,
+async def project_preview_film(project_id: int, payload: PreviewFilmIn,
                                session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
     job = preview_svc.create_film_job(
-        session, project_id, profile=str(payload.get("profile") or "draft"),
-        watermark=bool(payload.get("watermark", True)))
+        session, project_id, profile=payload.profile,
+        watermark=payload.watermark)
     audit(session, "preview.film", f"project:{project_id}",
           after={"job": job.id, "profile": job.profile})
     return preview_svc.job_payload(job)
@@ -1247,11 +1247,12 @@ async def project_preview_cache(project_id: int, session: Session = Depends(get_
 # ---------- 交付 v1（FR-28） ----------
 
 @router.post("/projects/{project_id}/delivery", status_code=202)
-async def project_delivery(project_id: int, payload: dict,
+async def project_delivery(project_id: int, payload: DeliveryIn,
                            session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
-    job = delivery_svc.create_job(session, proj, payload.get("runId"), str(payload.get("profile") or "final"))
+    run_id = payload.runId if payload.runId is not None else payload.run_id
+    job = delivery_svc.create_job(session, proj, run_id, payload.profile)
     asyncio.create_task(delivery_svc.run_delivery(job.id or 0))
     audit(session, "delivery.create", f"project:{project_id}", after={"job": job.id})
     return {"jobId": job.id, "kind": job.kind, "status": job.status, "priority": job.priority}
@@ -1313,13 +1314,14 @@ async def project_render_profile(project_id: int, session: Session = Depends(get
 
 
 @router.put("/projects/{project_id}/render-profile")
-async def project_render_profile_update(project_id: int, payload: dict,
+async def project_render_profile_update(project_id: int, payload: RenderProfileUpdateIn,
                                         session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     root = Path(proj.root).resolve()
     _require_workspace_root(root)
     imported = docs_svc.is_imported(session, project_id)
-    resolved = profiles_svc.save(root, payload, _project_profile(root),
+    body = payload.model_dump(exclude_none=True)
+    resolved = profiles_svc.save(root, body, _project_profile(root),
                                  allow_low_final=imported)
     audit(session, "render.profile", f"project:{project_id}",
           after={k: resolved[k] for k in ("draft", "review", "final")})
@@ -1341,8 +1343,9 @@ async def artifact_file(artifact_id: int, session: Session = Depends(get_session
 # ---------- 门审批（T10/FR-8） ----------
 
 @router.post("/gates/{gate_id}/decide")
-async def gate_decide(gate_id: str, payload: dict, session: Session = Depends(get_session)):
-    run_id = int(payload.get("run_id") or payload.get("runId") or 0)
+async def gate_decide(gate_id: str, payload: GateDecideIn,
+                      session: Session = Depends(get_session)):
+    run_id = int(payload.run_id or payload.runId or 0)
     run = session.get(Run, run_id)
     if not run:
         raise not_found("run")
@@ -1356,9 +1359,7 @@ async def gate_decide(gate_id: str, payload: dict, session: Session = Depends(ge
             if not up_st or up_st.status not in ("succeeded", "cached"):
                 raise ApiError(ErrorCode.E_VALIDATION,
                                f"门 {gate_id} 的上游 {up} 未完成（{up_st.status if up_st else 'missing'}），不能签字")
-    decision = payload.get("decision")
-    if decision not in ("approved", "rejected"):
-        raise ApiError(ErrorCode.E_VALIDATION, "decision 必须是 approved/rejected")
+    decision = payload.decision  # 模型层已约束 approved/rejected
     if gate_id == "G07" and decision == "approved":
         wf = session.get(Workflow, run.workflow_id)
         imported = bool(((((wf.graph_json or {}) if wf else {}).get("meta")) or {}).get("imported"))
@@ -1369,7 +1370,7 @@ async def gate_decide(gate_id: str, payload: dict, session: Session = Depends(ge
     if precheck and decision == "approved":
         raise ApiError(ErrorCode.E_VALIDATION, f"批准前置未满足：{precheck}")
     # 不通过必须填意见
-    if decision == "rejected" and not (payload.get("note") or "").strip():
+    if decision == "rejected" and not payload.note.strip():
         raise ApiError(ErrorCode.E_VALIDATION, "驳回必须填写意见（规格 §7.5）")
     params_by = {}
     states = {r.node_id: r for r in session.exec(select(NodeRun).where(NodeRun.run_id == run_id)).all()}
@@ -1857,10 +1858,10 @@ async def audio_mix_get(project_id: int, session: Session = Depends(get_session)
 
 
 @router.post("/projects/{project_id}/audio/mix")
-async def audio_mix_save(project_id: int, payload: dict,
+async def audio_mix_save(project_id: int, payload: AudioMixSaveIn,
                          session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    data = audio_svc.save_mix(proj.root, payload)
+    data = audio_svc.save_mix(proj.root, payload.model_dump(exclude_none=True))
     audit(session, "audio.mix", proj.root, after=data)
     return data
 
@@ -1880,12 +1881,11 @@ async def project_audio_alignment(project_id: int, session: Session = Depends(ge
 
 
 @router.post("/projects/{project_id}/audio/alignment")
-async def project_audio_alignment_save(project_id: int, payload: dict,
+async def project_audio_alignment_save(project_id: int, payload: AudioAlignmentSaveIn,
                                        session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
-    data = audio_svc.save_alignment(proj.root, payload.get("segments") or [],
-                                    str(payload.get("author") or "local"))
+    data = audio_svc.save_alignment(proj.root, payload.segments, payload.author)
     audit(session, "audio.alignment", proj.root, after={"segments": len(data["segments"])})
     return data
 
@@ -1899,11 +1899,11 @@ async def project_audio_license(project_id: int, session: Session = Depends(get_
 
 
 @router.post("/projects/{project_id}/audio/license")
-async def project_audio_license_save(project_id: int, payload: dict,
+async def project_audio_license_save(project_id: int, payload: AudioLicenseSaveIn,
                                      session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
-    lic = audio_svc.save_license(proj.root, payload)
+    lic = audio_svc.save_license(proj.root, payload.model_dump())
     audit(session, "audio.license", proj.root, after=lic)
     return {"license": lic, "ok": True, "reason": ""}
 
@@ -2105,7 +2105,8 @@ async def task_get(project_id: int, session: Session = Depends(get_session)):
 
 
 @router.put("/projects/{project_id}/task")
-async def task_put(project_id: int, payload: dict, session: Session = Depends(get_session)):
+async def task_put(project_id: int, payload: TaskPutIn,
+                   session: Session = Depends(get_session)):
     """保存任务卡（仅 imported 项目可写）。新项目请通过文档 API 编辑。"""
     proj = session.get(Project, project_id)
     if not proj:
@@ -2115,7 +2116,7 @@ async def task_put(project_id: int, payload: dict, session: Session = Depends(ge
     if not imported:
         raise ApiError(ErrorCode.E_DOC_READONLY,
                        "新项目的 card/task.json 是只读快照；请编辑 script/timeline 文档", status=409)
-    task = payload.get("task") or {}
+    task = payload.task or {}
     phase = task.get("phase", "card")
     allowed = {"card": {"read", "write_plan", "logic_check"},
                "still": {"read", "write_plan", "logic_check", "render_still"},
@@ -2607,7 +2608,8 @@ async def run_events(run_id: int, request: Request):
 # ---------- 提升为当前 / 报告导出（M4 前置） ----------
 
 @router.post("/runs/{run_id}/promote")
-async def run_promote(run_id: int, payload: dict, session: Session = Depends(get_session)):
+async def run_promote(run_id: int, payload: RunPromoteIn,
+                      session: Session = Depends(get_session)):
     run = session.get(Run, run_id)
     if not run:
         raise not_found("run")
@@ -2615,8 +2617,9 @@ async def run_promote(run_id: int, payload: dict, session: Session = Depends(get
     proj = session.get(Project, wf.project_id)  # type: ignore[arg-type]
     marker = Path(proj.root) / "out" / "CURRENT"
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(json.dumps({"run_id": run_id, "take": payload.get("takeName", f"take-{run_id}")}))
-    audit(session, "run.promote", f"run:{run_id}", after={"take": payload.get("takeName", "")})
+    marker.write_text(json.dumps({"run_id": run_id,
+                                  "take": payload.takeName or f"take-{run_id}"}))
+    audit(session, "run.promote", f"run:{run_id}", after={"take": payload.takeName or ""})
     return {"ok": True}
 
 
