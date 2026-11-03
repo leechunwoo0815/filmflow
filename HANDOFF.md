@@ -2,7 +2,7 @@
 
 > 更新时间：2026-11-03 20:00（本地，darwin）· **R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；专家审查 Conditional Go 的 P0 Gate 已全部关闭；P1 治理已推进 14 项，剩余见 §0.6/§6.5**
 > 复核基线：本轮 P1 治理最后一个提交 `9bc0f95`（master，已推送 `git@github.com:leechunwoo0815/filmflow`）；FR-39 代码 `3bb81a0`（tag `r3.5-qa`）、FR-37 `f887424`、FR-36 `900076b`、`7a0ee2c`、R2.5 基线 `b7591bd`。本轮 9 个提交的清单见 §0.6 表尾。
-> 测试 **213 passed（unit 183 + integration 13 + BDD 7；`foreign_keys=ON`）**，`pytest server/tests -q` 约 55s；integration 用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.10.0`、preview `1.8.0`。
+> 测试 **219 passed + 1 skipped（unit 190 + integration 13 + BDD 7 + 门禁 happy-path；`foreign_keys=ON`）**，`pytest server/tests -q` 约 55s；integration 用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.10.0`、preview `1.8.0`。
 > 数据现状：**DB 35 个项目 / `filmflow-projects` 29 个目录 2.3GB / `~/.filmflow` 1.1GB**（审计与验证残留，删除需老板点头；口径见 §0.5/§7.4）。
 > **先读本文 §0（§0.5 审查结论、§0.6 状态表、§0.7 破坏性语义与运维坑）、§5、§6.5；再读 `AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
 > 上下文压缩后继续开发时：按 §6.5 的顺序做 P1 剩余项，不要提前做 R4，不要回滚已完成部分；申报完成必须按 §0.7 的复现命令附证据。
@@ -30,7 +30,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 > 含收敛判据、先证伪再建设的顺序、每轮循环协议、反作弊条款与收尾产物要求。
 
 ```bash
-cd server && uv run pytest tests -q                       # 213 passed
+cd server && uv run pytest tests -q                       # 219 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -929,7 +929,7 @@ curl -s http://127.0.0.1:7860/api/queue
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`（或按 §0.7 配方重启）；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **213 passed（unit 183 + integration 13 + BDD 7）**
+- [ ] `cd server && uv run pytest tests -q` → **219 passed（unit 190 + integration 13 + BDD 7）**
 - [ ] 连跑两次上面这条，`GET /api/projects` 计数不变（当前 35）——这是 P0-3 的核心验收。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。

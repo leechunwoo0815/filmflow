@@ -155,9 +155,17 @@ def test_delivery_title_prefers_snapshot_script(monkeypatch):
 def test_frameserver_writes_frames_atomically(tmp_path: Path):
     """P2-04：/frame 落盘必须 tmp+replace——中途 kill 不留半张帧给 F03。"""
     import base64 as b64
+    import socket
     import urllib.request
 
     from app.engine.executors.pipeline import FrameServer
+
+    # 8787 全局单例且跨进程不互斥：dev 服务在跑时会静默复用它的 root，帧会写进别家项目
+    probe = socket.socket()
+    busy = probe.connect_ex(("127.0.0.1", 8787)) == 0
+    probe.close()
+    if busy:
+        pytest.skip("8787 已被 dev 服务占用（跨进程不互斥）；停 dev 后覆盖此测试")
 
     root = tmp_path / "proj"
     (root / "out").mkdir(parents=True)
@@ -165,10 +173,7 @@ def test_frameserver_writes_frames_atomically(tmp_path: Path):
     # 8787 若被占用会复用既有服务（写别的 root）——先探测，占用则跳过断言 root 归属
     srv = FrameServer(str(root))
     srv.port = 8787
-    try:
-        srv.start()
-    except OSError:
-        pytest.skip("8787 已被占（另一进程 FrameServer），跨进程不互斥")
+    srv.start()
     try:
         body = ("data:image/png;base64," + png).encode()
         req = urllib.request.Request(

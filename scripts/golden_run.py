@@ -135,6 +135,24 @@ def _thumb(src: Path, dst: Path) -> None:
     img.save(dst)
 
 
+def build_golden_project(name: str, label: str = "") -> tuple[int, int, Path]:
+    """按 fixtures/golden/<name>/spec.json 建项目并 materialize；返回 (run_id, project_id, root)。
+
+    P1-19：供 verify_r2_5_review 等验收脚本复用，替代硬编码演示项目 ID。
+    """
+    spec = json.loads((FIXTURES / name / "spec.json").read_text(encoding="utf-8"))
+    primary = _pick_style(spec)
+    d = _req("POST", "/drafts", {"name": label or f"golden-{name}", "step": 1})
+    root = Path.home() / "cc-projects" / "ai-v" / "filmflow-projects" / f"golden-{name}-{d['id']}"
+    root.mkdir(parents=True, exist_ok=True)
+    _req("PATCH", f"/drafts/{d['id']}", {"step": 5, "payload": {
+        "root": str(root), "copy": spec["copy"], "profile": spec["profile"],
+        "pick": {"primary": primary, "alternates": [], "reason": "golden"},
+        "brief": {"title": spec.get("name", "")}}})
+    r = _req("POST", f"/drafts/{d['id']}/materialize", {})
+    return r["run_id"], r["project"]["id"], root
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", required=True, choices=["5s", "15s", "40s"])
@@ -152,16 +170,7 @@ def main() -> int:
     frames = round(duration * fps)
     if httpx.get(f"{BASE}/health", timeout=3, trust_env=False).status_code != 200:
         raise SystemExit("API 未就绪：先 ./dev.sh")
-    primary = _pick_style(spec)
-    d = _req("POST", "/drafts", {"name": f"golden-{args.project}", "step": 1})
-    root = Path.home() / "cc-projects" / "ai-v" / "filmflow-projects" / f"golden-{args.project}-{d['id']}"
-    root.mkdir(parents=True, exist_ok=True)
-    _req("PATCH", f"/drafts/{d['id']}", {"step": 5, "payload": {
-        "root": str(root), "copy": spec["copy"], "profile": profile,
-        "pick": {"primary": primary, "alternates": [], "reason": "golden"},
-        "brief": {"title": spec.get("name", "")}}})
-    r = _req("POST", f"/drafts/{d['id']}/materialize", {})
-    rid, pid = r["run_id"], r["project"]["id"]
+    rid, pid, root = build_golden_project(args.project)
     print(f"golden={args.project} run={rid} project={pid} root={root}", flush=True)
     c.post(f"/runs/{rid}/start")
     _drive(rid, pid)

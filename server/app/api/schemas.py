@@ -109,6 +109,7 @@ class GateDecideIn(BaseModel):
     decision: Literal["approved", "rejected"]
     note: str = ""
     author: str = "local"
+    checklist: list[Any] = Field(default_factory=list)
 
 
 class RunPromoteIn(BaseModel):

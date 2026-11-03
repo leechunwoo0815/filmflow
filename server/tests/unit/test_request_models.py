@@ -9,6 +9,9 @@ from fastapi.testclient import TestClient
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
+from sqlmodel import Session
+
+from app.db import engine
 from app.main import app
 
 HEADERS = {"Origin": "http://127.0.0.1:3000"}
@@ -115,3 +118,64 @@ def test_batch2_models_accept_legacy_aliases():
         r = c.post("/api/projects/999999/preview/still",
                    json={"scene_id": "S01"})
         assert r.status_code == 404, r.status_code
+
+
+def test_gate_decide_full_approve_path_end_to_end(tmp_path):
+    """P1-23 回归网：模型化端点必须走完整业务路径（不是只测 422）。
+
+    本次 gate_decide 后半段残留 payload.get() 就是只测 422/404 漏掉的——
+    任何模型化端点改完必须有一条 happy-path 断言。
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    from app.engine import edges as edges_mod
+    from app.models import NodeRun, Project, Run, Workflow
+    from app.services import project_cleanup
+
+    root = tmp_path / "gate-e2e"
+    (root / "card").mkdir(parents=True)
+    (root / "card" / "copy.txt").write_text("门禁回归。", encoding="utf-8")
+    with Session(engine) as s:
+        p = Project(name="gate-e2e", root=str(root))
+        s.add(p)
+        s.commit()
+        s.refresh(p)
+        wf = Workflow(project_id=p.id, graph_json={"meta": {"imported": True},
+                                                   "nodes": [], "edges": []})
+        s.add(wf)
+        s.commit()
+        s.refresh(wf)
+        run = Run(workflow_id=wf.id, status="running")
+        s.add(run)
+        s.commit()
+        s.refresh(run)
+        # 上游全部 succeeded，门才允许签字（E07 无 D03/D05 的查看前置）
+        ups = set()
+        for g in ("E07", "F06", "B08", "A05"):
+            for up, ty in edges_mod.UPSTREAM[g].items():
+                if ty in ("data", "trigger"):
+                    ups.add(up)
+        for up in sorted(ups):
+            s.add(NodeRun(run_id=run.id, node_id=up, status="succeeded",
+                          cache_key="t", params_json={}))
+        s.commit()
+        run_id, pid, wf_id = run.id, p.id, wf.id
+    try:
+        with client() as c:
+            # D03 有"已查看≥3 区域"前置，逐个人工门尝试到第一个可签的为止
+            ok_gate, body = None, None
+            for gate in ("E07", "F06", "B08", "A05"):
+                r = c.post(f"/api/gates/{gate}/decide",
+                           json={"run_id": run_id, "decision": "approved",
+                                 "note": "回归", "author": "test"})
+                if r.status_code == 200:
+                    ok_gate, body = gate, r.json()
+                    break
+            assert ok_gate, f"所有人工门都未走到 happy path；最后响应 {r.text[:200]}"
+            assert body.get("decision") == "approved", body
+    finally:
+        with Session(engine) as s:
+            project_cleanup.delete_project(s, pid, remove_dir=False)
+    import shutil
+    shutil.rmtree(root, ignore_errors=True)

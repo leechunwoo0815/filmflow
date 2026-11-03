@@ -59,7 +59,7 @@ R3.0 v1（FR-32–38）+ R3.5 FR-39。下一批：FR-40/41；不提前做 R4。
 
 ```bash
 ./dev.sh
-cd server && uv run pytest tests -q                       # 213 项（含 integration 真实出片冒烟 + P0/P1 回归；foreign_keys=ON）
+cd server && uv run pytest tests -q                       # 219 项（含 integration 真实出片冒烟 + P0/P1 回归；foreign_keys=ON）
 uv run --project server python scripts/e2e_ui.py          # UI 8 场景 ~15s
 uv run --project server python scripts/e2e_onboarding.py  # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py        # API 冒烟：46 / 93

@@ -1,0 +1,75 @@
+{
+ "schema": "filmflow.r2-incremental-report/1",
+ "projectSpec": "5s",
+ "primary": "H2",
+ "project": {
+  "id": 254,
+  "name": "r2-verify-5s-265"
+ },
+ "runs": {
+  "run1": 323,
+  "run2": 324
+ },
+ "sceneChange": {
+  "index": 1,
+  "sceneId": "S02",
+  "sentence": "纸不动，风先动。",
+  "newText": "风从纸上起。纸不动，风先动字。"
+ },
+ "timings": {
+  "run1Seconds": 59.2,
+  "run2Seconds": 55.2
+ },
+ "manifest1": {
+  "frames": 120,
+  "fps": 24.0,
+  "profile": "final",
+  "renderedFrames": 120,
+  "reusedFrames": 0,
+  "sceneHashes": {
+   "S01": "3bdfa4bf5af9d8aed590dd1ebc30b7de422507b5d2990cdda7d86a26e70ca366",
+   "S02": "fcdfc936642596685970aa14dadf76a9b5314ea963bd28c9cf62f788a8eddbb1"
+  },
+  "sceneRanges": {
+   "S01": [
+    0,
+    54
+   ],
+   "S02": [
+    54,
+    120
+   ]
+  }
+ },
+ "manifest2": {
+  "frames": 120,
+  "fps": 24.0,
+  "profile": "final",
+  "renderedFrames": 66,
+  "reusedFrames": 54,
+  "sceneHashes": {
+   "S01": "3bdfa4bf5af9d8aed590dd1ebc30b7de422507b5d2990cdda7d86a26e70ca366",
+   "S02": "42e64675a831884bb640892f2a03e88b51ae95553a5ec52dc137caea058f4596"
+  },
+  "sceneRanges": {
+   "S01": [
+    0,
+    54
+   ],
+   "S02": [
+    54,
+    120
+   ]
+  }
+ },
+ "assertions": {
+  "reusedPrefixScenes": true,
+  "unchangedPrefixFrames": true,
+  "renderedRatio": 0.55,
+  "maxRenderedRatio": 0.6,
+  "fasterSecondRun": true
+ },
+ "ok": true,
+ "status": "pass",
+ "generatedAt": "2026-11-03T17:38:56Z"
+}

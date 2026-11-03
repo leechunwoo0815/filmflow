@@ -106,9 +106,9 @@ function CanvasInner() {
 
   return (
     <main className="h-screen flex flex-col">
-      <header className="flex items-center gap-2 p-3 border-b border-line">
+      <header className="flex flex-wrap items-center gap-2 p-3 border-b border-line">
         <a className="btn" href="/">{t("nav.back")}</a>
-        <span className="font-semibold">Run {runId}</span><LangToggle /><ThemeToggle />
+        <span className="font-semibold shrink-0">Run {runId}</span><span className="shrink-0"><LangToggle /></span><span className="shrink-0"><ThemeToggle /></span>
         {graph && <span className={`text-sm ${STATUS_CLS[graph.run.status]}`}>{graph.run.status}</span>}
         {graph && <span className="text-dim text-xs">caps: {graph.caps.join("/")}</span>}
         <div className="ml-auto flex gap-2">

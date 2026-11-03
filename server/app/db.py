@@ -8,6 +8,7 @@ from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
 
 from .config import settings
+from .models import TABLES  # noqa: F401  # 副作用导入：先注册 SQLModel 模型，create_all 才有表
 
 engine = create_engine(
     f"sqlite:///{settings.db_path}",

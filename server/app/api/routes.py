@@ -694,7 +694,7 @@ async def _materialize_saved_template(session: Session, tpl: Template, variables
         raise not_found("项目")
     # P1-09：项目行出现后的任何失败（资产/文档/锁）都必须清掉半成品，不留孤儿项目
     try:
-        return _finish_saved_template_materialize(
+        return await _finish_saved_template_materialize(
             session, tpl, content, content_sub, profile, pid, proj, result,
             missing_copy, missing_profile, missing_content, name)
     except Exception:
@@ -1210,7 +1210,7 @@ async def project_preview_still(project_id: int, payload: PreviewStillIn,
         "X-Preview-Cache": "hit" if res.cached else "miss",
         "X-Preview-Ms": str(res.ms),
         "X-Preview-Scene-Hash": res.scene_hash[:16],
-        "X-Preview-Watermark": "1" if payload.get("watermark", True) else "0",
+        "X-Preview-Watermark": "1" if payload.watermark else "0",
         "X-Preview-Chrome": res.chrome,
     })
 
@@ -1417,8 +1417,8 @@ async def gate_decide(gate_id: str, payload: GateDecideIn,
         return {"ok": True, "unchanged": True, "decided_at": str(existing.created_at)}
     policy = "reapprove" if gate_id == "G07" else "inherit"
     a = Approval(run_id=run_id, gate_id=gate_id, decision=decision, policy=policy,
-                 content_hash=ch, author=payload.get("author", "local"),
-                 note=payload.get("note", ""), checklist_json=payload.get("checklist", []))
+                 content_hash=ch, author=payload.author,
+                 note=payload.note, checklist_json=payload.checklist)
     session.add(a)
     session.commit()
     # 解除阻塞：门 NodeRun → succeeded（批准）或保持 blocked（驳回）
@@ -1439,7 +1439,8 @@ async def gate_decide(gate_id: str, payload: GateDecideIn,
             session.add(run)
         session.commit()
     emit("gate.decided", run_id, gate_id, decision=decision)
-    audit(session, "gate.decide", f"{run_id}:{gate_id}", after={"decision": decision, "note": payload.get("note", "")})
+    audit(session, "gate.decide", f"{run_id}:{gate_id}",
+          after={"decision": decision, "note": payload.note})
     if decision == "approved":
         re_mod.start_run(run_id)   # 调度循环在等门时退出；批准即重启
     return {"ok": True, "decision": decision, "content_hash": ch[:12]}

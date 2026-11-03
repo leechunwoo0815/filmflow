@@ -230,3 +230,41 @@
 
 - `ruff check server --fix`：581 项（含本轮新增代码）自动修 **247** → 剩 **334**
   （基线 504，净降 170；89 处 unsafe 保留不动）。autofix 后全量 unit+bdd **205 passed** 无破坏。
+
+## 验收全集扫描 + 对抗性自查挖出的 4 个自身回归（2026-11-04 04:20–05:30）
+
+### 验收脚本结果（全部当夜实测）
+| 脚本 | 结果 | 证据 |
+|---|---|---|
+| smoke_m1 | ✓ 46 节点/93 边 + B07→D05 全链 | run 320 |
+| e2e_ui | ✓ 8 场景（修 canvas header 溢出后） | /tmp/ff-e2eui3.log |
+| verify_r2_incremental --project 5s | ✓ 55%→S02 前 54 帧不变 | docs/reports/r2-incremental/5s-run324.json |
+| verify_r2_preview | ✓ cache 74 files | /tmp/ff-verify_r2_preview.log |
+| verify_r2_5_review | ✓ **自包含重写后**（自建 15s/4 场，D03 拦截→逐场查看→diff 只标 S03→自删） | run 323/324 |
+| verify_r2_5_audio / delivery | ✓ LUFS -16.0/TP -10.5；QC 全绿 9 文件 | run 255/256 时段 |
+| verify_r3 / camera / takes / audio_v2 / assets / templates | ✓ 全绿（templates 修复 await 后） | /tmp/ff-*.log |
+| verify_r3_qa | ✓ 自包含 6 步 | /tmp/ff-qa.log |
+| verify_p1_governance | ✓ 8 步（本轮末再跑一次） | /tmp/ff-verify_p1_governance.log |
+| verify_rumor_regression | ✓ **46/46** wall 263.5s master 39.5s | run 332 |
+| verify_r2_recovery | ✓ kill -9 后 24.0s F02 恢复 frames=120 | run 261(r2-recovery) |
+| golden_run 5s original | ✓ SSIM 1.0 | run 312（批 2） |
+| verify_r2_incremental --project 40s | ✓ 9.69% | run 311（批 2） |
+
+### 对抗性自查：4 个由我今晚改动引入、又被我自己挖出修复的回归
+1. **gate_decide 500**：P1-23 批 6 只转了函数前半的 payload.get，后半 author/note/checklist 漏转 →
+   smoke_m1 抓到。教训已固化成测试 `test_gate_decide_full_approve_path_end_to_end`
+   （模型化端点必须有 happy-path 断言，不是只测 422）。
+2. **ruff autofix 删掉 db.py 的副作用导入** `from .models import TABLES`（当"未用"）→
+   integration 全部 "no such table: schemamigration"。已恢复并加 `# noqa: F401 注释说明`。
+   教训：autofix 后必须先跑 integration。
+3. **_finish_saved_template_materialize 漏 await**（单测 run_until_complete 直调不暴露，
+   HTTP 路径返回 coroutine → 500）→ verify_r3_templates 抓到。
+4. **毒帧事故（自造自清）**：FrameServer 测试在 dev 服务占用 8787 时静默复用别家 root，
+   12 字节假 PNG 写进 rumor-39s/out/frames/0007.png；已删除该文件并核实 run 318/319/320
+   的 E05/F02 均 idle 无 manifest 引用；测试改为先探测端口占用即 skip。
+
+### 资源与计数
+- 验收产生的 13 个临时项目（249–261）全部 destroy；`GET /api/projects` 恒 **35**；
+  `pytest tests` 连跑两遍 **218 passed**（+1 skipped：frameserver 测试在 dev 占 8787 时诚实跳过）。
+- 磁盘：验收/黄金帧已清，filmflow-projects 回 **2.3G**；rumor-39s 由 4.2G 回 **1.0G**
+  （清掉 smoke run 318–320 留下的 948 张 frames，均为 blocked run 未引用）。
