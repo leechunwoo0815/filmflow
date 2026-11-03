@@ -11,6 +11,9 @@ import json
 import subprocess
 from pathlib import Path
 
+from ..fpscalc import frames_for
+from ..fpscalc import norm_fps as _norm_fps
+
 REGISTRY: dict[str, object] = {}
 
 
@@ -358,6 +361,7 @@ async def b06(ctx):
             s["operation"] = "Scene DSL 自动排版（source_span 见 script.doc）"
     profile = ctx.get("run_profile") or {}
     fps = ctx["params"].get("fps", profile.get("fps", 24))
+    fps = _norm_fps(fps)
     width = ctx["params"].get("width", profile.get("width", 1920))
     height = ctx["params"].get("height", profile.get("height", 1080))
     duration = profile.get("duration") or max((s.get("end", 0) for s in scenes), default=39.5)
@@ -375,7 +379,7 @@ async def b06(ctx):
         "font": u.get("B05") or {},
         "voice": u.get("A07") or {},
         "scenes": scenes, "events": events,
-        "film": {"duration": duration, "frames": round(duration * fps)},
+        "film": {"duration": duration, "frames": frames_for(duration, fps)},
         "doc_version": doc_versions,
         "doc_hash": ctx.get("doc_snapshot_sha", ""),
         "evidence": [],

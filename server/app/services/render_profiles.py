@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from ..engine.fpscalc import FPS_TOL, frames_for, norm_fps
 from ..errors import ApiError, ErrorCode
 
 SCHEMA = "filmflow.render-profile/1"
@@ -58,10 +59,14 @@ def _tier(name: str, value: dict | None, default: dict) -> dict:
     try:
         out["width"] = int(out["width"])
         out["height"] = int(out["height"])
-        out["fps"] = int(out["fps"])
         out["crf"] = int(out["crf"])
     except (TypeError, ValueError):
-        raise ApiError(ErrorCode.E_VALIDATION, f"{name} 档位 width/height/fps/crf 必须是整数")
+        raise ApiError(ErrorCode.E_VALIDATION, f"{name} 档位 width/height/crf 必须是整数")
+    try:
+        # P1-12：fps 保留非整数（23.976/"24000/1001"），不再 int() 截断
+        out["fps"] = norm_fps(out["fps"])
+    except ValueError as e:
+        raise ApiError(ErrorCode.E_VALIDATION, f"{name} 档位 fps 无效：{e}")
     out["preset"] = str(out.get("preset") or default["preset"])
     if out["width"] <= 0 or out["height"] <= 0 or out["fps"] <= 0:
         raise ApiError(ErrorCode.E_VALIDATION, f"{name} 档位尺寸/fps 必须大于 0")
@@ -91,22 +96,27 @@ def resolve(project_root: str | Path, project_profile: dict | None = None,
         out["final"]["width"] = int(prof["width"])
         out["final"]["height"] = int(prof["height"])
     if prof.get("fps"):
-        out["final"]["fps"] = int(prof["fps"])
+        try:
+            out["final"]["fps"] = norm_fps(prof["fps"])
+        except ValueError as e:
+            raise ApiError(ErrorCode.E_VALIDATION, f"项目 fps 无效：{e}")
     if raw and isinstance(raw.get("final"), dict):
         for key in ("width", "height", "fps"):
             if key in raw["final"]:
-                desired = int(raw["final"][key])
-                actual = int(out["final"][key])
-                if desired != actual:
+                desired, actual = raw["final"][key], out["final"][key]
+                differs = (abs(float(desired) - float(actual)) > FPS_TOL
+                           if key == "fps" else int(desired) != int(actual))
+                if differs:
                     raise ApiError(
                         ErrorCode.E_VALIDATION,
                         f"final 的 {key} 由 project.profile.json 决定（{actual}），"
                         f"render.profile.json 不能改成 {desired}")
     out["final"] = _tier("final", out["final"], DEFAULT_PROFILES["final"])
     fw, fh, ffps = out["final"]["width"], out["final"]["height"], out["final"]["fps"]
-    if not allow_low_final and (fw * fh < 1920 * 1080 or ffps < 24):
+    # 23.976/29.97 是广播标准交付帧率；低于 23.9 的才视为未达 final 门槛
+    if not allow_low_final and (fw * fh < 1920 * 1080 or ffps < 23.9):
         raise ApiError(ErrorCode.E_VALIDATION,
-                       f"final 不得低于 1080p/24（当前 {fw}×{fh}/{ffps}）")
+                       f"final 不得低于 1080p/23.976（当前 {fw}×{fh}/{ffps}）")
     out["source"] = source
     return out
 
@@ -124,7 +134,8 @@ def ensure_final_ready(session, run, project_root: str | Path, imported: bool,
         raise ApiError(ErrorCode.E_FINAL_REQUIRED,
                        f"最新 manifest 是 {manifest.get('profile')}，必须重新跑 F02 final",
                        status=409)
-    if int(manifest.get("fps") or 0) != int(profile.get("fps") or 0) or \
+    # P1-12：fps 用容差比较（manifest 可能存 23.976，profile 存 24000/1001 归一后的浮点）
+    if abs(float(manifest.get("fps") or 0) - float(profile.get("fps") or 0)) > 0.01 or \
             int(manifest.get("frames") or 0) != int(profile.get("frames") or 0):
         raise ApiError(ErrorCode.E_FINAL_REQUIRED,
                        "final manifest 的 fps/frames 与当前项目 profile 不一致", status=409)
@@ -138,10 +149,27 @@ def ensure_final_ready(session, run, project_root: str | Path, imported: bool,
                            "final manifest 不属于当前 Run（F02 未成功）", status=409)
     spec = manifest.get("profileSpec") or {}
     for key in ("width", "height", "fps"):
-        if key in spec and int(spec[key]) != int(profile.get(key) or spec[key]):
+        if key not in spec:
+            continue
+        differs = (abs(float(spec[key]) - float(profile.get(key) or spec[key])) > 0.01
+                   if key == "fps" else int(spec[key]) != int(profile.get(key) or spec[key]))
+        if differs:
             raise ApiError(ErrorCode.E_FINAL_REQUIRED,
                            f"final profileSpec.{key} 与项目 profile 不一致", status=409)
     return manifest
+
+
+def normalize_project_profile(profile: dict) -> dict:
+    """项目 profile 归一出口：fps 走 norm_fps，frames 走 frames_for（P1-12 唯一口径）。"""
+    out = dict(profile or {})
+    if out.get("fps"):
+        try:
+            out["fps"] = norm_fps(out["fps"])
+        except ValueError as e:
+            raise ApiError(ErrorCode.E_VALIDATION, f"项目 fps 无效：{e}")
+    if out.get("duration") and out.get("fps"):
+        out["frames"] = frames_for(out["duration"], out["fps"])
+    return out
 
 
 def save(project_root: str | Path, payload: dict, project_profile: dict | None = None,

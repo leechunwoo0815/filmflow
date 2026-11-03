@@ -23,6 +23,7 @@ from sqlmodel import Session, select
 
 from ..config import detect_chrome, settings
 from ..engine.cachekey import file_sha256
+from ..engine.fpscalc import fps_rational as _fps_rational
 from ..engine.render_manifest import scene_hash
 from ..engine.scene.canonical import content_hash
 from ..engine.scene.compiler import compile_scene
@@ -76,9 +77,10 @@ def _read_json(path: Path) -> dict:
 
 
 def _normalize_profile(profile: dict) -> dict:
-    fps = int(profile.get("fps") or 24)
+    from ..engine.fpscalc import frames_for, norm_fps  # P1-12
+    fps = norm_fps(profile.get("fps") or 24)
     duration = float(profile.get("duration") or 0)
-    frames = int(profile.get("frames") or round(duration * fps))
+    frames = int(profile.get("frames") or frames_for(duration, fps))
     return {"width": int(profile.get("width") or 1920), "height": int(profile.get("height") or 1080),
             "fps": fps, "duration": duration, "frames": frames}
 
@@ -773,7 +775,7 @@ async def _ffmpeg_encode(frames_dir: Path, fps: int, out: Path, crf: int, preset
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".tmp.mp4")
         log = out.with_suffix(".ffmpeg.log")
-        argv = ["ffmpeg", "-y", "-framerate", str(fps), "-i", str(frames_dir / "%06d.png"),
+        argv = ["ffmpeg", "-y", "-framerate", _fps_rational(fps), "-i", str(frames_dir / "%06d.png"),
                 "-c:v", "libx264", "-crf", str(crf), "-preset", preset,
                 "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(tmp)]
         # stderr 落文件，避免长片编码时管道写满导致死锁

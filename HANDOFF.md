@@ -2,7 +2,7 @@
 
 > 更新时间：2026-11-03 20:00（本地，darwin）· **R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；专家审查 Conditional Go 的 P0 Gate 已全部关闭；P1 治理已推进 14 项，剩余见 §0.6/§6.5**
 > 复核基线：本轮 P1 治理最后一个提交 `9bc0f95`（master，已推送 `git@github.com:leechunwoo0815/filmflow`）；FR-39 代码 `3bb81a0`（tag `r3.5-qa`）、FR-37 `f887424`、FR-36 `900076b`、`7a0ee2c`、R2.5 基线 `b7591bd`。本轮 9 个提交的清单见 §0.6 表尾。
-> 测试 **189 passed（unit 169 + integration 13 + BDD 7）**，`pytest server/tests -q` 约 50s；integration 用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`。
+> 测试 **201 passed（unit 181 + integration 13 + BDD 7）**，`pytest server/tests -q` 约 55s；integration 用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.10.0`、preview `1.8.0`。
 > 数据现状：**DB 35 个项目 / `filmflow-projects` 29 个目录 2.3GB / `~/.filmflow` 1.1GB**（审计与验证残留，删除需老板点头；口径见 §0.5/§7.4）。
 > **先读本文 §0（§0.5 审查结论、§0.6 状态表、§0.7 破坏性语义与运维坑）、§5、§6.5；再读 `AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
 > 上下文压缩后继续开发时：按 §6.5 的顺序做 P1 剩余项，不要提前做 R4，不要回滚已完成部分；申报完成必须按 §0.7 的复现命令附证据。
@@ -30,7 +30,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 > 含收敛判据、先证伪再建设的顺序、每轮循环协议、反作弊条款与收尾产物要求。
 
 ```bash
-cd server && uv run pytest tests -q                       # 189 passed
+cd server && uv run pytest tests -q                       # 201 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -122,7 +122,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 | P0-2 转场双实现 | ✅ | [server/app/engine/scene/transitions.py:12](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/scene/transitions.py#L12) `transition_type`，preview/pipeline/schema/timeline_ops 共用 | `divergent 0/8`；`server/tests/unit/test_transitions.py` 17 项 |
 | P0-3 测试隔离 | ✅ | `server/tests/conftest.py`（每次 pytest 独立临时 HOME + 清理）、`server/tests/integration/conftest.py`（独立 uvicorn/HOME/workspace、`isolated_api` fixture） | 连跑两次 `pytest server/tests -q` → `GET /api/projects` 恒 35；无 skipif 硬编码；缺风格库/Chrome/ffmpeg 默认失败（`--allow-missing-env` 才跳过） |
 | P0-4a 真实出片冒烟 | ✅ | `server/tests/integration/test_render_smoke.py` | 隔离服务里建 1s/12fps 项目 → Chrome 截帧 → ffmpeg 编码 → ffprobe 960×540/12fps/12 帧 → 与静帧 SSIM ≥0.95 |
-| P0-4b 增量/黄金/归档 | 🟡 部分 | `scripts/verify_r2_incremental.py --project 5s\|15s\|40s`、`scripts/golden_run.py --resolution thumb\|original\|both`、`docs/reports/**` | 已实跑 5s：增量 66/120=55%、前 54 帧不变、49.8s<53.8s（`docs/reports/r2-incremental/5s-run303.json`）；5s 原帧 6 帧 SSIM=1.0（`docs/reports/golden/5s-original-run306.json`）。**40s 增量、15s/40s 原帧 baseline 未实跑** |
+| P0-4b 增量/黄金/归档 | 🟡 部分 | `scripts/verify_r2_incremental.py --project 5s\|15s\|40s`、`scripts/golden_run.py --resolution thumb\|original\|both`、`docs/reports/**` | 已实跑 5s：增量 66/120=55%、前 54 帧不变、49.8s<53.8s（`docs/reports/r2-incremental/5s-run303.json`）；5s 原帧 6 帧 SSIM=1.0（`docs/reports/golden/5s-original-run306.json`）。**40s 增量已实跑 PASS（run 311：rendered 93/960=9.69%、reused 867、报告 docs/reports/r2-incremental/40s-run311.json）；15s/40s 原帧 baseline 未实跑** |
 | P0-5 QA↔渲染 | ✅ | [server/app/services/qa.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/qa.py) | `extend_scene` 同步 timeline+profile 且失败补偿回滚；`verified=null/documentVerified=true/requiresRerun=true`；`retry_run` fork 新 Run；报告 `pendingRerun`。`verify_r3_qa.py` 实跑 |
 
 **P1（治理，23 项）**
@@ -138,7 +138,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 | P1-09 多步写事务 | ⛔ 未做 | `templates.py` materialize / `takes.py` branch / `assets.py` replace | 专家为"部分确认"（未构造失败注入）。建议批次：对每个多 commit + 文件写序列做故障注入 + 回滚断言 |
 | P1-10 ErrorBoundary | ⛔ 未做 | `web/src/app/**` 无 `error.tsx` | 需加全局/页面级 boundary + 失败可见 |
 | P1-11 时间轴性能 | ⛔ 未做 | `web/src/app/timeline/page.tsx` 全量 `.map()` | 「100 场景 60fps」是**未实测的声明**；先测再决定虚拟化 |
-| P1-12 非整数 fps | ⛔ 未做 | `int(fps)` 出现在 preview/render_profiles/compiler/pipeline | 需先定策略（保留有理数帧网格）；改动影响执行器 → 必须升 `EXECUTOR_VERSION` 并重跑 golden |
+| P1-12 非整数 fps | ✅ | [server/app/engine/fpscalc.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/fpscalc.py) 唯一口径（norm_fps/frames_for/frame_at/fps_rational）；preview/render_profiles/compiler/pipeline/routes/templates/manifest 全接线 | `test_fps_math.py` 12 项；`EXECUTOR_VERSION=2.10.0`；golden 5s 原帧 run 312 SSIM 1.0；档位验收重跑数字与 run 309 一致（0.998663/0.952097）；final 门放行 NTSC 23.976（<23.9 才拦）|
 | P1-13 交付文档一致性 | ✅ | [server/app/services/delivery.py:272](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/delivery.py#L272) `_ensure_run_documents_match` | 2 项单测 + 生产库 22 个真实快照实测：18 放行 / 4 真实漂移拦截，与哈希比对零分歧、无误拦；run 198 合成漂移确认抛 `E_DELIVERY_GATE` |
 | P1-14 档位验收脚本 | ✅ | `scripts/verify_r2_profiles.py` | run 309 / project 248 全绿：D02 混排不崩；**SSIM 改为分窗口**：稳定段最差 0.998663（≥0.98）、切点/入场 0.5s 窗口最差 0.952097（≥0.90）。旧「0.9987」口径已在 §2.4 修正 |
 | P1-15 资产引用面 | ✅ | [server/app/services/assets.py:298](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/assets.py#L298) `walk_refs`、`:342` `scan_usages` | 覆盖 timeline + 其它项目文档 + `Template.content_json` + Run 快照（`include_history`）；同容器 `assetShas` 派生索引不重复计数；HTTP 实测「仅剩模板引用 → `DELETE /assets` 409 `source=template`」。4 项新单测（`test_assets.py`） |
@@ -167,7 +167,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 
 ### 0.6.2 明确没做/没跑（不要当成已完成）
 
-- 40s 增量渲染实跑、15s/40s 原帧 golden baseline 生成（各约 4.3GB / 数十分钟）。
+- ~~40s 增量渲染实跑~~ ✅ 已跑（run 311，9.69%）；15s/40s 原帧 golden baseline 生成（各约 4.3GB / 数十分钟）。
 - P1-09 失败注入与事务边界、P1-10 ErrorBoundary、P1-11 时间轴虚拟化与 100 场景实测、P1-12 非整数 fps、P1-21 干净机器 fresh-clone 走通、CI。
 - P1-19 其余验收脚本（列表见上表）与 P1-23 其余 42 端点。
 - `foreign_keys=ON`；DB 审计残留清理（需老板点头）。
@@ -613,7 +613,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 
 ### 4.6 缓存/锁（必须理解）
 
-- `EXECUTOR_VERSION=2.9.3`；改执行器必须升。
+- `EXECUTOR_VERSION=2.10.0`；改执行器必须升。
 - `DOC_NODES` 缓存含 `doc_snapshot_sha`；`PROFILE_NODES` 含 `renderProfilesSha`；
   `PROJECT_LOCAL_NODES={D01,D02,E03,E04,E05,F02,F04,G01,G05,G07}` 含 `projectRoot`。
 - **外部输入**：A01 copy、A03 风格库内容指纹、F01 项目根、G01 语音文件以 `_external:*` 进键。
@@ -764,7 +764,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
    2. **P1-12** 非整数 fps：`int(fps)` 集中在 `services/preview.py`、`services/render_profiles.py`、
       `engine/scene/compiler.py`、`engine/pipeline.py`；先定帧网格口径（建议保留 `fps` 分数 + 帧号用
       `round(t*fps)` 统一函数），改执行器必须升 `EXECUTOR_VERSION` 并重跑 `golden_run.py`。
-   3. **P1-09** 多步写：`templates.py::_materialize_first`、`takes.py` branch/replace、`assets.py` replace
+   2. ~~P1-12~~ ✅ 已完成（见 §0.6）；3. **P1-09** 多步写：`templates.py::_materialize_first`、`takes.py` branch/replace、`assets.py` replace
       做失败注入（ monkeypatch 第二次 commit 抛错）+ 半成品断言，再决定是否包事务/补偿。
    4. **P1-23** 剩余 42 个 `payload: dict` 端点（`rg -c "payload: dict" server/app/api/routes.py`）。
    5. **P1-10** `web/src/app/error.tsx` + `global-error.tsx`；**P1-11** 时间轴虚拟化前先做 100 场景实测。
@@ -860,7 +860,7 @@ curl -s http://127.0.0.1:7860/api/queue
 - 46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；边数 93。
 - Chrome 全局串行 1 个（`chrome-queue=1`）；ffmpeg 独占；预览不新开第二个浏览器。
 - 新项目禁止 `legacy_entry`；只有 `meta.imported=true` 可走 v1 harness。
-- 改执行器行为必须升 `EXECUTOR_VERSION`（2.9.3）。
+- 改执行器行为必须升 `EXECUTOR_VERSION`（2.10.0）。
 - 路径白名单/禁止路径穿越；FrameServer 只服务 `/engine`、`/project` 与 `/global-assets`。
 - 风格库逻辑约 75MiB（mp4 稀疏文件，磁盘分配约 9.3MiB）不入 git；`vendor/fy-code-animation` 只查方法，不 import。
 - R3.0 v1 含 FR-32–38；R3.5 FR-39 已完成，下一批先修专家审查 P0 再做 FR-40/41；R4 不提前做。
@@ -890,7 +890,7 @@ curl -s http://127.0.0.1:7860/api/queue
 15. **时间轴撤销**：UI 历史 50 步；30 步只验证了文档版本恢复；长链 UI 连点未自动化。
 16. **时间轴性能**：100 场景 ops 服务端 <0.2s；浏览器 60fps 未实测。
 17. **审片批注**：项目级 review.json（不按 Run 分桶）；Take 对比已做，但无音频波形对齐与帧差图。
-18. **R3 版本**：EXECUTOR_VERSION 2.9.3；D01/E03/E04 已加入 project-local 缓存；
+18. **R3 版本**：EXECUTOR_VERSION 2.10.0；D01/E03/E04 已加入 project-local 缓存；
     新项目二次 Run 的 B02/B03 必须读 Run 快照 timeline，不能读旧 card/task.json。
 19. **A03 扫描**：风格库扫描已改 `asyncio.to_thread`，但版本升级/首次索引仍可能耗时数分钟；
     不要把同步扫描塞回事件循环。
@@ -920,16 +920,16 @@ curl -s http://127.0.0.1:7860/api/queue
     模型化时保持默认值与服务层原取键方式一致，多态端点用 `extra="allow"` + `model_dump()` 透传。
 30. **`foreign_keys=ON` 故意没开**：现有删除路径不完整，开启会立刻把测试打在 FK 约束上；
     必须先做级联/删除顺序批次（P1-06 收尾），再开。
-31. **未跑的证据**：40s 增量（`verify_r2_incremental.py --project 40s --scene-index 2`）与
-    15s/40s 原帧 golden（`golden_run.py --project 15s|40s --resolution original`）都还没实跑，
-    各约 4.3GB / 数十分钟。申报"40s 复现"之前必须先跑并归档 `docs/reports/**`。
+31. **未跑的证据**：~~40s 增量~~ ✅（2026-11-04 run 311 实跑 PASS，9.69%，报告已归档）；
+    15s/40s 原帧 golden（`golden_run.py --project 15s|40s --resolution original`）仍待实跑，
+    各约 4.3GB / 数十分钟。申报"40s 复现"之前 40s 已可引用 run 311。
 
 ---
 
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`（或按 §0.7 配方重启）；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **189 passed（unit 169 + integration 13 + BDD 7）**
+- [ ] `cd server && uv run pytest tests -q` → **201 passed（unit 181 + integration 13 + BDD 7）**
 - [ ] 连跑两次上面这条，`GET /api/projects` 计数不变（当前 35）——这是 P0-3 的核心验收。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。

@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from ..config import detect_chrome
+from ..engine.fpscalc import fps_rational, frames_for, norm_fps
 from ..engine.scene.compiler import compile_scene
 from ..engine.snapshot import ensure_run_snapshot
 from ..models import Approval, Artifact, Asset, Job, NodeRun, Project, Run
@@ -238,8 +239,8 @@ def _mux(video: Path, mix: Path | None, out: Path, width: int, height: int,
 
 
 def _encode_frames(pattern: Path, mix: Path | None, out: Path, width: int, height: int,
-                   fps: int, crf: int = 19, preset: str = "medium") -> None:
-    argv = ["ffmpeg", "-y", "-framerate", str(fps), "-i", str(pattern)]
+                   fps, crf: int = 19, preset: str = "medium") -> None:
+    argv = ["ffmpeg", "-y", "-framerate", fps_rational(fps), "-i", str(pattern)]
     if mix:
         argv += ["-i", str(mix)]
     argv += ["-vf", f"scale={width}:{height}:flags=lanczos", "-c:v", "libx264",
@@ -371,7 +372,7 @@ async def run_delivery(job_id: int) -> None:
         await LOCK_MANAGER.acquire("ffmpeg", f"delivery:{job_id}")
         try:
             await asyncio.to_thread(_mux, video, mix, master16, 1920, 1080,
-                                    int(profile.get("fps") or 24), 18, "medium")
+                                    fps_rational(norm_fps(profile.get("fps") or 24)), 18, "medium")
         finally:
             LOCK_MANAGER.release("ffmpeg", f"delivery:{job_id}")
         with Session(db_engine) as s:
@@ -467,8 +468,10 @@ async def run_delivery(job_id: int) -> None:
         from PIL import Image
         c16, c9 = Image.open(cover16).size, Image.open(cover9).size
         checks = {
-            "master16": p16["width"] == 1920 and p16["height"] == 1080 and p16["fps"] == 24,
-            "master9": p9["width"] == 1080 and p9["height"] == 1920 and p9["fps"] == 24,
+            "master16": p16["width"] == 1920 and p16["height"] == 1080
+                        and abs(float(p16["fps"]) - float(profile.get("fps") or 24)) <= 0.01,
+            "master9": p9["width"] == 1080 and p9["height"] == 1920
+                       and abs(float(p9["fps"]) - float(profile.get("fps") or 24)) <= 0.01,
             "duration": abs(p16["duration"] - float(profile.get("duration") or 0)) <= 0.05
                         and abs(p9["duration"] - float(profile.get("duration") or 0)) <= 0.05,
             "audio": p16["audioCodec"] is not None and p9["audioCodec"] is not None,

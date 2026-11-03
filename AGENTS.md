@@ -5,7 +5,7 @@
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
 > 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（逻辑约 75MiB；mp4 为稀疏文件，磁盘分配约 9.3MiB；库不入 git）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
-> **当前进度（2026-11-03 20:00）**：R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；**专家审查 P0 Gate 全部关闭**（P0-4b 的 40s 增量、15s/40s 原帧 baseline 仍未实跑）；**P1 治理已完成 14 项**（02/03/04/05/07/08/13/14/15/16/17/18/22 + 06/19/23 部分）。完整 `pytest server/tests -q` **189 passed**（unit 169 + integration 13 + BDD 7），`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`。FR-40/41 已满足准入（等老板点头）；P1 剩余顺序见 `HANDOFF.md` §6.5，状态表 §0.6、破坏性语义 §0.6.1、运维坑 §0.7。R4 不做。
+> **当前进度（2026-11-03 20:00）**：R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；**专家审查 P0 Gate 全部关闭**（P0-4b 的 40s 增量、15s/40s 原帧 baseline 仍未实跑）；**P1 治理已完成 14 项**（02/03/04/05/07/08/13/14/15/16/17/18/22 + 06/19/23 部分）。完整 `pytest server/tests -q` **201 passed**（unit 169 + integration 13 + BDD 7），`EXECUTOR_VERSION=2.10.0`、preview `1.8.0`。FR-40/41 已满足准入（等老板点头）；P1 剩余顺序见 `HANDOFF.md` §6.5，状态表 §0.6、破坏性语义 §0.6.1、运维坑 §0.7。R4 不做。
 > **完整接手 prompt**：[`QODER_PROMPT.md`](QODER_PROMPT.md)（历史 prompt；新 Agent 先看 HANDOFF §0/§6）。
 
 ## 这个仓库是什么
@@ -59,7 +59,7 @@ R3.0 v1（FR-32–38）+ R3.5 FR-39。下一批：FR-40/41；不提前做 R4。
 
 ```bash
 ./dev.sh
-cd server && uv run pytest tests -q                       # 189 项（含 integration 真实出片冒烟 + P0/P1 回归）
+cd server && uv run pytest tests -q                       # 201 项（含 integration 真实出片冒烟 + P0/P1 回归）
 uv run --project server python scripts/e2e_ui.py          # UI 8 场景 ~15s
 uv run --project server python scripts/e2e_onboarding.py  # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py        # API 冒烟：46 / 93

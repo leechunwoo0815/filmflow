@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 from ..config import settings
 from ..db import engine, get_session
 from ..engine import edges
+from ..engine.fpscalc import frames_for, norm_fps
 from ..engine import runengine as re_mod
 from ..engine.cachekey import gate_content_hash
 from ..engine.invalidation import impact_preview
@@ -881,7 +882,8 @@ async def _materialize_first(session: Session, *, name: str, copy: str, profile:
         st = _first_available_style(session, family)
     root = _default_project_root(name)
     profile = dict(profile)
-    profile.setdefault("frames", round(float(profile["duration"]) * int(profile["fps"])))
+    profile["fps"] = norm_fps(profile["fps"])  # P1-12
+    profile.setdefault("frames", frames_for(profile["duration"], profile["fps"]))
     d = Draft(name=name, step=5, payload_json={
         "root": str(root), "copy": copy, "profile": profile,
         "pick": {"primary": st.id, "alternates": [], "reason": f"新手模板 {source}"},
@@ -2129,11 +2131,11 @@ def _project_profile(root: str | Path) -> dict:
         prof = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
     except (OSError, json.JSONDecodeError):
         prof = {}
-    fps = int(prof.get("fps") or 24)
+    fps = norm_fps(prof.get("fps") or 24)  # P1-12
     duration = float(prof.get("duration") or 0)
     return {"width": int(prof.get("width") or 1920), "height": int(prof.get("height") or 1080),
             "fps": fps, "duration": duration,
-            "frames": int(prof.get("frames") or round(duration * fps))}
+            "frames": int(prof.get("frames") or frames_for(duration, fps))}
 
 
 def _doc_impact(kind: str) -> dict:
@@ -2282,7 +2284,7 @@ def _take_source_docs(session: Session, proj: Project, run: Run) -> tuple[dict, 
             copy = "".join(str(sc.get("meaning") or "") for sc in task["scenes"])
         script = docs_svc.build_script_doc(copy) if copy else {}
     if not timeline and task.get("scenes"):
-        fps = int(task.get("fps") or 24)
+        fps = norm_fps(task.get("fps") or 24)  # P1-12
         scenes = task["scenes"]
         timeline = {
             "schema": docs_svc.SCHEMAS["timeline"], "fps": fps,

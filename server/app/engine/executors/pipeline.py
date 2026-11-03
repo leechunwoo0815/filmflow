@@ -9,6 +9,8 @@ import threading
 from pathlib import Path
 from urllib.parse import quote
 
+from ..fpscalc import fps_rational, frames_for
+from ..fpscalc import norm_fps as _norm_fps
 from ..scene.transitions import transition_type as _transition_type
 from . import (
     _artifact_json,
@@ -541,8 +543,8 @@ async def e01(ctx):
     task = _task_path(ctx)
     t = _read_json(task) if task.exists() else {}
     profile = _profile(ctx)
-    fps = profile["fps"]
-    frames = profile["frames"] or round(profile["duration"] * fps)
+    fps = _norm_fps(profile["fps"])
+    frames = profile["frames"] or frames_for(profile["duration"], fps)
     timeline = {"fps": fps, "frames": frames, "T": "frame/fps",
                 "scenes": t.get("scenes", []), "events": t.get("events", [])}
     _artifact_json(ctx, "timeline.json", timeline)
@@ -671,7 +673,7 @@ async def e05(ctx):
     profile = _profile(ctx)
     profiles = _profiles(ctx)
     review = profiles["review"]
-    proxy_frames = round(profile["duration"] * int(review["fps"]))
+    proxy_frames = frames_for(profile["duration"], review["fps"])
     proxy_dir = _project_file(ctx, "out/proxy")
     proxy_dir.mkdir(parents=True, exist_ok=True)
     for p in proxy_dir.glob("*.png"):
@@ -681,7 +683,7 @@ async def e05(ctx):
         entry = _legacy_entry(build, "film")
         if not entry:
             raise RuntimeError("imported 项目缺少 legacy_entry.film")
-        proxy_frames = round(profile["duration"] * 12)
+        proxy_frames = frames_for(profile["duration"], 12)
         q = f"mode=proxy&fps=12&scale=0.25&total={proxy_frames}"
     else:
         if not _api_v2(build):
@@ -692,8 +694,8 @@ async def e05(ctx):
             from ...errors import ApiError, ErrorCode
             raise ApiError(ErrorCode.E_PROGRAM_INVALID, "新项目 film_spec 入口未登记")
         q = _film_spec_query(ctx, "proxy", "review", 0, proxy_frames, proxy_frames,
-                             fps=int(review["fps"]), out_w=int(review["width"]),
-                             out_h=int(review["height"]), proxy_fps=int(review["fps"]))
+                             fps=_norm_fps(review["fps"]), out_w=int(review["width"]),
+                             out_h=int(review["height"]), proxy_fps=_norm_fps(review["fps"]))
     url = _engine_url(ctx, build, entry, q)
     chrome_argv = await _chrome_render_argv(ctx, url)
     import asyncio as _aio
@@ -752,7 +754,7 @@ async def e06(ctx):
     profiles = _profiles(ctx)
     review = profiles["review"]
     legacy = bool(ctx.get("run_imported"))
-    fps = 12 if legacy else int(review["fps"])
+    fps = 12 if legacy else _norm_fps(review["fps"])
     profile_label = "legacy" if legacy else "review"
     policy = {"missing": True, "black": True, "dups": True, "motion": True,
               "sync": True, "ssim": False, "lufs": False}
@@ -973,7 +975,7 @@ async def f02(ctx):
     build = _engine_build(ctx)
     ensure_frame_server(ctx)
     profile = _profile(ctx)
-    frames = profile["frames"] or round(profile["duration"] * profile["fps"])
+    frames = profile["frames"] or frames_for(profile["duration"], profile["fps"])
     frames_dir = _project_file(ctx, "out/frames")
     frames_dir.mkdir(parents=True, exist_ok=True)
     if ctx.get("run_imported"):
@@ -1076,7 +1078,7 @@ async def f04(ctx):
     fps = profile["fps"]
     out = _project_file(ctx, "out/film/intermediate.mp4")
     out.parent.mkdir(parents=True, exist_ok=True)
-    argv = ["ffmpeg", "-y", "-framerate", str(fps), "-i", str(_project_file(ctx, "out/frames/%04d.png")),
+    argv = ["ffmpeg", "-y", "-framerate", fps_rational(fps), "-i", str(_project_file(ctx, "out/frames/%04d.png")),
             "-c:v", "libx264", "-crf", str(ctx["params"].get("crf", final["crf"])),
             "-preset", str(ctx["params"].get("preset", final["preset"])),
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)]
@@ -1102,7 +1104,7 @@ async def f05(ctx):
     # F04 可能跨项目缓存命中：mp4 在旧项目内容寻址目录，项目内路径不存在
     mp4 = _upstream_file(ctx, "F04", "MP4", _project_file(ctx, "out/film/intermediate.mp4"))
     ff = await _ffprobe(ctx, mp4)
-    expect_frames = profile["frames"] or round(profile["duration"] * profile["fps"])
+    expect_frames = profile["frames"] or frames_for(profile["duration"], profile["fps"])
     if abs(ff["frames"] - expect_frames) > 1:
         raise RuntimeError(f"成片帧数 {ff['frames']} ≠ {expect_frames}")
     if abs(ff["duration"] - profile["duration"]) > 0.02:

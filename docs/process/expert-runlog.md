@@ -89,3 +89,32 @@
 - 请求模型：baseVersion/base_version 别名、timeline/ops extra 透传、默认值一致性。
 - 迁移登记处：MIGRATIONS vs 既有 DB、抛错半应用、create_all 顺序。
 - 档位 SSIM 分窗口独立复测；老交付证据抽 3 份。
+
+## 建设批 1 · 40s 增量实跑 + P1-12 非整数 fps（2026-11-04 00:30–01:10）
+
+### 40s 增量实跑（交接"明确没做"最大项）· ✅ PASS
+- 命令：`uv run --project server python scripts/verify_r2_incremental.py --project 40s --scene-index 2`
+- 结果：run1 352.7s / run2 282.3s；**rendered=93/960 (9.69%)、reused=867**；first changed scene=S03、
+  unchanged_prefix_frames=396；**报告归档 `docs/reports/r2-incremental/40s-run311.json`**。
+- 与 HANDOFF §2.2 历史声称（93/960=9.69%）一致 —— 旧证据项目已删的数字现已在全新 Run 311 复现。
+- 磁盘：脚本自动清 frames/proxy，`r2-verify-40s-252` 仅 94MB。
+
+### P1-12 非整数 fps · ✅ 完成（RED→GREEN→升版→重跑）
+- 新增 `server/app/engine/fpscalc.py`：`norm_fps`（数字/"23.976"/"24000/1001"）、
+  `frames_for(duration,fps)=round(d*f)`、`frame_at/time_at`、`fps_rational`（NTSC 率出精确有理数）、`FPS_TOL`。
+- 全仓 `int(fps)`/`round(d*int(fps))` 截断点接线：render_profiles(_tier/resolve/ensure_final_ready/
+  新增 normalize_project_profile)、compiler、render_manifest(build_plan/plan_dirty/build_manifest)、
+  pipeline(e01/e05/f03/F02/intermediate 编码)、executors.__init__(task 卡)、routes(3 处)、preview、
+  templates、delivery(_render_variant_frames/_encode_frames→fps_rational/QC)。
+- **THRESHOLD-CHANGE（1 处，已记录）**：final 门 `ffps < 24` → `ffps < 23.9`。理由：23.976/29.97 是
+  广播标准交付帧率，原一刀切使 P1-12 对交付无用；23.9 仍拦住 draft 级 12fps。影响面：仅 final 门槛。
+- **行为变化**：ensure_final_ready/plan_dirty 的 fps 比较从 int() 改容差（0.01）——修复
+  "manifest 23.976 vs profile 24000/1001 误报 409/全量重渲"。
+- 测试：`server/tests/unit/test_fps_math.py` 12 项（先 RED 后 GREEN；网格往返/单调/确定性/NTSC 归一）。
+- 升版：`EXECUTOR_VERSION 2.9.3 → 2.10.0`（旧缓存自动失效）。
+- 重跑：golden 5s 原帧 **run 312 SSIM 1.000000 / pHash 0**（6 帧，报告
+  `docs/reports/golden/5s-original-run312.json`）；`verify_r2_profiles.py` PASS 且 8 点 SSIM 与
+  run 309 完全一致（0.998663 / 0.952097）—— 整数 24fps 项目视觉零回归。
+- 全量：`pytest tests/unit tests/bdd` 188 passed；integration 13 项待整批跑。
+- 文档：HANDOFF/AGENTS 版本号与测试计数（201）已同步；P0-4b 40s 证据口径已更新。
+- 磁盘：r2-profiles-254 / golden-5s-253 的 frames+proxy 已清（2.4G 持平）。

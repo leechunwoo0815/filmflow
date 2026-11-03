@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from ..fpscalc import norm_fps
 from .canonical import content_hash
 from .schema import SCENE_SCHEMA, validate_program
 
@@ -84,7 +85,7 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
                   layout: str = "16x9", asset_resolver=None) -> dict:
     w = int(profile.get("width") or 1920)
     h = int(profile.get("height") or 1080)
-    fps = int(profile.get("fps") or 24)
+    fps = norm_fps(profile.get("fps") or 24)  # P1-12：非整数 fps 不截断
     duration = round(float(scene.get("end", 0)) - float(scene.get("start", 0)), 3)
     if duration <= 0:
         raise ValueError(f"场景 {scene.get('id')} duration <=0")

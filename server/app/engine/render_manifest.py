@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import math
 
+from .fpscalc import FPS_TOL, frames_for, norm_fps
 from .scene.canonical import content_hash
 
 MANIFEST_SCHEMA = "filmflow.render/1"
 
 
-def scene_ranges(scenes: list[dict], fps: int, frames: int) -> list[dict]:
+def scene_ranges(scenes: list[dict], fps: float, frames: int) -> list[dict]:
     out = []
     for i, s in enumerate(scenes):
         start = max(0, min(frames, round(float(s.get("start", 0)) * fps)))
@@ -53,8 +54,8 @@ def scene_hash(program: dict, tokens_sha: str, engine_sha: str, font_sha: str,
 
 def build_plan(scenes: list[dict], programs: dict[str, dict], transitions: list[dict],
                profile: dict, tokens_sha: str, engine_sha: str, font_sha: str) -> list[dict]:
-    fps = int(profile.get("fps") or 24)
-    frames = int(profile.get("frames") or round(float(profile.get("duration") or 0) * fps))
+    fps = norm_fps(profile.get("fps") or 24)
+    frames = int(profile.get("frames") or frames_for(profile.get("duration") or 0, fps))
     plan = []
     for r in scene_ranges(scenes, fps, frames):
         prog = programs.get(r["id"])
@@ -89,8 +90,9 @@ def plan_dirty(plan: list[dict], prev_manifest: dict | None, profile_name: str,
             s["status"] = "dirty"
         return plan
     if (prev_manifest.get("profile") != profile_name
-            or prev_manifest.get("fps") != int(profile.get("fps") or 24)
-            or prev_manifest.get("frames") != int(profile.get("frames") or 0)):
+            or abs(float(prev_manifest.get("fps") or 0)
+                   - float(profile.get("fps") or 24)) > FPS_TOL
+            or int(prev_manifest.get("frames") or 0) != int(profile.get("frames") or 0)):
         for s in plan:
             s["status"] = "dirty"
         return plan
@@ -133,7 +135,7 @@ def build_manifest(run_id: int, profile_name: str, profile: dict, plan: list[dic
     return {
         "schema": MANIFEST_SCHEMA, "run_id": run_id, "profile": profile_name,
         "profileSpec": dict(profile_spec or {}),
-        "fps": int(profile.get("fps") or 24), "frames": frames,
+        "fps": norm_fps(profile.get("fps") or 24), "frames": frames,
         "scenes": [{"id": s["id"], "hash": s["hash"], "range": s["range"],
                     "status": s["status"], "ms": s.get("ms", 0)} for s in plan],
         "transitionOverlap": max([s.get("overlap", 0) for s in plan] or [0]),

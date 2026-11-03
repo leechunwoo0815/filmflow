@@ -1,0 +1,105 @@
+{
+ "schema": "filmflow.r2-incremental-report/1",
+ "projectSpec": "40s",
+ "primary": "H2",
+ "project": {
+  "id": 249,
+  "name": "r2-verify-40s-252"
+ },
+ "runs": {
+  "run1": 310,
+  "run2": 311
+ },
+ "sceneChange": {
+  "index": 2,
+  "sceneId": "S03",
+  "sentence": "短句。",
+  "newText": "风从纸上起，慢慢穿过整条街。纸不动，风先动。短句字。字在风里排队，排成一条很长的路。最后一阵风把纸吹向远处。"
+ },
+ "timings": {
+  "run1Seconds": 352.7,
+  "run2Seconds": 282.3
+ },
+ "manifest1": {
+  "frames": 960,
+  "fps": 24,
+  "profile": "final",
+  "renderedFrames": 960,
+  "reusedFrames": 0,
+  "sceneHashes": {
+   "S01": "f554764ce3154b0d486152500fc467d23f413a482068996a73d2053d1151461c",
+   "S02": "9e1805ba53dd4028aba5c020c7d036ab6c3858ab54ce8ef414b4bbcbb4663a55",
+   "S03": "1efb9a0c597b5e1b4700b59053082afb45f03ebfe41670c0976765b2464e3998",
+   "S04": "6095e3521ab33dcec5261b0b8f040beb399e0bc26e3746e7fc4fb9aba6e20b5f",
+   "S05": "d524f87232f17cb843fc0e6950ab83196a082061f7197f355f05af51766e20f9"
+  },
+  "sceneRanges": {
+   "S01": [
+    0,
+    241
+   ],
+   "S02": [
+    241,
+    396
+   ],
+   "S03": [
+    396,
+    477
+   ],
+   "S04": [
+    477,
+    748
+   ],
+   "S05": [
+    748,
+    960
+   ]
+  }
+ },
+ "manifest2": {
+  "frames": 960,
+  "fps": 24,
+  "profile": "final",
+  "renderedFrames": 93,
+  "reusedFrames": 867,
+  "sceneHashes": {
+   "S01": "f554764ce3154b0d486152500fc467d23f413a482068996a73d2053d1151461c",
+   "S02": "9e1805ba53dd4028aba5c020c7d036ab6c3858ab54ce8ef414b4bbcbb4663a55",
+   "S03": "78bdc2312db5347a00e3dc889b99a47704daa269c80528ece7ca518f0477bec0",
+   "S04": "6095e3521ab33dcec5261b0b8f040beb399e0bc26e3746e7fc4fb9aba6e20b5f",
+   "S05": "d524f87232f17cb843fc0e6950ab83196a082061f7197f355f05af51766e20f9"
+  },
+  "sceneRanges": {
+   "S01": [
+    0,
+    241
+   ],
+   "S02": [
+    241,
+    396
+   ],
+   "S03": [
+    396,
+    477
+   ],
+   "S04": [
+    477,
+    748
+   ],
+   "S05": [
+    748,
+    960
+   ]
+  }
+ },
+ "assertions": {
+  "reusedPrefixScenes": true,
+  "unchangedPrefixFrames": true,
+  "renderedRatio": 0.0969,
+  "maxRenderedRatio": 0.25,
+  "fasterSecondRun": true
+ },
+ "ok": true,
+ "status": "pass",
+ "generatedAt": "2026-11-03T16:01:17Z"
+}

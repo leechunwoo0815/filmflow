@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..engine.fpscalc import frames_for, norm_fps
 from ..models import Template
 from . import assets
 
@@ -124,13 +125,13 @@ def project_template_content(*, profile: dict, timeline: dict, style_id: str = "
     prof = dict(profile)
     if total > 0:
         prof["duration"] = round(total, 3)
-        prof["frames"] = round(total * int(prof.get("fps") or 24))
+        prof["frames"] = frames_for(total, norm_fps(prof.get("fps") or 24))
     content = {"schema": PROJECT_SCHEMA, "description": description,
                "profile": prof, "style_id": style_id, "style_family": style_family,
                "delivery": deepcopy(delivery or {}), "copy": copy,
                "sourceProjectId": source_project_id,
                "assetShas": collect_asset_shas(timeline),
-               "timeline": {"fps": int(timeline.get("fps") or prof.get("fps") or 24),
+               "timeline": {"fps": norm_fps(timeline.get("fps") or prof.get("fps") or 24),
                             "layout": deepcopy(timeline.get("layout") or {}),
                             "scenes": scenes}}
     content["variables"] = extract_variables({"copy": copy, "timeline": content["timeline"]})
@@ -192,8 +193,10 @@ def build_timeline_from_content(content: dict, script: dict, profile: dict) -> d
                 scene[key] = deepcopy(ts[key])
         scenes.append(scene)
         t += dur
-    doc = {"schema": "filmflow.timeline/2", "fps": int(tpl.get("fps") or profile.get("fps") or 24),
-           "duration": round(t, 3), "frames": round(t * int(profile.get("fps") or 24)),
+    doc = {"schema": "filmflow.timeline/2",
+           "fps": norm_fps(tpl.get("fps") or profile.get("fps") or 24),
+           "duration": round(t, 3),
+           "frames": frames_for(t, norm_fps(profile.get("fps") or 24)),
            "scenes": scenes, "events": [], "tracks": [],
            "layout": deepcopy(tpl.get("layout") or {"safeArea": {"w": 0.05, "h": 0.08},
                                                     "grid": {"cols": 12}})}
