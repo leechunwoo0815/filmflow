@@ -1,5 +1,8 @@
-"""数据库会话与建表。"""
+"""数据库会话与建表；schema 迁移登记在 MIGRATIONS。
+"""
 from __future__ import annotations
+
+from typing import Callable
 
 from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
@@ -28,14 +31,6 @@ def _configure_sqlite(dbapi_connection, _connection_record) -> None:
         cursor.close()
 
 
-def init_db() -> None:
-    settings.ensure_dirs()
-    # FTS5 trigram 虚表在 styles 表之后由 style_index 服务确保创建
-    SQLModel.metadata.create_all(engine)
-    _migrate_job_table()
-    _record_schema_versions()
-
-
 _JOB_COLUMNS = {
     "priority": "INTEGER DEFAULT 40",
     "run_id": "INTEGER",
@@ -55,26 +50,54 @@ _JOB_COLUMNS = {
 }
 
 
-def _migrate_job_table() -> None:
-    """SQLite 幂等 ALTER：create_all 不会给旧 job 表补列（schema v3）。"""
-    with engine.begin() as conn:
-        rows = conn.exec_driver_sql("PRAGMA table_info(job)").fetchall()
-        if not rows:
-            return
-        cols = {r[1] for r in rows}
-        for name, ddl in _JOB_COLUMNS.items():
-            if name not in cols:
-                conn.exec_driver_sql(f"ALTER TABLE job ADD COLUMN {name} {ddl}")
+def _add_columns_on(conn, table: str, columns: dict[str, str]) -> None:
+    rows = conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+    if not rows:
+        return
+    existing = {r[1] for r in rows}
+    for name, ddl in columns.items():
+        if name not in existing:
+            conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
-def _record_schema_versions() -> None:
-    """幂等记录已应用的 schema 版本；后续 ALTER 迁移在此追加。"""
+def _migrate_job_columns(conn) -> None:
+    _add_columns_on(conn, "job", _JOB_COLUMNS)
+
+
+def _noop(conn) -> None:
+    """已由 create_all 建表的历史版本，仅登记占位。"""
+
+
+# 迁移登记处：version 单调递增，函数必须幂等（重跑安全）。
+# 新加列/改表请在此追加一条，并在 server/tests/unit/test_migrations.py 补断言。
+MIGRATIONS: list[tuple[int, str, Callable]] = [
+    (1, "基线：project/workflow/run/noderun", _noop),
+    (2, "文档与快照：projectdoc/docrevision/approval", _noop),
+    (3, "job 持久队列列补齐", _migrate_job_columns),
+]
+
+
+def apply_migrations(migrations: list[tuple[int, str, Callable]], eng) -> list[int]:
+    """按 version 升序执行未登记的迁移，返回本次应用的 version 列表。"""
     from .models import SchemaMigration
-    with Session(engine) as session:
-        for version in (1, 2, 3):
-            if session.get(SchemaMigration, version) is None:
-                session.add(SchemaMigration(version=version))
-        session.commit()
+    applied: list[int] = []
+    with Session(eng) as session:
+        for version, _name, fn in sorted(migrations, key=lambda m: m[0]):
+            if session.get(SchemaMigration, version) is not None:
+                continue
+            with eng.begin() as conn:
+                fn(conn)
+            session.add(SchemaMigration(version=version))
+            session.commit()
+            applied.append(version)
+    return applied
+
+
+def init_db() -> None:
+    settings.ensure_dirs()
+    # FTS5 trigram 虚表在 styles 表之后由 style_index 服务确保创建
+    SQLModel.metadata.create_all(engine)
+    apply_migrations(MIGRATIONS, engine)
 
 
 def get_session():

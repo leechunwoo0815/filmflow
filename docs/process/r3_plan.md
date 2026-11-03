@@ -170,6 +170,7 @@ QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
 - **P1-08 时间轴冲突保稿**：409 `E_DOC_CONFLICT` 保留本地草稿并弹出「只看服务端 / 保留本地并重试」，冲突期间暂停自动保存。
 - **P1-15 资产引用面**：`scan_usages` 通用递归扫全部项目文档 + `Template.content_json` + Run 快照；`delete_asset` 含历史快照；`/assets` 标注来源；真实 HTTP 验证「仅剩模板引用时删除被 409 拦」。
 - **P1-17 补充**：`_timeline_before` 记录 `profileExisted`；撤销时若修复前没有 profile 文档行则删掉新生成的那行，不把残缺默认值固化。
+- **P1-07 迁移登记处**：`db.MIGRATIONS` + `apply_migrations`（版本升序、幂等、已登记跳过），替换一次性 `_migrate_job_table`/`_record_schema_versions`；3 项单测。
 - **P1-19（已开始）**：新增 `scripts/_acceptance.py` 自建自删项目脚手架；`verify_r3_qa.py` 全量改造为自包含（6 步：两处溢出→连续扩场景→LIFO 撤销与抢跑点名→许可 confirm→missing_asset→asset_license_missing→报告），演示项目 227 不再被改写；其余硬编码脚本按批迁移。
 - **P1-17 QA 撤销链**：修复记录写入 `afterHash/afterProfileHash`，撤销按链顶（内容仍等于该次修复结果）逐级倒序回退；`_timeline_before` 深拷贝修掉 before==after 的引用别名 bug；`verify_r3_qa.py` 实跑 5 步全绿。
 - **P1-16/P1-18 许可强制**：所有资产种类入库都要 source+type（到期日须未过期）；被引用资产不可清空许可；`rights.json` 由 Run 快照真实资产生成并有缺口即拒交付；QA 新增 `asset_license_missing`，`fill_license` 去掉 `authorized` 预置、UI 需显式 YES。
