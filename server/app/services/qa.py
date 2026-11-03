@@ -360,6 +360,7 @@ def _timeline_before(session: Session, project: Project) -> dict:
     # 深拷贝：修复动作会原地改同一份 content dict，共享引用会让 before==after，撤销链失效
     return {"kind": "timeline", "version": doc["version"], "content": deepcopy(doc["content"]),
             "profileVersion": profile.version if profile else 0,
+            "profileExisted": profile is not None,
             "profileContent": deepcopy(profile_content)}
 
 
@@ -540,12 +541,18 @@ def undo_fix(session: Session, project: Project, fix_id: str) -> dict:
                           current["version"], "qa-undo")
         if before.get("profileContent") is not None:
             profile = docs_svc.get_doc(session, pid, "profile")
-            profile_hash = docs_svc.content_hash(profile.content_json) if profile else None
-            _require_undo_head(data, entry, profile_hash, entry.get("afterProfileHash"),
-                               entry.get("afterProfileVersion"),
-                               profile.version if profile else None, "配置文件")
-            docs_svc.save_doc(session, pid, "profile", before["profileContent"],
-                              profile.version if profile else 0, "qa-undo")
+            if not before.get("profileExisted"):
+                # 修复前没有 profile 文档行：撤销要回到"没有"，否则派生默认值会被固化为残缺文档
+                if profile:
+                    session.delete(profile)
+                    session.commit()
+            else:
+                profile_hash = docs_svc.content_hash(profile.content_json) if profile else None
+                _require_undo_head(data, entry, profile_hash, entry.get("afterProfileHash"),
+                                   entry.get("afterProfileVersion"),
+                                   profile.version if profile else None, "配置文件")
+                docs_svc.save_doc(session, pid, "profile", before["profileContent"],
+                                  profile.version if profile else 0, "qa-undo")
     elif kind == "mix":
         audio_svc.save_mix(project.root, before.get("content") or {})
     elif kind == "license":

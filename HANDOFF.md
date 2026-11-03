@@ -2,7 +2,7 @@
 
 > 更新时间：2026-11-03（FR-39 + 专家审查） · **R2.0/R2.5 已完成；R3.0 v1（FR-32–38）+ R3.5 FR-39 已交付；专家审查为 Conditional Go，先修 P0 再开 FR-40/41**
 > 复核基线：FR-39 代码 `3bb81a0`（tag `r3.5-qa`）；前序 FR-37 `f887424`（`r3.0-templates`）、FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）；R2.5 基线 `b7591bd`。
-> 测试 **178 passed（unit 158 + integration 13 + BDD 7）**；integration 已改用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；P0-4b 验证新增 r2/golden 项目后 DB **32 个项目 / 26 个目录**（审计/验证残留，清理前先读 §0.5）。
+> 测试 **179 passed（unit 159 + integration 13 + BDD 7）**；integration 已改用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；P0-4b 验证新增 r2/golden 项目后 DB **32 个项目 / 26 个目录**（审计/验证残留，清理前先读 §0.5）。
 > **先读本文 §0（尤其 §0.5 专家审查 P0）、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
 > 上下文压缩后继续开发时：先修 §0.5 的 P0 阻塞，再开 §6.5 的 FR-40/41；不要提前做 R4，不要回滚已完成部分。
 
@@ -25,7 +25,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 ### 0.2 第一小时必做
 
 ```bash
-cd server && uv run pytest tests -q                       # 178 passed
+cd server && uv run pytest tests -q                       # 179 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -103,7 +103,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 - **P0-5 已完成**：`extend_scene` 现在同步 timeline + profile（duration/frames）；profile 写入失败会补偿回滚 timeline；QA 的 `verified=null/documentVerified=true/requiresRerun=true`，不再宣称成片已验证；`retry_run` 改为 fork 新 Run 而非复用旧快照；撤销同步恢复 profile；QA 报告增加 `pendingRerun`。
 - **P1-14 代码修复**：`verify_r2_profiles.py` 的 contact sheet 排序不再 None/str 崩溃，SSIM 选点加入 `2.45/2.55` 转场窗口；因会创建 5s 项目，待后续验收批次实跑。
 - **版本**：`EXECUTOR_VERSION=2.9.3`；preview `1.8.0`（旧缓存自动失效）。
-- **测试**：完整 `pytest server/tests -q` **178 passed**（unit 158 + integration 13 + BDD 7）。
+- **测试**：完整 `pytest server/tests -q` **179 passed**（unit 159 + integration 13 + BDD 7）。
 - **P0-4a 已完成**：新增 `server/tests/integration/test_render_smoke.py`，在隔离服务中创建 1s 项目并真实执行 Chrome 预览、ffmpeg 编码和 SSIM 对比；断言 draft 输出 960×540/12fps/12 帧，SSIM ≥0.95。
 - **P0-4b 已补齐**：新增 `scripts/verify_r2_incremental.py --project 5s|15s|40s`（已实跑 5s：run2 66/120=55%，前 54 帧不变，49.8s < 53.8s）；`golden_run.py --resolution original` 生成 1920×1080 baseline 并实跑 6 帧 SSIM=1.0；报告归档 `docs/reports/r2-incremental/5s-run303.json`、`docs/reports/golden/5s-original-run306.json`。
 - **P0-4b 边界**：15s/40s 原帧 baseline 尚未更新（避免额外 4.3GB/数十分钟渲染），脚本支持 `--project 40s --scene-index 2`；本次未实跑，不能声称 40s 当前机器复现。
@@ -113,6 +113,8 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 - **P1-15 资产引用面**：`scan_usages` 不再只看 timeline 图层——通用 `walk_refs` 递归扫全部项目文档、`Template.content_json`（含 `assetShas` 索引，同容器不重复计数）与 Run 快照文件；`delete_asset` 带 `include_history=True`，历史 Run 引用的资产也挡住删除。`/assets` 卡片标注来源（模板/其它文档/历史 Run）。真实 HTTP 验证：清掉 timeline 引用后，仅剩模板引用时 `DELETE /assets` 返回 409 `E_ASSET_IN_USE`（`source=template`），检查项目/模板/资产已自建自删。
 - **P1-16/P1-18 许可强制与 rights.json 真实化**：`import_asset` 对**所有**资产种类要求 `source`+`type`，`expires` 必须是未过期的 ISO 日期（旧规则只管字体）；被引用中的资产不允许清空/削弱许可（堵死"洗白"）；`rights.json` 改 schema `filmflow.rights/2`，逐项列出 Run 快照真实用到的资产及其许可，只在没有字体资产时标注渲染器兜底字体，任何资产许可缺口直接 `E_LICENSE_MISSING` 拒交付；QA 新增 `asset_license_missing` 分类，`fill_license` 建议改为 `kind=confirm` 且不再预置 `authorized:true`，UI 不再预填"自制/CC0"并要求显式输入 YES 确认。
 - **P1-16 实测**：真实 HTTP 9 项——无许可/过期许可入库 400 `E_ASSET_LICENSE`；合规入库 200；未引用可清空 200；时间轴引用后清空 400「正被引用」；QA 命中 `asset_license_missing` 1 条并给 `open_assets`，补齐后消失；`fill_license` 建议 params 只剩 `{source,license,expires}`。生产库 4 个资产零缺口；project 211 run 275 的 rights 会列出「演示图片/演示 SFX（自制·CC0）」两项，取代旧的硬编码 Noto 声明。检查用的项目/资产/目录已自建自删（projects 仍 32、全局资产 0）。
+- **P1-17 补充（撤销与 profile 文档行）**：`_timeline_before` 现在记录 `profileExisted`；修复前项目没有 profile 文档行时，撤销会删掉修复期间生成的那一行，而不是把 `{"schema":...}` 这种残缺默认值固化成正式文档（否则时长/宽高信息被写死）。
+- **P1-19 验收脚本自建自删（已开始）**：新增 `scripts/_acceptance.py`（在 `~/cc-projects/ai-v/filmflow-projects/.acceptance/<name>-<rand>` 建项目，退出时删资产、按 `project_id/run_id` 清干净所有库表与目录）；`verify_r3_qa.py` 已改造为完全自包含，**不再改写演示项目 227**，并新增两步 LIFO 撤销、抢跑报错点名、资产许可分类 3 项断言（6 步全绿，跑完项目数仍 32）。其余硬编码脚本（e2e_takes 188/e2e_assets 211/verify_r3_* 等）按批迁移到该脚手架。
 - **P1-17 QA 撤销链**：修复记录新增 `afterHash/afterProfileHash`，撤销改为「内容仍等于该次修复结果」的链顶判定，因此可以逐级倒序回退（undo 最新 → 次新 → …），不再一步即断；抢跑撤销会报错并点名应先撤的那条。顺带修掉真正的元凶：`_timeline_before` 之前返回 `doc_payload` 的**同一个 dict 引用**，修复动作原地改写后 before==after，撤销等价于空操作——现在深拷贝。`verify_r3_qa.py` 对运行中的服务实跑 5 步全绿（含扩场景 + profile 同步 + 撤销）。
 - **P1-06 边界**：`foreign_keys=ON` 暂不开启；现有删除路径和 schema 没有完整级联，开启后测试会暴露未清理外键。需单独批次修迁移/级联/删除顺序。
 - **下一步**：P1 数据/缓存/媒体治理；FR-40/41 可选择开工。
@@ -143,7 +145,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **178 passed**（unit 158 / integration 13 / BDD 7）；integration 已隔离 |
+| 测试 | **179 passed**（unit 159 / integration 13 / BDD 7）；integration 已隔离 |
 | EXECUTOR_VERSION | **2.9.3**（P0-2 转场统一；P1-02/03/04 缓存键） |
 | UI E2E | 8 场景全绿（约 16s）；FR-31/FR-33/FR-35/FR-36/FR-37/FR-39 冒烟另 11 组 |
 
@@ -632,7 +634,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
 - [x] FR-28 16:9+9:16+SRT+封面+QC+zip；R2.5 5s 26.2s / 40s 190.0s（2.8.0 5s 24.1s）
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
-- [x] 102 tests（R2.5 收口时；当前 **178 tests = unit 158 + integration 13 + BDD 7**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
+- [x] 102 tests（R2.5 收口时；当前 **179 tests = unit 159 + integration 13 + BDD 7**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
@@ -773,7 +775,7 @@ curl -s http://127.0.0.1:7860/api/queue
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **178 passed（unit 158 + integration 13 + BDD 7）**
+- [ ] `cd server && uv run pytest tests -q` → **179 passed（unit 159 + integration 13 + BDD 7）**
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。
 - [ ] R2.5 review/audio/delivery verifier 全绿。

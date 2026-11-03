@@ -197,3 +197,41 @@ def test_undo_chain_is_multi_step_and_lifo(tmp_path: Path):
         assert report["undone"] == 2 and report["active"] == 0
     finally:
         _cleanup(session, proj)
+
+
+def test_undo_removes_profile_doc_created_by_fix(tmp_path: Path):
+    """修复前没有 profile 文档行时，撤销要回到"没有"，不能固化残缺默认文档。"""
+    session = Session(engine)
+    proj = Project(name=f"qa-noprof-{tmp_path.name}", root=str(tmp_path))
+    session.add(proj)
+    session.commit()
+    session.refresh(proj)
+    script = docs.build_script_doc("这一句话需要再多一点时间才能读完。")
+    docs.save_doc(session, proj.id, "script", script, 0)
+    docs.save_doc(session, proj.id, "timeline", {
+        "schema": "filmflow.timeline/2", "fps": 24, "duration": 1.0, "frames": 24,
+        "events": [], "tracks": [],
+        "scenes": [{"id": "S01", "start": 0.0, "end": 1.0, "source_span": [0],
+                    "text": "这一句话需要再多一点时间才能读完。",
+                    "read_seconds": 1.0, "last_text_at": 0.0}]}, 0)
+    try:
+        assert docs.get_doc(session, proj.id, "profile") is None
+        overflow = next(i for i in qa.analyze(session, proj)["issues"]
+                        if i["category"] == "text_overflow")
+        fix = qa.apply_fix(session, proj, overflow["id"], "extend_scene",
+                           {"sceneId": "S01", "delta": 0.5})
+        assert fix["before"]["profileExisted"] is False
+        assert docs.get_doc(session, proj.id, "profile") is not None
+        qa.undo_fix(session, proj, fix["id"])
+        assert docs.get_doc(session, proj.id, "profile") is None
+        current = docs.doc_payload(session, proj.id, proj.root, "timeline")["content"]
+        assert float(current["duration"]) == 1.0
+    finally:
+        leftover = docs.get_doc(session, proj.id, "profile")
+        if leftover:
+            for rev in session.exec(select(DocRevision).where(
+                    DocRevision.doc_id == leftover.id)).all():
+                session.delete(rev)
+            session.delete(leftover)
+            session.commit()
+        _cleanup(session, proj)
