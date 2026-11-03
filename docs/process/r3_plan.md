@@ -96,14 +96,17 @@
       插入→模板 v2 diff/confirm 升级→系列 2 项；`e2e_templates.py` UI 全绿。
       模板 1/2 为当前演示（project 227），CSV/10 行队列/R4 FR-46 未做。
 - [x] FR-39：`verify_r3_qa.py` text_overflow 扩场景→即时验证→撤销、许可修复/撤销、
-      缺资产定位、报告（attempts=5/undone=5/successRate=1.0）；`e2e_qa.py` UI 全绿。
+      缺资产定位、报告（**attempts=8/undone=8/successRate=1.0**；注意 successRate 当前口径
+      存在结构性失真，见专家审查 P2-21）；`e2e_qa.py` UI 全绿。
       执行器 2.9.2（text_scale），preview-1.7.0。
 
 ## 磁盘说明
 
-2026-11-03 已清理验收项目；文中 project 201/208/189 等 ID 是证据记录，目录已删除。当前演示项目：
-时间轴 202、审片/40s 174、Take 188、音频/资产 211（run 275）、5s 交付 215、黄金 216；
-FR-36 新增黄金 223/run 282；脚本可复现全部结果。
+2026-11-03 曾清理验收项目；随后专家全量审计又新增 13 条 project（228–240）与 8 个测试目录，
+当前 DB 27 项目 / 21 目录。清理前先备份 DB、确认无运行 Job，只删审计残留；不要动演示项目。
+详见 `HANDOFF.md` §0.5/§7.4。文中 project 201/208/189 等 ID 是证据记录，目录已删除。
+当前演示项目：时间轴 202、审片/40s 174、Take 188、音频/资产 211（run 275）、5s 交付 215、
+黄金 216；FR-36 新增黄金 223/run 282（状态 failed，不作成功证据）；脚本可复现全部结果。
 
 ## 复现命令
 
@@ -131,3 +134,21 @@ uv run --project server python scripts/e2e_qa.py
 - FR-37 v1 边界：系列最多 5 项、同步创建；CSV/10 行队列/批量 zip/失败重试依赖 R4 FR-46；
       模板升级不自动增删场景/迁移文案；模板源资产复制会增加磁盘；视频仍只入库。
 - FR-40/41（R3.5）与任何 R4 能力未开始。
+
+## 专家审查阻塞（2026-11-03，先修再开 FR-40/41）
+
+全量审查基线 `82c992b`，结论 **Conditional Go**；完整复核见
+`docs/reviews/2026-11-03-expert-review-analysis.md`，原始未脱敏报告仅本地
+`~/.filmflow/reviews/2026-11-03-expert-review.raw.md`。
+
+必须先修：
+
+1. **P0-1** Next dev 绑全网卡 + 反代零鉴权 API（`dev.sh`/`next.config.mjs`；Host/Origin 校验）。
+2. **P0-2** preview/final 转场 7/8 分叉（抽公共 `_transition_type` + 8 类参数化测试 + 转场窗口 SSIM）。
+3. **P0-3** integration 直连生产 `:7860`、污染 DB；skipif 静默（独立 uvicorn/HOME/端口 + 环境硬断言）。
+4. **P0-5** QA 修复只改 timeline，profile/Run 快照未变，`verified=true` 但成片未变；
+   `retry_run` 复用旧 snapshot（同步 profile 或 fork 新 Run + 渲染级验证）。
+5. **P0-4a** 3s/12 帧最小真实出片冒烟（Chrome+ffmpeg+SSIM）；P0-4b 再做 40s 增量脚本/原分辨率 SSIM/证据归档。
+
+准入：上述完成，且 `divergent 0/8`、连续两次 pytest 生产 DB 不变、LAN/Origin/Host 探测失败、
+QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。

@@ -3,9 +3,9 @@
 > 给 Qoder / 任何新 Agent：先读这三份，再动手。
 > 1. [`HANDOFF.md`](HANDOFF.md) —— **R2.0 验收 + R2.5 当前状态、证据、坑、剩余工作、接手检查表**。
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
-> 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（76 MB 库不入库）。
+> 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（逻辑约 75MiB；mp4 为稀疏文件，磁盘分配约 9.3MiB；库不入 git）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
-> **当前进度（2026-11-03 FR-39）**：R2.0/R2.5 已完成；**R3.0 v1（FR-32–38）+ R3.5 FR-39 QA 修复建议已完成**（137 tests，`EXECUTOR_VERSION=2.9.2`）。`/timeline`、`/player`、`/takes`、`/audio`、`/assets`、`/templates`、`/qa` 已可用。下一批 R3.5 FR-40/41，未开始不虚报；R4 不做。详见 `docs/process/r3_plan.md`。
+> **当前进度（2026-11-03 FR-39 + 专家审查）**：R2.0/R2.5 已完成；**R3.0 v1（FR-32–38）+ R3.5 FR-39 QA 修复建议已完成**（137 tests，`EXECUTOR_VERSION=2.9.2`）。**专家全量审查结论为 Conditional Go：先修 P0-1/P0-2/P0-3/P0-5 + P0-4a，再开 FR-40/41**；详见 `HANDOFF.md` §0.5 与 `docs/reviews/2026-11-03-expert-review-analysis.md`。R4 不做。
 > **完整接手 prompt**：[`QODER_PROMPT.md`](QODER_PROMPT.md)（历史 prompt；新 Agent 先看 HANDOFF §0/§6）。
 
 ## 这个仓库是什么
@@ -28,7 +28,7 @@ FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 
 - FilmFlow 默认：`server/app/config.py:13`
 - 环境变量：`FILMFLOW_STYLE_LIBRARY_ROOT`（App）/ `FY_STYLE_LIBRARY_ROOT`（技能）
 - 自检：`python3 vendor/fy-code-animation/scripts/doctor.py --root "$(cat vendor/style-library.path)"`
-- **不要**把 76 MB 库（尤其 `示例/` 的 61 MB mp4）提交进 git；**不要**把技能目录加进 Python 包路径。
+- **不要**把风格库（逻辑约 75MiB；`示例/` mp4 约 60MiB，稀疏文件）提交进 git；**不要**把技能目录加进 Python 包路径。
 
 ## 范围与当前进度（已裁决）
 

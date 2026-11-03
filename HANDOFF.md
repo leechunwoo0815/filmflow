@@ -1,10 +1,10 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-03（FR-39 交接） · **R2.0/R2.5 已完成；R3.0 v1（FR-32–38）+ R3.5 FR-39 已交付；下一批 FR-40/41 或等待裁决**
+> 更新时间：2026-11-03（FR-39 + 专家审查） · **R2.0/R2.5 已完成；R3.0 v1（FR-32–38）+ R3.5 FR-39 已交付；专家审查为 Conditional Go，先修 P0 再开 FR-40/41**
 > 复核基线：FR-39 代码 `3bb81a0`（tag `r3.5-qa`）；前序 FR-37 `f887424`（`r3.0-templates`）、FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）；R2.5 基线 `b7591bd`。
-> 测试 **137 passed**；`EXECUTOR_VERSION=2.9.2`；DB 14 个项目、`filmflow-projects` 13 个目录。
-> **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
-> 上下文压缩后继续开发时：从 §6.5 的 R3.5（FR-40/41）开始；不要提前做 R4，不要回滚已完成部分。
+> 测试 **137 passed/collected**；`EXECUTOR_VERSION=2.9.2`；专家审计后 DB **27 个项目 / 21 个目录**（审计前 14/13；228–240 为审计残留，清理前先读 §0.5）。
+> **先读本文 §0（尤其 §0.5 专家审查 P0）、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
+> 上下文压缩后继续开发时：先修 §0.5 的 P0 阻塞，再开 §6.5 的 FR-40/41；不要提前做 R4，不要回滚已完成部分。
 
 ---
 
@@ -60,10 +60,10 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 
 ### 0.3 当前下一步（按优先级）
 
-1. **验收状态**：R2.5 §6.4 全绿；R3.0 v1 §3.5–§3.7 + R3.5 FR-39 §3.8 全绿
-   （2026-11-03，**137 passed**）。证据命令见 §0.2，计划见 `docs/process/r3_plan.md`。
-2. **下一批候选**：R3.5 FR-40 命令面板/通知、FR-41 本地规则式创作辅助；
-   等老板选批，不虚报已开始。
+1. **专家审查状态**：2026-11-03 全量审查结论为 **Conditional Go**；5 个 P0 见 §0.5。
+   复核分析：`docs/reviews/2026-11-03-expert-review-analysis.md`。
+2. **先修 P0，再开新功能**：P0-1/P0-2/P0-3/P0-5 修完 + P0-4a 最小真实出片冒烟通过，
+   才允许开 R3.5 FR-40/41。**不要因为“137 tests 全绿”直接开 FR-40/41。**
 3. R3.0 v1 含 FR-32–38；`/timeline`、`/player`、`/takes`、`/audio`、`/assets`、`/templates`、`/qa` 已可用。
 4. **不要开始 R4**（多规格矩阵/平台发布/批量/photo 引擎）。
 
@@ -75,6 +75,25 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 - 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 **2.9.2**）。
 - 不要用“页面能点”代替真实产物；完成申报必须附测试、产物路径/哈希、UI 截图/curl。
 - 不要跑 `verify_r2_recovery.py` 时同时使用工作台（它会 kill -9 并重启 dev.sh）。
+
+### 0.5 专家审查结论（2026-11-03，阻塞 FR-40/41）
+
+**总体：Conditional Go。** 不是“脚本能跑通即可生产”；在修完以下 P0 前，不要开 FR-40/41。
+
+| P0 | 问题 | 关键证据 | 工作量 |
+|---|---|---|---|
+| P0-1 | Next dev 绑全网卡 + 反代零鉴权 API | `lsof` 显示 `*:3000`；局域网 `:3000/api/projects` 返回 200；后端直连 :7860 拒绝；无 Host/Origin 中间件 | S |
+| P0-2 | 8 类转场 7 类 preview/final 分叉 | `preview._transition_type` 缺英文枚举分支；遍历 `TRANSITIONS` 输出 `divergent 7/8` | S |
+| P0-3 | integration 直连生产服务、污染 DB；skipif 静默 | 审计新增 project 228–240 共 13 行；`conftest.py` 只隔离 HOME；4 处 skipif 硬编码 | M |
+| P0-5 | QA 修复与渲染管线脱节，`verified=true` 但成片未变 | `extend_scene` 只改 timeline，profile/Run 快照未变；`retry_run` 复用旧 snapshot | M |
+| P0-4 | 出片核心链 pytest 零覆盖；证据灭失 | 无 Chrome/SSIM 测试；golden 在 480×270 缩略图；40s 增量无脚本；run 282 failed | P0-4a S–M / P0-4b L |
+
+**先修顺序**：P0-1（S）→ P0-2（S）+ P1-02/03/04（缓存正确性，S×3）→ P0-3/P0-5（M）→ P0-4a。
+**准入**：P0-1/P0-2/P0-3/P0-5 + P0-4a 完成；`divergent 0/8`、两次 pytest DB 不变、LAN/Origin/Host 探测失败、QA 新 Run 时长增加且尾部场景存在、3s/12 帧冒烟绿。
+
+**审计残留（未清理）**：DB 27 项目 / 21 目录；project 228–240 与 `it-*`/`r2-profiles-*` 为审计产生，其中 8 条 root 目录缺失。清理前先备份 DB、确认无运行 Job，只删 id≥228 及对应目录；不要动演示项目 202/174/188/211/215/216/223/227。
+
+**专家报告纠错**：报告称“风格库 76MB 失实 8 倍、mp4 0 字节”是口径误判；mp4 为稀疏文件，逻辑体积约 74.7MiB（mp4 59.8MiB），磁盘分配仅 9.3MiB。完整复核见 `docs/reviews/2026-11-03-expert-review-analysis.md` §2.4。
 
 ---
 
@@ -589,15 +608,16 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
 - [x] FR-28 16:9+9:16+SRT+封面+QC+zip；R2.5 5s 26.2s / 40s 190.0s（2.8.0 5s 24.1s）
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
-- [x] 102 tests（R2.5 收口时；当前 **129 tests**）、E2E、干净 rumor 46/46 回归（run 222，90.6s）
+- [x] 102 tests（R2.5 收口时；当前 **137 tests**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
-### 6.5 下一批（R3.5；FR-39 已完成）
+### 6.5 下一批（先修专家审查 P0，再开 FR-40/41）
 
-1. **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**；由老板选批，未开始不虚报。
-2. FR-36/37/39 v1 已完成（§3.6–§3.8、ADR-0010/0011/0012）；其边界见 §9。
-3. **不要提前做 R4**（批量 CSV/多规格矩阵/平台发布/photo 引擎）。
+1. **先修 §0.5 的 P0**：P0-1 局域网/鉴权、P0-2 转场映射、P0-3 测试隔离、P0-5 QA 接通管线、P0-4a 最小出片冒烟。
+2. 通过后再做 **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**；未开始不虚报。
+3. FR-36/37/39 v1 已完成（§3.6–§3.8、ADR-0010/0011/0012）；其边界见 §9。
+4. **不要提前做 R4**（批量 CSV/多规格矩阵/平台发布/photo 引擎）。
 
 ---
 
@@ -651,21 +671,25 @@ curl -s http://127.0.0.1:7860/api/queue
 - 8787 是 FrameServer；EADDRINUSE 先查健康检查/残留进程。
 - Chrome 残留：`/tmp/ff-{node}-{run_id}`、`/tmp/ff-chrome-{node}-{run_id}`；启动恢复会清理。
 - 预览缓存：`~/.filmflow/cache/preview/<project>`；交付：项目 `out/deliveries/<runId>`。
-### 7.4 项目/磁盘清单（2026-11-03 清理后）
+### 7.4 项目/磁盘清单（2026-11-03 专家审计后）
 
-保留的 13 个 `filmflow-projects` 目录：
+审计前保留的 13 个 `filmflow-projects` 目录：
 `FR37模板演示-1`、`r2_5-audio-160`、`r2_5-delivery-216`、`r2_5-delivery-224`、
 `r2_5-delivery40-185`、`r3-audio-v2-221`、`r3-camera-199`、`r3-demo-20261103-1`、
 `golden-5s-217`、`golden-5s-225`、`golden-5s-230`、`rumor-clean-20261102`、`trace-x`；
 另有仓库外参考项目 `rumor-39s`。
-DB 共 14 个项目记录（含 rumor-39s）。重跑验收后按同一策略清理；不要直接 `rm -rf` 正在用的项目。
+**专家审计后新增 8 个目录**：`it-engine-236/240/242`、`it-wizard-235/239/241`、
+`r2-profiles-243`、`一条消息被转发往往不是因为-1`；DB 由 14 增至 **27 个项目**
+（新增 228–240 共 13 行，其中 8 行 root 目录不存在）。清理前先读 §0.5，不要直接 `rm -rf`。
 当前演示：202（时间轴）、174（审片/40s）、188（Take）、211（音频 v2 + 资产/run 275）、
-215（5s 交付）、216（黄金 5s）、223（FR-36 黄金 run 282）、227（FR-37 模板实例 + FR-39 QA）。
+215（5s 交付）、216（黄金 5s）、223（FR-36 黄金 run 282，状态 failed，不作成功证据）、
+227（FR-37 模板实例 + FR-39 QA）。
 
-- 风格库 76MB 外置，不入 git。
-- **磁盘现状（2026-11-03 FR-37 后）**：`filmflow-projects` 2.1GB（13 个目录）、
-  `~/.filmflow` 183MB（含四份 DB 备份）、`rumor-39s` 897MB、源码仓库约 900MB；`ai-v` 约 3.8GB。
-  新增 golden-5s-230 约 541MB（out/frames+proxy，可按需删）。
+- 风格库：**逻辑约 74.7MiB（mp4 约 59.8MiB），磁盘分配约 9.3MiB**（mp4 是稀疏文件）；
+  文档旧称 76MB/61MB 指逻辑大小。库外置，不入 git。
+- **磁盘现状（2026-11-03 专家审计后）**：`filmflow-projects` **2.6GB（21 个目录）**、
+  `~/.filmflow` **418MB**（含 DB 备份/缓存/logs）、`rumor-39s` 897MB；`ai-v` 约 3.8GB。
+  `golden-5s-230` 约 541MB（out/frames+proxy，可按需删）。
 - **不要再让验收脚本无限建项目**：每次 40s 项目约 4.3GB（frames 2.7G + proxy 1.4G）；通过后
   删除 `out/frames`、`out/proxy`，只留 film/artifacts/stills/交付包。
 
