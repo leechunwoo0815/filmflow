@@ -5,7 +5,7 @@
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
 > 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（逻辑约 75MiB；mp4 为稀疏文件，磁盘分配约 9.3MiB；库不入 git）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
-> **当前进度（2026-11-03 FR-39 + 专家审查 P0 Gate）**：R2.0/R2.5 已完成；**R3.0 v1（FR-32–38）+ R3.5 FR-39 QA 修复建议已完成**（完整 `pytest server/tests` **164 passed**；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`）。**P0-1/P0-2/P0-3/P0-5/P0-4a 已完成**；FR-40/41 可选择开工，P0-4b（40s/原分辨率 SSIM/证据归档）和 P1 治理仍需补；详见 `HANDOFF.md` §0.5/§0.6 与 `docs/reviews/2026-11-03-expert-review-analysis.md`。R4 不做。
+> **当前进度（2026-11-03 FR-39 + 专家审查 P0 Gate）**：R2.0/R2.5 已完成；**R3.0 v1（FR-32–38）+ R3.5 FR-39 QA 修复建议已完成**（完整 `pytest server/tests` **164 passed**；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`）。**P0-1/P0-2/P0-3/P0-5/P0-4a/P0-4b 已完成**（15s/40s 原帧 baseline 按需生成）；下一步进入 P1 治理，FR-40/41 可选择开工；详见 `HANDOFF.md` §0.5/§0.6 与 `docs/reviews/2026-11-03-expert-review-analysis.md`。R4 不做。
 > **完整接手 prompt**：[`QODER_PROMPT.md`](QODER_PROMPT.md)（历史 prompt；新 Agent 先看 HANDOFF §0/§6）。
 
 ## 这个仓库是什么
@@ -65,11 +65,11 @@ uv run --project server python scripts/verify_r3_templates.py # 模板/场景/�
 uv run --project server python scripts/e2e_templates.py   # 模板 UI 冒烟
 uv run --project server python scripts/verify_r3_qa.py    # QA 修复建议验收
 uv run --project server python scripts/e2e_qa.py          # QA UI 冒烟
-uv run --project server python scripts/verify_r2_5s_incremental.py  # Phase 4 5s 增量验收
+uv run --project server python scripts/verify_r2_incremental.py --project 5s  # Phase 4 增量验收（支持 5s/15s/40s）
 uv run --project server python scripts/verify_r2_preview.py         # Phase 5 预览验收
 uv run --project server python scripts/verify_r2_profiles.py        # Phase 6 档位验收
 uv run --project server python scripts/verify_r2_recovery.py        # Phase 7 恢复验收
-uv run --project server python scripts/golden_run.py --project 5s    # Phase 8 黄金回归
+uv run --project server python scripts/golden_run.py --project 5s --resolution original    # Phase 8 黄金回归（原帧 SSIM + 报告归档）
 uv run --project server python scripts/verify_r2_5_review.py        # R2.5 FR-26 审阅验收
 uv run --project server python scripts/verify_r2_5_audio.py         # R2.5 FR-27 音频验收
 uv run --project server python scripts/verify_r2_5_delivery.py      # R2.5 FR-28 交付验收

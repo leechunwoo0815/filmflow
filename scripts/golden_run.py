@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -22,6 +24,7 @@ from PIL import Image, ImageChops
 BASE = "http://127.0.0.1:7860/api"
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "fixtures" / "golden"
+REPORT_DIR = ROOT / "docs" / "reports" / "golden"
 c = httpx.Client(base_url=BASE, timeout=240)
 SENT_RE = re.compile(r"(?<=[。！？；!?;])")
 
@@ -136,7 +139,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", required=True, choices=["5s", "15s", "40s"])
     ap.add_argument("--update", action="store_true", help="写 baseline（首次/有意更新）")
+    ap.add_argument("--resolution", choices=["thumb", "original", "both"], default="thumb",
+                    help="thumb=兼容旧基线；original=1920×1080 原帧 SSIM；both=两种都跑")
+    ap.add_argument("--archive", action="store_true", default=True,
+                    help="将 golden_report 同步到 docs/reports/golden（默认开启）")
     args = ap.parse_args()
+    resolutions = ["thumb", "original"] if args.resolution == "both" else [args.resolution]
     spec = json.loads((FIXTURES / args.project / "spec.json").read_text(encoding="utf-8"))
     profile = spec["profile"]
     duration = float(profile["duration"])
@@ -169,59 +177,86 @@ def main() -> int:
         raise RuntimeError(f"场景文案缺句：{missing}")
     print(f"text ok: {len(sentences)} sentences / {len(task.get('scenes', []))} scenes", flush=True)
 
-    baseline_dir = FIXTURES / args.project / "baseline"
-    baseline_json = baseline_dir / "baseline.json"
-    old = json.loads(baseline_json.read_text(encoding="utf-8")) if baseline_json.exists() else {}
     times = [round((i + 0.5) * duration / 6, 3) for i in range(6)]
-    hashes, ssims, details = [], [], []
-    for i, t in enumerate(times):
-        idx = min(frames - 1, int(round(t * fps)))
-        src = root / "out" / "frames" / f"{idx:04d}.png"
-        if not src.exists():
-            raise RuntimeError(f"缺帧 {idx}（t={t}）")
-        cur = Path("/tmp") / f"golden-{args.project}-{i}.png"
-        _thumb(src, cur)
-        h = phash(Image.open(cur))
-        hashes.append(h)
-        if args.update:
-            dst = baseline_dir / f"frame_{i}.png"
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            Image.open(cur).save(dst)
-            ssims.append(1.0)
-            print(f"  update frame {i} t={t} phash={h}", flush=True)
-            continue
-        base = baseline_dir / f"frame_{i}.png"
-        if not base.exists() or not old:
-            raise RuntimeError(f"缺 baseline：先运行 --project {args.project} --update")
-        s = _ssim(base, cur)
-        dist = hamming(old["phash"][i], h)
-        ssims.append(s)
-        details.append({"frame": i, "time": t, "index": idx, "ssim": round(s, 6),
-                        "phash": h, "phashDistance": dist})
-        print(f"  frame {i} t={t}: SSIM={s:.6f} pHashDist={dist}", flush=True)
-        if s < 0.98 or dist > 6:
-            diff = ImageChops.difference(Image.open(base).convert("RGB"), Image.open(cur).convert("RGB"))
-            diff = diff.point(lambda x: min(255, x * 4))
-            diff.save(root / "out" / f"golden_diff_{i}.png")
-            raise RuntimeError(f"视觉回归失败 frame={i} t={t} SSIM={s:.4f} pHashDist={dist}；"
-                               f"diff={root / 'out' / f'golden_diff_{i}.png'}")
+    resolution_reports = []
+    for resolution in resolutions:
+        baseline_dir = FIXTURES / args.project / ("baseline" if resolution == "thumb" else "baseline_original")
+        baseline_json = baseline_dir / ("baseline.json" if resolution == "thumb" else "baseline_original.json")
+        old = json.loads(baseline_json.read_text(encoding="utf-8")) if baseline_json.exists() else {}
+        hashes, ssims, details, src_shas = [], [], [], []
+        for i, t in enumerate(times):
+            idx = min(frames - 1, int(round(t * fps)))
+            src = root / "out" / "frames" / f"{idx:04d}.png"
+            if not src.exists():
+                raise RuntimeError(f"缺帧 {idx}（t={t}）")
+            cur = Path("/tmp") / f"golden-{args.project}-{resolution}-{i}.png"
+            if resolution == "thumb":
+                _thumb(src, cur)
+            else:
+                cur.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, cur)
+            h = phash(Image.open(cur))
+            src_sha = hashlib.sha256(src.read_bytes()).hexdigest()
+            hashes.append(h)
+            src_shas.append(src_sha)
+            if args.update:
+                dst = baseline_dir / f"frame_{i}.png"
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(cur, dst)
+                ssims.append(1.0)
+                print(f"  update {resolution} frame {i} t={t} phash={h}", flush=True)
+                continue
+            base = baseline_dir / f"frame_{i}.png"
+            if not base.exists() or not old:
+                raise RuntimeError(f"缺 {resolution} baseline：先运行 --project {args.project} --resolution {resolution} --update")
+            s = _ssim(base, cur)
+            dist = hamming(old["phash"][i], h)
+            ssims.append(s)
+            details.append({"frame": i, "time": t, "index": idx, "ssim": round(s, 6),
+                            "phash": h, "phashDistance": dist, "sourceSha256": src_sha})
+            print(f"  {resolution} frame {i} t={t}: SSIM={s:.6f} pHashDist={dist}", flush=True)
+            if s < 0.98 or dist > 6:
+                diff = ImageChops.difference(Image.open(base).convert("RGB"), Image.open(cur).convert("RGB"))
+                diff = diff.point(lambda x: min(255, x * 4))
+                diff.save(root / "out" / f"golden_diff_{resolution}_{i}.png")
+                raise RuntimeError(f"视觉回归失败 resolution={resolution} frame={i} t={t} SSIM={s:.4f} pHashDist={dist}；"
+                                   f"diff={root / 'out' / f'golden_diff_{resolution}_{i}.png'}")
 
-    report = {"schema": "filmflow.golden-report/1", "project": args.project,
+        resolution_reports.append({
+            "resolution": resolution,
+            "baselineDir": baseline_dir.relative_to(ROOT).as_posix(),
+            "times": times,
+            "phash": hashes,
+            "ssim": ssims,
+            "sourceSha256": src_shas,
+            "details": details,
+        })
+        if args.update:
+            baseline_json.parent.mkdir(parents=True, exist_ok=True)
+            baseline_json.write_text(json.dumps({
+                "schema": "filmflow.golden-baseline/1", "project": args.project,
+                "resolution": resolution, "primary": primary, "profile": profile,
+                "times": times, "phash": hashes, "sourceSha256": src_shas,
+                "sceneCount": len(task.get("scenes", []))}, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    report = {"schema": "filmflow.golden-report/2", "project": args.project,
               "runId": rid, "primary": primary, "profile": profile,
               "frames": frames, "sceneCount": len(task.get("scenes", [])),
-              "times": times, "phash": hashes, "ssim": ssims, "details": details,
-              "update": args.update, "status": "updated" if args.update else "pass"}
-    if args.update:
-        baseline_json.parent.mkdir(parents=True, exist_ok=True)
-        baseline_json.write_text(json.dumps({
-            "schema": "filmflow.golden-baseline/1", "project": args.project,
-            "primary": primary, "profile": profile, "times": times,
-            "phash": hashes, "sceneCount": len(task.get("scenes", []))},
-            ensure_ascii=False, indent=1), encoding="utf-8")
+              "resolutions": resolution_reports, "update": args.update,
+              "status": "updated" if args.update else "pass",
+              "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     (root / "out" / "golden_report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    if args.archive:
+        REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        for rr in resolution_reports:
+            archived = REPORT_DIR / f"{args.project}-{rr['resolution']}-run{rid}.json"
+            archived.write_text(json.dumps({**report, "resolution": rr["resolution"],
+                                                "summary": rr}, ensure_ascii=False, indent=1),
+                                    encoding="utf-8")
+            print(f"  archived report: {archived}", flush=True)
     print(f"{'UPDATED' if args.update else 'PASS'}: {args.project} "
-          f"({len(times)} frames, report={root / 'out' / 'golden_report.json'})")
+          f"resolutions={','.join(resolutions)} report={root / 'out' / 'golden_report.json'}")
     return 0
 
 

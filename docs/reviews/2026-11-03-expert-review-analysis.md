@@ -179,7 +179,7 @@ P3 共 26 条，主题包括：模块级单例/配置未接线/组件扩展点�
 
 ### P0-4 出片核心链零自动化回归 + 证据灭失
 
-**根因**：真实渲染慢且产物体积大（5s 项目约 541MB），团队把 Chrome/ffmpeg/SSIM 验证放在手工脚本；pytest 只测纯函数/契约。`golden_run.py` 在 480×270 缩略图上算 SSIM（阈值实际 0.98 + pHash≤6），文档却写 1.0；40s 增量证据项目已删，`verify_r2_5s_incremental.py` 只做 5s；run 282 实际 failed，却被正文当作 FR-36 证据。
+**根因**：真实渲染慢且产物体积大（5s 项目约 541MB），团队把 Chrome/ffmpeg/SSIM 验证放在手工脚本；pytest 只测纯函数/契约。`golden_run.py` 在 480×270 缩略图上算 SSIM（阈值实际 0.98 + pHash≤6），文档却写 1.0；40s 增量证据项目已删，`verify_r2_incremental.py` 只做 5s；run 282 实际 failed，却被正文当作 FR-36 证据。
 
 **修复建议**：
 

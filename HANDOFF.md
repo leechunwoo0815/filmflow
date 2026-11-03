@@ -2,7 +2,7 @@
 
 > 更新时间：2026-11-03（FR-39 + 专家审查） · **R2.0/R2.5 已完成；R3.0 v1（FR-32–38）+ R3.5 FR-39 已交付；专家审查为 Conditional Go，先修 P0 再开 FR-40/41**
 > 复核基线：FR-39 代码 `3bb81a0`（tag `r3.5-qa`）；前序 FR-37 `f887424`（`r3.0-templates`）、FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）；R2.5 基线 `b7591bd`。
-> 测试 **164 passed（unit 144 + integration 13 + BDD 7）**；integration 已改用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；专家审计后 DB **27 个项目 / 21 个目录**（审计前 14/13；228–240 为审计残留，清理前先读 §0.5）。
+> 测试 **164 passed（unit 144 + integration 13 + BDD 7）**；integration 已改用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；P0-4b 验证新增 r2/golden 项目后 DB **32 个项目 / 26 个目录**（审计/验证残留，清理前先读 §0.5）。
 > **先读本文 §0（尤其 §0.5 专家审查 P0）、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
 > 上下文压缩后继续开发时：先修 §0.5 的 P0 阻塞，再开 §6.5 的 FR-40/41；不要提前做 R4，不要回滚已完成部分。
 
@@ -29,11 +29,11 @@ cd server && uv run pytest tests -q                       # 164 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
-uv run --project server python scripts/verify_r2_5s_incremental.py
+uv run --project server python scripts/verify_r2_incremental.py --project 5s
 uv run --project server python scripts/verify_r2_preview.py
 uv run --project server python scripts/verify_r2_profiles.py
 uv run --project server python scripts/verify_r2_recovery.py   # 会杀/重启 dev.sh
-uv run --project server python scripts/golden_run.py --project 5s
+uv run --project server python scripts/golden_run.py --project 5s --resolution original
 uv run --project server python scripts/verify_r2_5_review.py
 uv run --project server python scripts/verify_r2_5_audio.py
 uv run --project server python scripts/verify_r2_5_onboarding.py
@@ -61,8 +61,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 
 1. **专家审查状态**：2026-11-03 全量审查结论为 **Conditional Go**；P0-1/P0-2/P0-3/P0-5/P0-4a 已全部完成，Gate 达成。
    复核分析：`docs/reviews/2026-11-03-expert-review-analysis.md`。
-2. **可以继续 FR-40/41**：P0-4b（40s 增量脚本、原分辨率 SSIM、证据归档）可并行补齐；
-   开新功能仍不得跳过已有 P1 缓存/数据一致性风险。
+2. **继续 P1 治理**：P0-4b 已补齐（5s 原帧 golden + 增量报告归档；40s 脚本可用但本次未实跑），下一步是 P1 数据/缓存/安全纵深；FR-40/41 可选择开工。
 3. R3.0 v1 含 FR-32–38；`/timeline`、`/player`、`/takes`、`/audio`、`/assets`、`/templates`、`/qa` 已可用。
 4. **不要开始 R4**（多规格矩阵/平台发布/批量/photo 引擎）。
 
@@ -87,12 +86,12 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 | P0-5 | QA 修复与渲染管线脱节，`verified=true` 但成片未变 | `extend_scene` 只改 timeline，profile/Run 快照未变；`retry_run` 复用旧 snapshot | M |
 | P0-4 | 出片核心链 pytest 零覆盖；证据灭失 | 无 Chrome/SSIM 测试；golden 在 480×270 缩略图；40s 增量无脚本；run 282 failed | P0-4a S–M / P0-4b L |
 
-**当前状态（2026-11-03）**：P0-1/P0-2/P0-3/P0-5/P0-4a 已完成并通过回归；P0-4b（40s 增量脚本、原分辨率 SSIM、证据归档）仍待补。
+**当前状态（2026-11-03）**：P0-1/P0-2/P0-3/P0-5/P0-4a 已完成并通过回归；P0-4b 已补齐脚本、5s 原帧 golden、报告归档。15s/40s 原帧 baseline 可按需生成，本次因磁盘/耗时未跑 40s；下一步进入 P1 治理。
 
 **先修顺序**：P0-1（S）→ P0-2（S）+ P1-02/03/04（缓存正确性，S×3）→ P0-3/P0-5（M）→ P0-4a。
 **准入**：P0-1/P0-2/P0-3/P0-5 + P0-4a 完成；`divergent 0/8`、两次 pytest DB 不变、LAN/Origin/Host 探测失败、QA 新 Run 时长增加且尾部场景存在、3s/12 帧冒烟绿。
 
-**审计残留（未清理）**：DB 27 项目 / 21 目录；project 228–240 与 `it-*`/`r2-profiles-*` 为审计产生，其中 8 条 root 目录缺失。清理前先备份 DB、确认无运行 Job，只删 id≥228 及对应目录；不要动演示项目 202/174/188/211/215/216/223/227。
+**审计残留（未清理）**：DB 32 项目 / 26 目录；project 228–245 为专家审计和 P0-4b 验证产生，新验证项目的 frames/proxy/preview 已清理。清理前先备份 DB、确认无运行 Job，只删确认不需要的审计/验证记录；不要动演示项目 202/174/188/211/215/216/223/227。
 
 **专家报告纠错**：报告称“风格库 76MB 失实 8 倍、mp4 0 字节”是口径误判；mp4 为稀疏文件，逻辑体积约 74.7MiB（mp4 59.8MiB），磁盘分配仅 9.3MiB。完整复核见 `docs/reviews/2026-11-03-expert-review-analysis.md` §2.4。
 
@@ -106,7 +105,9 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 - **版本**：`EXECUTOR_VERSION=2.9.3`；preview `1.8.0`（旧缓存自动失效）。
 - **测试**：完整 `pytest server/tests -q` **164 passed**（unit 144 + integration 13 + BDD 7）。
 - **P0-4a 已完成**：新增 `server/tests/integration/test_render_smoke.py`，在隔离服务中创建 1s 项目并真实执行 Chrome 预览、ffmpeg 编码和 SSIM 对比；断言 draft 输出 960×540/12fps/12 帧，SSIM ≥0.95。
-- **下一步**：补 P0-4b（40s 增量脚本、原分辨率 golden、证据按 Run 归档）；P1 安全/数据/缓存项按计划继续。
+- **P0-4b 已补齐**：新增 `scripts/verify_r2_incremental.py --project 5s|15s|40s`（已实跑 5s：run2 66/120=55%，前 54 帧不变，49.8s < 53.8s）；`golden_run.py --resolution original` 生成 1920×1080 baseline 并实跑 6 帧 SSIM=1.0；报告归档 `docs/reports/r2-incremental/5s-run303.json`、`docs/reports/golden/5s-original-run306.json`。
+- **P0-4b 边界**：15s/40s 原帧 baseline 尚未更新（避免额外 4.3GB/数十分钟渲染），脚本支持 `--project 40s --scene-index 2`；本次未实跑，不能声称 40s 当前机器复现。
+- **下一步**：P1 安全/数据/缓存项按计划继续；FR-40/41 可选择开工。
 
 ---
 
@@ -186,7 +187,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 
 ### 2.1 5s 参数化出片
 
-`verify_r2_5s_incremental.py`：run1 120 帧、`out/film/intermediate.mp4` 1920×1080/24/5.000s；
+`verify_r2_incremental.py --project 5s`：run1 120 帧、`out/film/intermediate.mp4` 1920×1080/24/5.000s；
 D02 用户文案；F05 Y-SSIM 通过。
 
 ### 2.2 40s 增量
@@ -629,7 +630,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 
 ### 6.5 下一批（先修专家审查 P0，再开 FR-40/41）
 
-1. **Gate 已达成**：P0-1/P0-2/P0-3/P0-5/P0-4a 已完成；下一步补 P0-4b 和 P1 数据/缓存治理，可并行选择 FR-40/41。
+1. **P0 Gate 已完成**：P0-1/P0-2/P0-3/P0-5/P0-4a/P0-4b（脚本、5s 原帧 golden、证据归档）已完成；15s/40s 原帧 baseline 按需生成。下一步进入 P1 数据/缓存治理，可并行选择 FR-40/41。
 2. 通过后再做 **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**；未开始不虚报。
 3. FR-36/37/39 v1 已完成（§3.6–§3.8、ADR-0010/0011/0012）；其边界见 §9。
 4. **不要提前做 R4**（批量 CSV/多规格矩阵/平台发布/photo 引擎）。
@@ -645,11 +646,11 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 cd server && uv run pytest tests -q
 cd .. && uv run --project server python scripts/e2e_ui.py
 uv run --project server python scripts/smoke_m1.py
-uv run --project server python scripts/verify_r2_5s_incremental.py
+uv run --project server python scripts/verify_r2_incremental.py --project 5s
 uv run --project server python scripts/verify_r2_preview.py
 uv run --project server python scripts/verify_r2_profiles.py
 uv run --project server python scripts/verify_r2_recovery.py
-uv run --project server python scripts/golden_run.py --project 5s
+uv run --project server python scripts/golden_run.py --project 5s --resolution original
 uv run --project server python scripts/verify_r2_5_review.py
 uv run --project server python scripts/verify_r2_5_audio.py
 uv run --project server python scripts/verify_r2_5_delivery.py
@@ -686,27 +687,27 @@ curl -s http://127.0.0.1:7860/api/queue
 - 8787 是 FrameServer；EADDRINUSE 先查健康检查/残留进程。
 - Chrome 残留：`/tmp/ff-{node}-{run_id}`、`/tmp/ff-chrome-{node}-{run_id}`；启动恢复会清理。
 - 预览缓存：`~/.filmflow/cache/preview/<project>`；交付：项目 `out/deliveries/<runId>`。
-### 7.4 项目/磁盘清单（2026-11-03 专家审计后）
+### 7.4 项目/磁盘清单（2026-11-03 P0 修复验证后）
 
 审计前保留的 13 个 `filmflow-projects` 目录：
 `FR37模板演示-1`、`r2_5-audio-160`、`r2_5-delivery-216`、`r2_5-delivery-224`、
 `r2_5-delivery40-185`、`r3-audio-v2-221`、`r3-camera-199`、`r3-demo-20261103-1`、
 `golden-5s-217`、`golden-5s-225`、`golden-5s-230`、`rumor-clean-20261102`、`trace-x`；
 另有仓库外参考项目 `rumor-39s`。
-**专家审计后新增 8 个目录**：`it-engine-236/240/242`、`it-wizard-235/239/241`、
-`r2-profiles-243`、`一条消息被转发往往不是因为-1`；DB 由 14 增至 **27 个项目**
-（新增 228–240 共 13 行，其中 8 行 root 目录不存在）。清理前先读 §0.5，不要直接 `rm -rf`。
+**专家审计 + P0-4b 验证后新增 13 个目录**：`it-engine-236/240/242`、`it-wizard-235/239/241`、
+`r2-profiles-243`、`一条消息被转发往往不是因为-1`、`r2-verify-5s-244/245`、
+`golden-5s-246/247/248`；DB 由 14 增至 **32 个项目**。
+新验证项目的 frames/proxy/preview 已清理，只保留报告/产物；审计残留清理前先读 §0.5。
 当前演示：202（时间轴）、174（审片/40s）、188（Take）、211（音频 v2 + 资产/run 275）、
 215（5s 交付）、216（黄金 5s）、223（FR-36 黄金 run 282，状态 failed，不作成功证据）、
 227（FR-37 模板实例 + FR-39 QA）。
 
 - 风格库：**逻辑约 74.7MiB（mp4 约 59.8MiB），磁盘分配约 9.3MiB**（mp4 是稀疏文件）；
   文档旧称 76MB/61MB 指逻辑大小。库外置，不入 git。
-- **磁盘现状（2026-11-03 专家审计后）**：`filmflow-projects` **2.6GB（21 个目录）**、
-  `~/.filmflow` **418MB**（含 DB 备份/缓存/logs）、`rumor-39s` 897MB；`ai-v` 约 3.8GB。
-  `golden-5s-230` 约 541MB（out/frames+proxy，可按需删）。
-- **不要再让验收脚本无限建项目**：每次 40s 项目约 4.3GB（frames 2.7G + proxy 1.4G）；通过后
-  删除 `out/frames`、`out/proxy`，只留 film/artifacts/stills/交付包。
+- **磁盘现状（2026-11-03 P0 修复验证后）**：`filmflow-projects` **2.2GB（26 个目录）**、
+  `~/.filmflow` 约 418MB+（含 DB 备份/缓存/logs）、`rumor-39s` 897MB；`ai-v` 约 3.8GB。
+  本次 `verify_r2_incremental.py` 与 `golden_run.py` 默认删除新项目的 frames/proxy，避免磁盘继续膨胀。
+- **不要再让验收脚本无限建项目**：每次 40s 项目约 4.3GB（frames 2.7G + proxy 1.4G）；新脚本默认清理。
 
 ---
 

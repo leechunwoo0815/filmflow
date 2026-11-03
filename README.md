@@ -34,11 +34,11 @@ cd server
 uv run pytest tests -q   # 123（干净环境首跑；部分集成需 API 在跑）
 uv run --project server python scripts/smoke_m1.py    # M0/M1 API 全链冒烟（需服务在跑）
 uv run --project server python scripts/e2e_ui.py      # Playwright UI E2E（8 场景，需 ./dev.sh 在跑）
-uv run --project server python scripts/verify_r2_5s_incremental.py  # R2.0 5s 参数化 + 增量验收
+uv run --project server python scripts/verify_r2_incremental.py --project 5s  # R2.0 参数化 + 增量验收（5s/15s/40s）
 uv run --project server python scripts/verify_r2_preview.py         # R2.0 Phase 5 预览验收
 uv run --project server python scripts/verify_r2_profiles.py        # R2.0 Phase 6 档位验收
 uv run --project server python scripts/verify_r2_recovery.py        # R2.0 Phase 7 恢复验收
-uv run --project server python scripts/golden_run.py --project 5s    # R2.0 Phase 8 黄金回归
+uv run --project server python scripts/golden_run.py --project 5s --resolution original    # R2.0 Phase 8 黄金回归（原帧 + 报告归档）
 uv run --project server python scripts/verify_r2_5_review.py        # R2.5 FR-26 审阅验收
 uv run --project server python scripts/verify_r2_5_audio.py         # R2.5 FR-27 音频验收
 uv run --project server python scripts/verify_r2_5_delivery.py      # R2.5 FR-28 交付验收

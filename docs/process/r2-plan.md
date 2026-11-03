@@ -169,7 +169,7 @@
 
 ### Phase 8 · 黄金项目与回归（FR-30，3–4d）——[DONE] tag `r2-golden`
 - `fixtures/golden/5s|15s|40s/`：文案、风格、profile、期望帧/manifest。
-- `scripts/golden_run.py`：建项目 → F06 → 6 帧 SSIM/pHash + program 文字断言 → 报告。
+- `scripts/golden_run.py`：建项目 → F06 → 6 帧 SSIM/pHash + program 文字断言 → 报告（可 `--resolution original --archive`）。
 - 5s 必跑；15s/40s nightly；BDD 4 场景；失败输出 diff 图与 scene/layer。
 - 全量验收：28+ 新旧测试、UI E2E 8 场景、rumor-39s 46/46、master 39.5s。
 

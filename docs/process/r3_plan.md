@@ -165,4 +165,5 @@ QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
 - **P0-5**：`extend_scene` 同步 timeline + profile（失败补偿回滚）；QA `verified=null/documentVerified=true/requiresRerun=true`；`retry_run` fork 新 Run；撤销同步恢复 profile；报告增加 `pendingRerun`。
 - **P0-4a**：新增 `test_render_smoke.py`，真实 Chrome + ffmpeg + SSIM，断言 1s draft 输出 960×540/12fps/12 帧且帧一致性 ≥0.95。
 - **测试**：完整 `pytest server/tests -q` **164 passed**（unit 144 + integration 13 + BDD 7），连跑生产 DB 不变。
-- **下一步**：P0-4b（40s 增量脚本/原分辨率 golden/证据归档）；P1 安全/数据/缓存治理。
+- **P0-4b 已补齐**：`verify_r2_incremental.py --project 5s|15s|40s`、`golden_run.py --resolution original`、`docs/reports/` JSON 归档；已实跑 5s 增量和 5s 原帧 golden。15s/40s 原帧 baseline 按需生成，本次未跑 40s。
+- **下一步**：P1 安全/数据/缓存治理；FR-40/41 可选择开工。

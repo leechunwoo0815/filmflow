@@ -22,7 +22,7 @@
 | 验收项 | 结果 | 证据 |
 |---|---|---|
 | 5s 新项目全链出用户文案 | PASS | `fixtures/golden/5s`；run 152；D02/F02 用户文案 |
-| 5s 改 S02 只渲 S02+邻接 | PASS | 66/120；`verify_r2_5s_incremental.py` |
+| 5s 改 S02 只渲 S02+邻接 | PASS | 66/120；`verify_r2_incremental.py --project 5s` |
 | 40s 改 S03 只渲脏场景 | PASS | 93/960=9.69%；F02 墙钟 13.05%（run 154→155） |
 | 预览 F02 中 p50/p95 | PASS | attached 1.50s / 1.92s；`verify_r2_preview.py` |
 | 5s 片段预览 ≤20s | PASS | 13.2s；960×540/12fps/5.000s |
@@ -42,7 +42,7 @@
 cd server && uv run pytest tests -q                              # 83 passed
 cd .. && uv run --project server python scripts/e2e_ui.py        # UI 8 场景
 uv run --project server python scripts/smoke_m1.py               # 46 / 93
-uv run --project server python scripts/verify_r2_5s_incremental.py
+uv run --project server python scripts/verify_r2_incremental.py --project 5s
 uv run --project server python scripts/verify_r2_preview.py
 uv run --project server python scripts/verify_r2_profiles.py
 uv run --project server python scripts/verify_r2_recovery.py     # 会重启 dev.sh

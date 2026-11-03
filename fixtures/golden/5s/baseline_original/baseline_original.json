@@ -1,0 +1,37 @@
+{
+ "schema": "filmflow.golden-baseline/1",
+ "project": "5s",
+ "resolution": "original",
+ "primary": "H2",
+ "profile": {
+  "width": 1920,
+  "height": 1080,
+  "fps": 24,
+  "duration": 5.0
+ },
+ "times": [
+  0.417,
+  1.25,
+  2.083,
+  2.917,
+  3.75,
+  4.583
+ ],
+ "phash": [
+  "9f1dd0e0e0e08f1f",
+  "9f1dc6c2e0e03d1d",
+  "9f1cc4c6e0e08f3d",
+  "bf33c4ccc8c03e33",
+  "bf33c4ccc8c03e33",
+  "bf33c4ccc8c03e33"
+ ],
+ "sourceSha256": [
+  "7672302f75db4845f96be42dce0458ff21aa997807f47c1f98daf79181f9f09c",
+  "7078df1ca1d31a3a36811ab3e1ea598a4640ee5bd03f1b0d8a2ed6e4149325ce",
+  "27e4887697d6bbd2acc6b1c056a258288fffc1796f155c49e294e2e348296b94",
+  "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a",
+  "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a",
+  "e0caf61637ab033654dd380b35b0a2d4a3fe6000721c4af39f9bcc808a99a97a"
+ ],
+ "sceneCount": 2
+}
