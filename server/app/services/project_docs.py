@@ -219,6 +219,24 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+MAX_REVISIONS_PER_DOC = 100  # P2-07：版本链上限，防长编辑会话无限增长
+
+
+def _trim_revisions(session: Session, doc_id: int) -> int:
+    """只保留最近 MAX_REVISIONS_PER_DOC 条修订；返回删除数。"""
+    rows = session.exec(select(DocRevision.id).where(
+        DocRevision.doc_id == doc_id).order_by(DocRevision.version.desc())).all()
+    if len(rows) <= MAX_REVISIONS_PER_DOC:
+        return 0
+    stale = rows[MAX_REVISIONS_PER_DOC:]
+    for rid in stale:
+        row = session.get(DocRevision, rid)
+        if row:
+            session.delete(row)
+    session.commit()
+    return len(stale)
+
+
 def save_doc(session: Session, project_id: int, kind: str, content: dict,
              base_version: int, author: str = "local") -> tuple[ProjectDoc, list[dict]]:
     if kind == "script" and isinstance(content, dict):
@@ -267,6 +285,7 @@ def save_doc(session: Session, project_id: int, kind: str, content: dict,
     session.add(DocRevision(doc_id=doc.id, version=new_version, content_json=content,
                             diff_json=diff, author=author))
     session.commit()
+    _trim_revisions(session, doc.id)
     session.expire_all()
     fresh = get_doc(session, project_id, kind)
     assert fresh is not None

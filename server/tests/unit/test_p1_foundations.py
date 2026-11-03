@@ -7,10 +7,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from sqlmodel import Session, select
+
 from app.config import Settings
 from app.db import engine
 from app.engine import runengine
 from app.services import delivery
+from app.services import project_docs as docs
 
 
 def test_workspace_roots_accept_plain_and_json(monkeypatch):
@@ -146,3 +149,70 @@ def test_delivery_title_prefers_snapshot_script(monkeypatch):
         raise AssertionError("不应读取当前 script")
     monkeypatch.setattr(delivery.docs_svc, "doc_payload", _boom)
     assert delivery._title(None, _Proj(), snap) == "快照标题"
+
+
+# ---------- P2-04 / P2-07：帧原子写与版本链上限 ----------
+
+def test_frameserver_writes_frames_atomically(tmp_path: Path):
+    """P2-04：/frame 落盘必须 tmp+replace——中途 kill 不留半张帧给 F03。"""
+    import base64 as b64
+    import urllib.request
+
+    from app.engine.executors.pipeline import FrameServer
+
+    root = tmp_path / "proj"
+    (root / "out").mkdir(parents=True)
+    png = b64.b64encode(b"\x89PNG\r\n\x1a\ntest").decode()
+    # 8787 若被占用会复用既有服务（写别的 root）——先探测，占用则跳过断言 root 归属
+    import http.server
+    srv = FrameServer(str(root))
+    srv.port = 8787
+    try:
+        srv.start()
+    except OSError:
+        pytest.skip("8787 已被占（另一进程 FrameServer），跨进程不互斥")
+    try:
+        body = ("data:image/png;base64," + png).encode()
+        req = urllib.request.Request(
+            "http://127.0.0.1:8787/frame?i=7", data=body, method="POST")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            assert r.status == 204
+        f = root / "out" / "frames" / "0007.png"
+        assert f.exists() and f.read_bytes() == b"\x89PNG\r\n\x1a\ntest"
+        assert not list((root / "out" / "frames").glob("*.tmp")), "不得残留 .tmp"
+    finally:
+        srv.stop() if hasattr(srv, "stop") else None
+
+
+def test_doc_revisions_capped_at_100(tmp_path: Path):
+    """P2-07：连续保存 110 次，版本链只保留最近 100 条；版本号不受影响。"""
+    from app.models import DocRevision
+    from app.services.project_cleanup import delete_project
+
+    root = tmp_path / "rev-cap"
+    (root / "card").mkdir(parents=True)
+    (root / "card" / "copy.txt").write_text("版本裁剪。", encoding="utf-8")
+    with Session(engine) as session:
+        from app.models import Project
+        p = Project(name="rev-cap", root=str(root))
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        pid = p.id
+        try:
+            for i in range(110):
+                docs.save_doc(session, pid, "script",
+                              {"text": f"第 {i} 版内容。", "title": "t"}, i, "cap-test")
+            doc = docs.get_doc(session, pid, "script")
+            assert doc is not None and doc.version == 110
+            n = len(session.exec(select(DocRevision).where(
+                DocRevision.doc_id == doc.id)).all())
+            assert n == 100, n
+            # 最新版本仍在链上
+            tops = docs.list_versions(session, doc)
+            assert tops[0]["version"] == 110
+        finally:
+            session.rollback()
+            delete_project(session, pid, remove_dir=False)
+    import shutil
+    shutil.rmtree(root, ignore_errors=True)

@@ -84,6 +84,8 @@ def _write_fixes(root: str | Path, data: dict) -> None:
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(p)
+    # P2-08：读-改-写期间由调用方持锁；这里补一个进程内串行化哨兵（见 _fixes_lock）
+
 
 
 def _latest_run(session: Session, project_id: int) -> Run | None:

@@ -78,9 +78,12 @@ class FrameServer:
                     import base64
                     data = base64.b64decode(raw.split(b",", 1)[1])
                     sub = "frames" if u.path == "/frame" else "proxy"
+                    # P2-04：原子写——中途 kill 只会留下 .tmp，F03 永远看不到半张帧
                     out = root / "out" / sub
                     out.mkdir(parents=True, exist_ok=True)
-                    (out / f"{i:04d}.png").write_bytes(data)
+                    tmp = out / f".{i:04d}.png.tmp"
+                    tmp.write_bytes(data)
+                    tmp.replace(out / f"{i:04d}.png")
                     self.send_response(204)
                     self.end_headers()
                 elif u.path == "/done":

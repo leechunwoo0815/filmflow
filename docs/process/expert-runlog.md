@@ -196,3 +196,15 @@
   非法类型一律 422 挡在服务层前（新增 2 项测试：5 类非法体 + 别名放行）。
 - `pytest tests/unit tests/bdd` → **202 passed**。
 - 剩余 payload: dict ≈ 32 个（模板/系列/审片/takes/drafts/label 等中低危），下一批按同法迁移。
+
+## 建设批 7 · P2-04 帧原子写 + P2-07 版本链上限（2026-11-04 03:40–04:00）
+
+- **P2-04**：FrameServer `/frame`/`/pframe` 落盘改 tmp+replace——中途 kill 只会留 `.tmp`，
+  F03 的 `glob("*.png")` 永远看不到半张帧（消除毒化帧进入增量 manifest 的通道）。
+  功能测试：真起 FrameServer POST /frame?i=7 断言落盘且无 .tmp 残留。
+- **P2-07**：`project_docs.MAX_REVISIONS_PER_DOC=100`；save_doc 两个插入点后 `_trim_revisions`
+  裁剪（版本号继续增长、只裁链长）。测试：连存 110 版 → 链上恰 100 条、version=110 仍在。
+- **P2-08（判断：不改）**：审片/侧文件已是 tmp+replace 原子写；单 API worker + 同步文件操作
+  在事件循环内天然串行，load-modify-save 无 await 间断 → 无进程内交错；多 worker 本就不支持
+  （HANDOFF §9.5）。加锁是伪需求，记录判断不改码。
+- `pytest tests/unit tests/bdd` → **204 passed**。
