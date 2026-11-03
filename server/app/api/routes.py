@@ -20,11 +20,13 @@ from ..engine.cachekey import gate_content_hash
 from ..engine.invalidation import impact_preview
 from ..errors import ApiError, ErrorCode, not_found
 from ..events import emit, subscribe, unsubscribe
-from ..models import (Approval, Artifact, AuditLog, Draft, Job, Metric, NodeRun, Project,
-                      Run, Style, StylePick, Workflow, WorkflowVersion, table_dict)
+from ..models import (Approval, Artifact, Asset, AuditLog, Draft, Job, Metric, NodeRun,
+                      Project, ProjectDoc, Run, Style, StylePick, Workflow, WorkflowVersion,
+                      table_dict)
 from ..services import environment as env_svc
 from ..services import engines as engines_svc
 from ..services import preview as preview_svc
+from ..services import assets as assets_svc
 from ..services import audio as audio_svc
 from ..services import onboarding as onboarding_svc
 from ..services import review_comments as review_svc
@@ -1123,6 +1125,160 @@ async def gates_pending(run_id: int, session: Session = Depends(get_session)):
     return {"items": out}
 
 
+# ---------- 资产库（FR-36） ----------
+
+_ASSET_MEDIA = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".webp": "image/webp", ".svg": "image/svg+xml",
+                ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+                ".ttf": "font/ttf", ".otf": "font/otf", ".woff2": "font/woff2",
+                ".mp4": "video/mp4", ".mov": "video/quicktime"}
+
+
+def _asset_project(session: Session, project_id: int | None) -> Project | None:
+    if not project_id:
+        return None
+    proj = _project_or_404(session, project_id)
+    _require_workspace_root(Path(proj.root).resolve())
+    return proj
+
+
+@router.get("/assets")
+async def assets_list(scope: str = "global", projectId: int | None = None,
+                      kind: str = "", q: str = "", includeArchived: bool = False,
+                      session: Session = Depends(get_session)):
+    if scope not in ("global", "project"):
+        raise ApiError(ErrorCode.E_VALIDATION, "scope 必须是 global/project")
+    if scope == "project":
+        _asset_project(session, projectId)
+    items = assets_svc.list_assets(session, scope, projectId, kind, q, includeArchived)
+    return {"items": items, "scope": scope, "projectId": projectId}
+
+
+@router.post("/assets")
+async def assets_import(payload: dict, session: Session = Depends(get_session)):
+    scope = str(payload.get("scope") or "global")
+    proj = _asset_project(session, payload.get("projectId")) if scope == "project" else None
+    asset, deduped = await asyncio.to_thread(
+        assets_svc.import_asset, session, scope, proj.root if proj else None,
+        str(payload.get("filename") or "asset.bin"), str(payload.get("data") or ""),
+        str(payload.get("kind") or ""), str(payload.get("name") or ""),
+        payload.get("tags") or [], payload.get("license") or {}, str(payload.get("author") or ""))
+    usages = assets_svc.scan_usages(
+        session, sha=asset.sha256,
+        project_ids=[asset.project_id] if asset.scope == "project" else None).get(asset.sha256, [])
+    audit(session, "asset.import", f"{scope}:{asset.id}",
+          after={"sha256": asset.sha256, "kind": asset.kind, "deduped": deduped})
+    return {"asset": assets_svc.asset_dto(asset, usages), "deduped": deduped}
+
+
+@router.get("/assets/{asset_id}")
+async def assets_get(asset_id: int, session: Session = Depends(get_session)):
+    asset = assets_svc.get_asset(session, asset_id)
+    usages = assets_svc.scan_usages(
+        session, sha=asset.sha256,
+        project_ids=[asset.project_id] if asset.scope == "project" else None).get(asset.sha256, [])
+    return {"asset": assets_svc.asset_dto(asset, usages)}
+
+
+@router.patch("/assets/{asset_id}")
+async def assets_update(asset_id: int, payload: dict,
+                        session: Session = Depends(get_session)):
+    asset = await asyncio.to_thread(assets_svc.update_asset, session, asset_id, payload)
+    audit(session, "asset.update", str(asset_id),
+          after={"name": (asset.meta_json or {}).get("name"), "archived": asset.archived})
+    usages = assets_svc.scan_usages(
+        session, sha=asset.sha256,
+        project_ids=[asset.project_id] if asset.scope == "project" else None).get(asset.sha256, [])
+    return {"asset": assets_svc.asset_dto(asset, usages)}
+
+
+@router.delete("/assets/{asset_id}")
+async def assets_delete(asset_id: int, force: bool = False,
+                        session: Session = Depends(get_session)):
+    result = await asyncio.to_thread(assets_svc.delete_asset, session, asset_id, force)
+    audit(session, "asset.delete", str(asset_id), after=result)
+    return result
+
+
+@router.get("/assets/{asset_id}/file")
+async def assets_file(asset_id: int, session: Session = Depends(get_session)):
+    asset = assets_svc.get_asset(session, asset_id)
+    p = Path(asset.path)
+    if not p.exists():
+        raise ApiError(ErrorCode.E_ASSET_MISSING, "资产文件缺失", status=404)
+    return FileResponse(p, filename=p.name,
+                        media_type=_ASSET_MEDIA.get((asset.meta_json or {}).get("ext", "")))
+
+
+@router.get("/assets/{asset_id}/thumb")
+async def assets_thumb(asset_id: int, session: Session = Depends(get_session)):
+    asset = assets_svc.get_asset(session, asset_id)
+    p = assets_svc._thumb_path(asset)
+    if not p:
+        raise ApiError(ErrorCode.E_NOT_FOUND, "缩略图不存在", status=404)
+    return FileResponse(p, filename=p.name, media_type="image/jpeg")
+
+
+@router.get("/assets/{asset_id}/waveform")
+async def assets_waveform(asset_id: int, w: int = 2000,
+                          session: Session = Depends(get_session)):
+    asset = assets_svc.get_asset(session, asset_id)
+    if asset.kind != "audio":
+        raise ApiError(ErrorCode.E_ASSET_KIND, "只有音频资产有波形")
+    data = await asyncio.to_thread(assets_svc.waveform, asset.path, w)
+    return {**data, "assetId": asset_id, "duration": (asset.meta_json or {}).get("duration", 0)}
+
+
+@router.post("/assets/{asset_id}/font-check")
+async def assets_font_check(asset_id: int, payload: dict,
+                            session: Session = Depends(get_session)):
+    asset = assets_svc.get_asset(session, asset_id)
+    if asset.kind != "font":
+        raise ApiError(ErrorCode.E_ASSET_KIND, "只有字体资产可做覆盖检查")
+    return await asyncio.to_thread(assets_svc.font_coverage, asset.path,
+                                   str(payload.get("text") or ""))
+
+
+@router.post("/assets/{asset_id}/replace")
+async def assets_replace(asset_id: int, payload: dict,
+                         session: Session = Depends(get_session)):
+    old = assets_svc.get_asset(session, asset_id)
+    new = assets_svc.get_asset(session, int(payload.get("assetId") or 0))
+    if old.kind != new.kind:
+        raise ApiError(ErrorCode.E_ASSET_KIND, "替换资产必须同类型")
+    if old.id == new.id:
+        raise ApiError(ErrorCode.E_VALIDATION, "新旧资产相同")
+    if old.scope == "global" and new.scope != "global":
+        raise ApiError(ErrorCode.E_ASSET_KIND, "全局资产只能替换为全局资产")
+    if old.scope == "project" and new.scope == "project" and new.project_id != old.project_id:
+        raise ApiError(ErrorCode.E_ASSET_KIND, "项目资产不能替换为其他项目资产")
+    usages = assets_svc.scan_usages(
+        session, sha=old.sha256,
+        project_ids=[old.project_id] if old.scope == "project" else None).get(old.sha256, [])
+    target_ids = sorted({u["projectId"] for u in usages}) if old.scope == "global" else \
+        ([old.project_id] if old.project_id else [])
+    changed_projects = []
+    for pid in target_ids:
+        doc = session.exec(select(ProjectDoc).where(
+            ProjectDoc.project_id == pid, ProjectDoc.kind == "timeline")).first()  # type: ignore[arg-type]
+        if not doc:
+            continue
+        content = json.loads(json.dumps(doc.content_json or {}))
+        scenes = assets_svc.replace_doc_refs(content, old.sha256, new.sha256)
+        if not scenes:
+            continue
+        saved, diff = docs_svc.save_doc(session, pid, "timeline", content, doc.version,
+                                        "asset-replace")
+        changed_projects.append({"projectId": pid, "version": saved.version,
+                                 "scenes": scenes, "diff": diff[:50]})
+    audit(session, "asset.replace", str(asset_id),
+          after={"with": new.id, "projects": changed_projects})
+    return {"old": assets_svc.asset_dto(old, usages),
+            "new": assets_svc.asset_dto(new, []),
+            "projects": changed_projects,
+            "affectedScenes": sorted({s for p in changed_projects for s in p["scenes"]})}
+
+
 # ---------- 音频工作台（FR-27） ----------
 
 @router.get("/projects/{project_id}/audio")
@@ -1646,6 +1802,13 @@ async def project_timeline_ops(project_id: int, payload: dict,
                else current["version"])
     script = docs_svc.doc_payload(session, project_id, proj.root, "script")["content"]
     op = str(payload.get("op") or "")
+    if op in ("add_image", "add_sfx", "set_font"):
+        sha = str(payload.get("assetSha") or "")
+        expected = {"add_image": "image", "add_sfx": "audio", "set_font": "font"}[op]
+        asset = session.exec(select(Asset).where(Asset.sha256 == sha)).first() if sha else None
+        if asset and asset.kind != expected:
+            raise ApiError(ErrorCode.E_ASSET_KIND,
+                           f"资产 {asset.id} 是 {asset.kind}，不能用于 {expected}", status=409)
     try:
         content, meta = tl_svc.apply(current["content"], script, op, payload)
     except tl_svc.TimelineOpError as e:

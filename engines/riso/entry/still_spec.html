@@ -64,6 +64,7 @@ async function boot() {
   const scene = (spec.scenes || []).find((s) => s.id === SCENE) || (spec.scenes || [])[0];
   if (!scene || !scene.program) return fail('scene has no program');
   const program = await (await fetch(scene.program, { cache: 'no-store' })).json();
+  await SCENE_RENDER.preloadProgram(program);
   const c = program.canvas || {};
   const W = c.w || 1920, H = c.h || 1080;
   gl.width = W; gl.height = H;

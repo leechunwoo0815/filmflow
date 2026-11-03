@@ -125,6 +125,23 @@ class Artifact(SQLModel, table=True):
     meta_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
 
 
+class Asset(SQLModel, table=True):
+    """R3.0 FR-36 资产库：全局/项目作用域、sha 去重、使用处由 timeline 扫描。"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    scope: str = Field(index=True)                          # global | project
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    kind: str = Field(index=True)                           # image | audio | font | video
+    path: str
+    sha256: str = Field(index=True)
+    bytes: int = 0
+    meta_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    tags_json: list = Field(default_factory=list, sa_column=Column(JSON))
+    license_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    archived: bool = Field(default=False, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    __table_args__ = (Index("ix_asset_scope_sha", "scope", "project_id", "sha256"),)
+
+
 class Metric(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     run_id: int = Field(foreign_key="run.id", index=True)
@@ -247,7 +264,7 @@ class SceneState(SQLModel, table=True):
 
 TABLES: list[type[SQLModel]] = [
     Project, Draft, Style, StylePreview, StylePick, Workflow, Run, NodeRun,
-    Artifact, Metric, Event, Approval, AuditLog, Job, WorkflowVersion,
+    Artifact, Asset, Metric, Event, Approval, AuditLog, Job, WorkflowVersion,
     ProjectDoc, DocRevision, SchemaMigration, SceneState,
 ]
 

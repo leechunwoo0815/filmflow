@@ -81,7 +81,7 @@ def _font_family(value) -> str:
 
 def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
                   camera: dict | None = None, motion: bool = False,
-                  layout: str = "16x9") -> dict:
+                  layout: str = "16x9", asset_resolver=None) -> dict:
     w = int(profile.get("width") or 1920)
     h = int(profile.get("height") or 1080)
     fps = int(profile.get("fps") or 24)
@@ -93,6 +93,16 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
     angles, periods = _screen(tokens)
     type_spec = tokens.get("type_spec") or {}
     family = _font_family(type_spec.get("family") or "Noto Sans SC")
+    font_url = ""
+    font_sha = str(scene.get("fontSha") or "")
+    if font_sha:
+        font_asset = asset_resolver(font_sha) if asset_resolver else None
+        if not font_asset:
+            raise ValueError(f"E_ASSET_MISSING: 字体 {font_sha} 缺失，请重新链接")
+        if font_asset.get("kind") not in (None, "font"):
+            raise ValueError(f"E_ASSET_KIND: {font_sha} 不是字体资产")
+        family = font_asset.get("family") or f"FFAsset-{font_sha[:8]}"
+        font_url = font_asset.get("url") or ""
     title_range = type_spec.get("title_range") or [72, 120]
     base_size = 132 if len(text) <= 10 else 112 if len(text) <= 18 else 92
     size = max(int(title_range[0]), min(int(title_range[1]), base_size))
@@ -123,7 +133,8 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
          "box": title_box,
          "style": {"font": family, "weight": 900, "size": title_size,
                    "lineHeight": line_height, "letterSpacing": spacing,
-                   "color": pal[0], "align": "left", "maxWidth": title_max},
+                   "color": pal[0], "align": "left", "maxWidth": title_max,
+                   **({"fontUrl": font_url} if font_url else {})},
          "reveal": {"type": "mask-reveal", "at": 0.15, "duration": 0.6, "ease": "easeOut"},
          "in": {"at": 0.0, "type": "cut"},
          "out": {"at": round(max(0.0, duration - 0.4), 3), "type": "fade", "duration": 0.4}},
@@ -131,6 +142,37 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
          "component": "registration-cross",
          "props": {**cross, "size": 1.0, "color": pal[1]}},
     ]
+    asset_meta = []
+    if font_sha:
+        asset_meta.append({"sha": font_sha, "kind": "font", "url": font_url, "family": family})
+    for i, layer in enumerate(scene.get("layers") or []):
+        if layer.get("type", "image") != "image":
+            raise ValueError(f"E_PROGRAM_INVALID: scene.layers[{i}] 只支持 image")
+        sha = str(layer.get("assetSha") or "").strip()
+        if not sha:
+            raise ValueError(f"E_ASSET_MISSING: scene.layers[{i}] 缺少 assetSha")
+        info = asset_resolver(sha) if asset_resolver else None
+        if not info:
+            raise ValueError(f"E_ASSET_MISSING: 图片 {sha} 缺失，请重新链接")
+        if info.get("kind") not in (None, "image"):
+            raise ValueError(f"E_ASSET_KIND: {sha} 不是图片资产")
+        box = layer.get("box") or [480, 270, 960, 540]
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            raise ValueError(f"E_PROGRAM_INVALID: scene.layers[{i}].box 必须是 [x,y,w,h]")
+        fit = str(layer.get("fit") or "cover")
+        if fit not in ("cover", "contain"):
+            raise ValueError(f"E_PROGRAM_INVALID: scene.layers[{i}].fit 非法")
+        src = info.get("url") or ""
+        if not src:
+            raise ValueError(f"E_ASSET_MISSING: 图片 {sha} 没有可渲染 URL")
+        layers.append({
+            "id": str(layer.get("id") or f"L_img{i + 1:02d}"),
+            "type": "image", "z": int(layer.get("z", 20)), "src": src,
+            "assetSha": sha, "name": str(layer.get("name") or "")[:60],
+            "box": [int(round(float(v))) for v in box],
+            "fit": fit, "opacity": round(float(layer.get("opacity", 1)), 3),
+        })
+        asset_meta.append({"sha": sha, "kind": "image", "url": src})
     program = {
         "schema": SCENE_SCHEMA,
         "id": scene.get("id"),
@@ -140,7 +182,7 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
         "layers": layers,
         "audioCues": [],
         "meta": {"operation": scene.get("operation", ""), "source_span": span, "layout": layout,
-                 "text": text, "compiler_version": "1.0.0"},
+                 "text": text, "compiler_version": "1.0.0", "assets": asset_meta},
     }
     if motion:
         program["camera"] = camera_from_e02(camera, duration, w, h)

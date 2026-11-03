@@ -20,6 +20,7 @@ export default function HelpPage() {
           <li><a className="text-blue" href="/timeline">/timeline</a>：场景块拖拽/改时长/ripple、分割合并、文本、相机关键帧、转场、250ms 静帧预览。</li>
           <li><a className="text-blue" href="/player">/player</a>：审片播放器、帧锚定批注、resolve、场景/整片决议、JSON/CSV、审片包。</li>
           <li><a className="text-blue" href="/takes">/takes</a>：A/B Take 同步播放、差异叠加、评分/当前、场景采纳、分支与软删除保护。</li>
+          <li><a className="text-blue" href="/assets">/assets</a>：全局/项目资产库、sha 去重、引用数与使用处、许可、替换/删除保护、字体缺字检查。</li>
         </ul>
       </section>
       <section className="card p-4 mb-4">

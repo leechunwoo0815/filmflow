@@ -191,7 +191,8 @@ def _variant_programs(ctx: pv.PreviewContext, variant: Variant) -> tuple[list[di
     out = []
     for s in ctx.scenes:
         prog = compile_scene(s, ctx.script, ctx.tokens, profile,
-                             camera=pv._camera(s, profile), motion=True, layout=variant.id)
+                             camera=pv._camera(s, profile), motion=True, layout=variant.id,
+                             asset_resolver=ctx.asset_resolver)
         out.append({"id": s["id"], "start": float(s.get("start", 0)),
                     "end": float(s.get("end", 0)), "program": prog})
     return out, profile

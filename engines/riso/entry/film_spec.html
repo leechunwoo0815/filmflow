@@ -87,6 +87,7 @@ window.__FF_PREVIEW_INIT__ = async function (payload) {
   }));
   if (!programs.length) throw new Error('E_PROGRAM_INVALID: preview.programs 为空');
   await loadPreviewFonts(programs);
+  await SCENE_RENDER.preloadPrograms(programs);
   const pc = programs[0].program.canvas || {};
   const srcW = pc.w || 1920;
   const W = payload.width || srcW;
@@ -136,6 +137,7 @@ async function boot() {
     programs.push({ id: p.id, start: p.start, end: p.end, program: prog });
   }
   if (!programs.length) throw new Error('E_PROGRAM_INVALID: binding.programs 为空');
+  await SCENE_RENDER.preloadPrograms(programs);
   const W = programs[0].program.canvas.w || 1920;
   const H = programs[0].program.canvas.h || 1080;
   const FPS = programs[0].program.canvas.fps || 24;

@@ -13,7 +13,8 @@ from ..db import engine
 from ..events import emit
 from ..models import Approval, Artifact, NodeRun, Project, Run, Workflow
 from . import caps as caps_mod
-from .cachekey import EXECUTOR_VERSION, gate_content_hash, node_cache_key
+from .cachekey import (EXECUTOR_VERSION, file_sha256, gate_content_hash,
+                       node_cache_key)
 from .edges import N, UPSTREAM, data_descendants
 from .executors import REGISTRY
 from .locks import LockManager
@@ -283,6 +284,23 @@ async def execute_node(run_id: int, node_id: str) -> dict:
             cache_params = {**cache_params, "renderProfilesSha": profiles_sha(run_profiles)}
         if node_id in PROJECT_LOCAL_NODES:
             cache_params = {**cache_params, "projectRoot": str(project_root)}
+        # 音频/资产设置是项目文件而非 DAG 边：显式纳入缓存键，避免改设置仍命中旧产物
+        project_inputs = {
+            "G01": ("card/audio.json",),
+            "G05": ("card/audio.json", "card/audio.mix.json"),
+            "G06": ("card/audio.mix.json",),
+            "G07": ("card/audio.mix.json",),
+        }.get(node_id, ())
+        if project_inputs:
+            hashes = {}
+            for rel in project_inputs:
+                p = Path(project_root) / rel
+                if p.exists():
+                    hashes[rel] = file_sha256(str(p))
+            cache_params = {**cache_params, "projectInputsSha": hashes}
+            if node_id in ("G01", "G05"):
+                cache_params = {**cache_params,
+                                "timelineSha": snapshot.get("doc_snapshot_sha", "")}
         key = node_cache_key(node_id, EXECUTOR_VERSION, cache_params, input_hashes,
                              run.caps_json or [], doc_sha)
 

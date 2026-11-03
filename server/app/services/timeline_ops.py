@@ -49,6 +49,89 @@ def _new_id(existing: set[str], base: str) -> str:
     return f"{base}{n}"
 
 
+def _image_layers(scene: dict) -> list[dict]:
+    return [l for l in (scene.get("layers") or []) if isinstance(l, dict)]
+
+
+def _clean_box(box) -> list[int]:
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        raise TimelineOpError("E_ASSET_BOX", "图片 box 必须是 [x,y,w,h]", 409)
+    vals = [int(round(float(v))) for v in box]
+    if vals[2] <= 0 or vals[3] <= 0:
+        raise TimelineOpError("E_ASSET_BOX", "图片宽高必须 >0", 409)
+    return vals
+
+
+def _clean_layer(layer: dict) -> dict:
+    out = deepcopy(layer)
+    if str(out.get("type") or "image") != "image":
+        raise TimelineOpError("E_ASSET_LAYER_TYPE", "v1 只支持 image 图层", 409)
+    out["type"] = "image"
+    sha = str(out.get("assetSha") or "").strip()
+    if not sha:
+        raise TimelineOpError("E_ASSET_MISSING", "图片图层缺少 assetSha", 409)
+    out["assetSha"] = sha
+    out["box"] = _clean_box(out.get("box") or [480, 270, 960, 540])
+    out["z"] = int(round(float(out.get("z") or 20)))
+    fit = str(out.get("fit") or "cover")
+    if fit not in ("cover", "contain"):
+        raise TimelineOpError("E_ASSET_FIT", "fit 必须是 cover/contain", 409)
+    out["fit"] = fit
+    out["opacity"] = round(max(0.0, min(float(out.get("opacity", 1) or 0), 1.0)), 3)
+    out["name"] = str(out.get("name") or "")[:60]
+    return out
+
+
+def _clean_layers(scene: dict, layers: list[dict]) -> list[dict]:
+    if len(layers or []) > 20:
+        raise TimelineOpError("E_ASSET_TOO_MANY", "单场景最多 20 个图片图层", 409)
+    out, ids = [], set()
+    for layer in layers or []:
+        clean = _clean_layer(layer)
+        lid = str(clean.get("id") or "")
+        if not lid:
+            for n in range(1, 100):
+                lid = f"img{n:02d}"
+                if lid not in ids:
+                    break
+            clean["id"] = lid
+        if lid in ids:
+            raise TimelineOpError("E_ASSET_LAYER_DUP", f"图层 id 重复：{lid}", 409)
+        ids.add(lid)
+        out.append(clean)
+    return out
+
+
+def _clean_audio_layers(scene: dict, layers: list[dict]) -> list[dict]:
+    if len(layers or []) > 20:
+        raise TimelineOpError("E_ASSET_TOO_MANY", "单场景最多 20 个 SFX", 409)
+    duration = max(0.0, float(scene["end"]) - float(scene["start"]))
+    out, ids = [], set()
+    for layer in layers or []:
+        sha = str(layer.get("assetSha") or "").strip()
+        if not sha:
+            raise TimelineOpError("E_ASSET_MISSING", "SFX 缺少 assetSha", 409)
+        lid = str(layer.get("id") or "")
+        if not lid:
+            for n in range(1, 100):
+                lid = f"sfx{n:02d}"
+                if lid not in ids:
+                    break
+        if lid in ids:
+            raise TimelineOpError("E_ASSET_LAYER_DUP", f"SFX id 重复：{lid}", 409)
+        ids.add(lid)
+        at = round(max(0.0, min(float(layer.get("at") or 0), duration)), 3)
+        gain = round(float(layer.get("gainDb") or 0), 2)
+        if not -60 <= gain <= 12:
+            raise TimelineOpError("E_ASSET_GAIN", "SFX 增益必须在 -60..12dB", 409)
+        fade_in = round(max(0.0, float(layer.get("fadeIn") or 0)), 3)
+        fade_out = round(max(0.0, float(layer.get("fadeOut") or 0)), 3)
+        out.append({"id": lid, "assetSha": sha, "at": at, "gainDb": gain,
+                    "fadeIn": fade_in, "fadeOut": fade_out,
+                    "name": str(layer.get("name") or "")[:60]})
+    return out
+
+
 def _recompute_scene(scene: dict, script: dict) -> None:
     start, end = float(scene["start"]), float(scene["end"])
     duration = max(0.0, end - start)
@@ -137,6 +220,20 @@ def validate(doc: dict, script: dict | None = None) -> dict:
             warnings.append({"code": "W_TRANSITION_UNKNOWN", "sceneId": sid,
                              "message": f"{sid} 转场 {tr} 不在 8 类库内，将回退 match-shape",
                              "fix": "从 8 类转场中选择"})
+        try:
+            _clean_layers(s, s.get("layers") or [])
+        except TimelineOpError as e:
+            errors.append({"code": e.code, "sceneId": sid, "message": e.message,
+                           "fix": "删除或修正异常图片图层"})
+        try:
+            _clean_audio_layers(s, s.get("audio_layers") or [])
+        except TimelineOpError as e:
+            errors.append({"code": e.code, "sceneId": sid, "message": e.message,
+                           "fix": "删除或修正异常 SFX"})
+        if s.get("fontSha") is not None and not isinstance(s.get("fontSha"), str):
+            errors.append({"code": "E_ASSET_FONT", "sceneId": sid,
+                           "message": f"{sid} fontSha 必须是字符串",
+                           "fix": "重新选择字体资产"})
     return {"ok": not errors, "errors": errors, "warnings": warnings,
             "duration": doc.get("duration", 0), "frames": doc.get("frames", 0)}
 
@@ -347,6 +444,88 @@ def set_transition(doc: dict, script: dict, scene_id: str, transition: str,
     return doc
 
 
+def add_image(doc: dict, script: dict, scene_id: str, payload: dict) -> dict:
+    _, scene = _scene_by_id(doc, scene_id)
+    layers = _image_layers(scene)
+    layer = {"type": "image", "assetSha": str(payload.get("assetSha") or ""),
+             "box": payload.get("box") or [480, 270, 960, 540],
+             "z": payload.get("z", 20), "fit": payload.get("fit") or "cover",
+             "opacity": payload.get("opacity", 1), "name": payload.get("name") or ""}
+    if payload.get("layerId"):
+        layer["id"] = str(payload.get("layerId"))
+    scene["layers"] = _clean_layers(scene, layers + [layer])
+    normalize(doc, script)
+    _ensure_valid(doc, script, allow_read_overflow=True)
+    return doc
+
+
+def update_image(doc: dict, script: dict, scene_id: str, layer_id: str,
+                 patch: dict) -> dict:
+    _, scene = _scene_by_id(doc, scene_id)
+    layers = _image_layers(scene)
+    idx = next((i for i, l in enumerate(layers) if l.get("id") == layer_id), -1)
+    if idx < 0:
+        raise TimelineOpError("E_ASSET_LAYER_NOT_FOUND", f"图片图层不存在：{layer_id}", 404)
+    merged = {**layers[idx], **{k: v for k, v in (patch or {}).items()
+                                if k in ("box", "z", "fit", "opacity", "name")}}
+    layers[idx] = merged
+    scene["layers"] = _clean_layers(scene, layers)
+    normalize(doc, script)
+    _ensure_valid(doc, script, allow_read_overflow=True)
+    return doc
+
+
+def remove_layer(doc: dict, script: dict, scene_id: str, layer_id: str) -> dict:
+    _, scene = _scene_by_id(doc, scene_id)
+    layers = _image_layers(scene)
+    kept = [l for l in layers if l.get("id") != layer_id]
+    if len(kept) == len(layers):
+        raise TimelineOpError("E_ASSET_LAYER_NOT_FOUND", f"图片图层不存在：{layer_id}", 404)
+    scene["layers"] = _clean_layers(scene, kept)
+    normalize(doc, script)
+    _ensure_valid(doc, script, allow_read_overflow=True)
+    return doc
+
+
+def set_font(doc: dict, script: dict, scene_id: str, asset_sha: str) -> dict:
+    _, scene = _scene_by_id(doc, scene_id)
+    sha = str(asset_sha or "").strip()
+    if sha:
+        scene["fontSha"] = sha
+    else:
+        scene.pop("fontSha", None)
+    normalize(doc, script)
+    _ensure_valid(doc, script, allow_read_overflow=True)
+    return doc
+
+
+def add_sfx(doc: dict, script: dict, scene_id: str, payload: dict) -> dict:
+    _, scene = _scene_by_id(doc, scene_id)
+    layers = list(scene.get("audio_layers") or [])
+    layer = {"assetSha": str(payload.get("assetSha") or ""),
+             "at": payload.get("at", 0), "gainDb": payload.get("gainDb", 0),
+             "fadeIn": payload.get("fadeIn", 0), "fadeOut": payload.get("fadeOut", 0),
+             "name": payload.get("name") or ""}
+    if payload.get("layerId"):
+        layer["id"] = str(payload.get("layerId"))
+    scene["audio_layers"] = _clean_audio_layers(scene, layers + [layer])
+    normalize(doc, script)
+    _ensure_valid(doc, script, allow_read_overflow=True)
+    return doc
+
+
+def remove_sfx(doc: dict, script: dict, scene_id: str, layer_id: str) -> dict:
+    _, scene = _scene_by_id(doc, scene_id)
+    layers = list(scene.get("audio_layers") or [])
+    kept = [l for l in layers if l.get("id") != layer_id]
+    if len(kept) == len(layers):
+        raise TimelineOpError("E_ASSET_LAYER_NOT_FOUND", f"SFX 不存在：{layer_id}", 404)
+    scene["audio_layers"] = _clean_audio_layers(scene, kept)
+    normalize(doc, script)
+    _ensure_valid(doc, script, allow_read_overflow=True)
+    return doc
+
+
 def camera_preset(name: str, duration: float, anchor: list | None = None) -> dict:
     if name not in PRESETS:
         raise TimelineOpError("E_CAMERA_PRESET", f"未知相机预设：{name}", 404)
@@ -397,6 +576,19 @@ def apply(doc: dict, script: dict, op: str, payload: dict) -> tuple[dict, dict]:
     elif op == "set_transition":
         set_transition(new, script, scene_id, str(payload.get("transition") or ""),
                        payload.get("duration"))
+    elif op == "add_image":
+        add_image(new, script, scene_id, payload)
+    elif op == "update_image":
+        update_image(new, script, scene_id, str(payload.get("layerId") or ""),
+                     payload.get("patch") or {})
+    elif op == "remove_layer":
+        remove_layer(new, script, scene_id, str(payload.get("layerId") or ""))
+    elif op == "set_font":
+        set_font(new, script, scene_id, str(payload.get("assetSha") or ""))
+    elif op == "add_sfx":
+        add_sfx(new, script, scene_id, payload)
+    elif op == "remove_sfx":
+        remove_sfx(new, script, scene_id, str(payload.get("layerId") or ""))
     else:
         raise TimelineOpError("E_TIMELINE_OP", f"未知时间轴操作：{op}", 400)
     validation = validate(new, script)

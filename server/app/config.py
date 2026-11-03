@@ -43,12 +43,17 @@ class Settings(BaseSettings):
         return self.home / "cache"
 
     @property
+    def assets_dir(self) -> Path:
+        return self.home / "assets"
+
+    @property
     def index_path_fallback(self) -> Path:
         """风格库目录不可写时索引的回落位置。"""
         return self.home / "index" / "style-index.json"
 
     def ensure_dirs(self) -> None:
-        for d in (self.home, self.logs_dir, self.cache_dir, self.cache_dir / "previs"):
+        for d in (self.home, self.logs_dir, self.cache_dir, self.cache_dir / "previs",
+                  self.assets_dir):
             d.mkdir(parents=True, exist_ok=True)
 
 

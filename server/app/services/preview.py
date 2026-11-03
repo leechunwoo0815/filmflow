@@ -32,7 +32,7 @@ from ..engine.render_manifest import scene_hash
 from ..engine.scene.canonical import content_hash
 from ..engine.scene.compiler import compile_scene
 
-RENDERER_VER = "preview-1.5.0"  # 档位来自 render.profile.json；out spec 进缓存键
+RENDERER_VER = "preview-1.6.0"  # 资产图片/字体预加载；out spec 进缓存键
 PREVIEW_PROFILES = render_profiles_svc.DEFAULT_PROFILES
 CACHE_LIMIT_BYTES = 500 * 1024 * 1024
 HTML_PATH = Path(__file__).resolve().parents[3] / "engines/riso/entry/film_spec.html"
@@ -64,6 +64,7 @@ class PreviewContext:
     imported: bool
     profiles: dict = field(default_factory=dict)
     run_id: int | None = None
+    asset_resolver: object | None = None
 
 
 def _read_json(path: Path) -> dict:
@@ -200,12 +201,14 @@ def resolve_context(session: Session, project_id: int) -> PreviewContext:
         elif font_css:
             font_sha = content_hash(font_css)
     profiles = render_profiles_svc.resolve(str(root), profile, allow_low_final=imported)
+    from . import assets as assets_svc
     return PreviewContext(
         project_id=project_id, root=root, profile=profile, script=script, timeline=timeline,
         scenes=scenes, transitions=_default_transitions(scenes), tokens=tokens,
         tokens_sha=content_hash(tokens), engine_id=engine_id, engine_sha=engine_sha,
         font_css=font_css, font_sha=font_sha, imported=imported, profiles=profiles,
-        run_id=run.id if run else None)
+        run_id=run.id if run else None,
+        asset_resolver=assets_svc.resolver_for_project(session, root, data=True))
 
 
 # ---------- 程序 / payload ----------
@@ -234,8 +237,16 @@ def build_programs(ctx: PreviewContext, motion: bool, scene_id: str | None = Non
     picked = [s for s in ctx.scenes if scene_id is None or s["id"] == scene_id]
     out = []
     for s in picked:
-        prog = compile_scene(s, ctx.script, ctx.tokens, ctx.profile,
-                             camera=_camera(s, ctx.profile) if motion else None, motion=motion)
+        try:
+            prog = compile_scene(s, ctx.script, ctx.tokens, ctx.profile,
+                                 camera=_camera(s, ctx.profile) if motion else None, motion=motion,
+                                 asset_resolver=ctx.asset_resolver)
+        except ValueError as e:
+            msg = str(e)
+            code = msg.split(":", 1)[0] if msg.startswith("E_") else "E_ASSET_MISSING"
+            raise ApiError(code, f"{s.get('id')}: {msg}", status=409,
+                           details={"sceneId": s.get("id"),
+                                    "fix": "到资产库重新链接缺失资产"})
         out.append({"id": s["id"], "start": float(s.get("start", 0)),
                     "end": float(s.get("end", 0)), "program": prog})
     return out

@@ -51,7 +51,11 @@ class FrameServer:
                 if u.startswith("/project/"):
                     target = _safe_join(root_resolved, u[len("/project/"):])
                     return str(target) if target else str(root_resolved / "__forbidden__")
-                # 只服务 /engine 与 /project，绝不把 API 进程 cwd 暴露出去
+                if u.startswith("/global-assets/"):
+                    from ...config import settings
+                    target = _safe_join(settings.assets_dir.resolve(), u[len("/global-assets/"):])
+                    return str(target) if target else str(settings.assets_dir / "__forbidden__")
+                # 只服务 /engine、/project 与 /global-assets，绝不把 API 进程 cwd 暴露出去
                 return str(root_resolved / "__not_found__")
 
             def do_POST(self):
@@ -153,6 +157,11 @@ def _engine_url(ctx, engine_build: dict, entry: str, query: str) -> str:
                      else "fonts/embed.css")
         q += f"&embed=http://127.0.0.1:8787/project/{embed_rel}"
     return f"http://127.0.0.1:8787/engine/{engine_build['engine_id']}/{base}?{q}"
+
+
+def _asset_resolver(ctx):
+    from ...services import assets as asset_svc
+    return asset_svc.resolver_for_project(ctx["session"], ctx["project_root"])
 
 
 def _tokens_lock(ctx) -> dict:
@@ -293,7 +302,8 @@ async def d01(ctx):
     for s in scenes:
         if s["id"] not in picks:
             continue
-        prog = compile_scene(s, script, tokens, profile, motion=False)
+        prog = compile_scene(s, script, tokens, profile, motion=False,
+                             asset_resolver=_asset_resolver(ctx))
         rel = f"scenes/{s['id']}.base.program.json"
         dst = _project_file(ctx, rel)
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -571,9 +581,11 @@ async def e03(ctx):
         cams = {c.get("scene"): c for c in cameras}
         programs = []
         for s in scenes:
-            base = compile_scene(s, script, tokens, profile, motion=False)
+            base = compile_scene(s, script, tokens, profile, motion=False,
+                                 asset_resolver=_asset_resolver(ctx))
             motion = compile_scene(s, script, tokens, profile,
-                                   camera=cams.get(s["id"]), motion=True)
+                                   camera=cams.get(s["id"]), motion=True,
+                                   asset_resolver=_asset_resolver(ctx))
             base_rel = f"scenes/{s['id']}.base.program.json"
             motion_rel = f"scenes/{s['id']}.program.json"
             for rel, prog in ((base_rel, base), (motion_rel, motion)):
@@ -1235,16 +1247,88 @@ async def _decode_pcm(ctx, path: Path, rate: int = 48000) -> list[float]:
     return list(a)
 
 
-def _mix_filter(duration: float, music_db: float = -8.0, target_lufs: float = -16.0) -> str:
+def _mix_filter(duration: float, music_db: float = -8.0, target_lufs: float = -16.0,
+                with_sfx: bool = False) -> str:
     d = f"{duration:.3f}"
     fade_at = f"{max(0.0, duration - 1.0):.3f}"
     fmt = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=mono"
-    return (f"[0:a]{fmt},apad=whole_dur={d},atrim=duration={d}[voice];"
+    base = (f"[0:a]{fmt},apad=whole_dur={d},atrim=duration={d}[voice];"
             f"[1:a]{fmt},highpass=f=80,atrim=duration={d},afade=t=out:st={fade_at}:d=1,"
             f"volume={music_db}dB[music];"
             "[music][voice]sidechaincompress=threshold=0.03:ratio=4:attack=80:release=350[ducked];"
-            "[voice][ducked]amix=inputs=2:duration=longest:normalize=0,"
-            f"loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.7:level=false[a]")
+            "[voice][ducked]amix=inputs=2:duration=longest:normalize=0[bed];")
+    if with_sfx:
+        return (base +
+                f"[2:a]{fmt},atrim=duration={d},apad=whole_dur={d}[sfx];"
+                "[bed][sfx]amix=inputs=2:duration=longest:normalize=0,"
+                f"loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11,aresample=48000,"
+                "alimiter=limit=0.7:level=false[a]")
+    return (base +
+            f"[bed]loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11,aresample=48000,"
+            "alimiter=limit=0.7:level=false[a]")
+
+
+def _timeline_sfx(ctx) -> list[dict]:
+    """从 Run 快照 timeline 读取场景 SFX，解析为绝对时间与资产路径。"""
+    from ...services import assets as asset_svc
+    tl_p = _run_doc_file(ctx, "timeline.doc.json")
+    timeline = _read_json(tl_p) if tl_p.exists() else {}
+    out = []
+    for scene in timeline.get("scenes") or []:
+        start = float(scene.get("start") or 0)
+        for sfx in scene.get("audio_layers") or []:
+            sha = str(sfx.get("assetSha") or "")
+            path = asset_svc.resolve_path_for_project(ctx["session"], ctx["project_root"], sha)
+            if not path or not path.exists():
+                raise RuntimeError(f"E_ASSET_MISSING: SFX {sha} 缺失，请重新链接")
+            out.append({**sfx, "sceneId": scene.get("id"),
+                        "at": round(start + max(0.0, float(sfx.get("at") or 0)), 3),
+                        "path": str(path)})
+    return out
+
+
+async def _build_sfx_stem(ctx, sfx: list[dict], duration: float, gain_db: float) -> dict:
+    from ...services.artifacts import store_file, register
+    raw = _project_file(ctx, "card/stems/sfx.raw.wav")
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    if not sfx:
+        argv = ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono",
+                "-t", f"{duration:.3f}", "-ar", "48000", "-ac", "1", str(raw)]
+        res = await ctx["runner"].run(argv, timeout=120)
+        if not res.ok or not raw.exists():
+            raise RuntimeError("静音 SFX Stem 生成失败")
+    else:
+        argv = ["ffmpeg", "-y"]
+        for item in sfx:
+            argv += ["-i", item["path"]]
+        filters = []
+        for i, item in enumerate(sfx):
+            delay = int(round(float(item["at"]) * 1000))
+            chain = (f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=48000:"
+                     f"channel_layouts=mono,volume={float(item.get('gainDb') or 0):.2f}dB")
+            fi = float(item.get("fadeIn") or 0)
+            fo = float(item.get("fadeOut") or 0)
+            if fi > 0:
+                chain += f",afade=t=in:st=0:d={fi:.3f}"
+            if fo > 0:
+                # 场景内剩余时长未知，按场景时间轴尾部近似
+                st = max(0.0, float(item["at"]) + max(0.0, fi) - fo)
+                chain += f",afade=t=out:st={st:.3f}:d={fo:.3f}"
+            chain += f",adelay={delay}|{delay}[s{i}]"
+            filters.append(chain)
+        labels = "".join(f"[s{i}]" for i in range(len(sfx)))
+        filters.append(f"{labels}amix=inputs={len(sfx)}:duration=longest:normalize=0,"
+                       f"atrim=duration={duration:.3f},apad=whole_dur={duration:.3f}[sfx]")
+        argv += ["-filter_complex", ";".join(filters), "-map", "[sfx]",
+                 "-t", f"{duration:.3f}", "-ar", "48000", "-ac", "1", str(raw)]
+        res = await ctx["runner"].run(argv, timeout=300)
+        if not res.ok or not raw.exists():
+            raise RuntimeError("SFX 混音失败：" + "\n".join(res.stderr_tail[-6:]))
+    out = _project_file(ctx, "card/stems/sfx.wav")
+    # 复用 _make_stem 的响度/裁剪与 Artifact 登记
+    result = await _make_stem(ctx, raw, out, duration, gain_db=gain_db)
+    raw.unlink(missing_ok=True)
+    return result
 
 
 async def _make_stem(ctx, src: Path, out: Path, duration: float, loop: bool = False,
@@ -1288,27 +1372,32 @@ async def g05(ctx):
     duration = float(_profile(ctx)["duration"])
     settings = audio_svc.load_mix(ctx["project_root"])
     music_db = float(ctx["params"].get("music_db", settings["stems"].get("music", -8.0)))
+    sfx_db = float(settings["stems"].get("sfx", 0.0))
     target_lufs = float(settings.get("targetLufs", -16.0))
+    sfx = _timeline_sfx(ctx)
+    sfx_stem = await _build_sfx_stem(ctx, sfx, duration, sfx_db)
     out = _project_file(ctx, "card/mix.wav")
     out.parent.mkdir(parents=True, exist_ok=True)
-    argv = ["ffmpeg", "-y", "-i", str(voice), "-stream_loop", "-1", "-i", str(music),
-            "-filter_complex", _mix_filter(duration, music_db, target_lufs),
-            "-map", "[a]", "-t", f"{duration:.3f}", "-ar", "48000", "-ac", "1", str(out)]
+    argv = ["ffmpeg", "-y", "-i", str(voice), "-stream_loop", "-1", "-i", str(music)]
+    if sfx:
+        argv += ["-i", sfx_stem["path"]]
+    argv += ["-filter_complex", _mix_filter(duration, music_db, target_lufs, with_sfx=bool(sfx)),
+             "-map", "[a]", "-t", f"{duration:.3f}", "-ar", "48000", "-ac", "1", str(out)]
     res = await ctx["runner"].run(argv, timeout=300)
     if not res.ok or not out.exists():
         raise RuntimeError("混音失败：" + "\n".join(res.stderr_tail[-6:]))
     ap, sha = store_file(ctx["project_root"], out, "WAV")
     register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "WAV", str(ap), sha,
-             {"mix": True, "duration": duration})
+             {"mix": True, "duration": duration, "sfx": len(sfx)})
     stems = _project_file(ctx, "card/stems")
     manifest = {
         "schema": "filmflow.stems/1", "duration": duration, "targetLufs": target_lufs,
         "voice": await _make_stem(ctx, voice, stems / "voice.wav", duration,
                                   gain_db=float(settings["stems"].get("voice", 0.0))),
         "music": await _make_stem(ctx, music, stems / "music.wav", duration, loop=True, gain_db=music_db),
-        "sfx": await _make_stem(ctx, music, stems / "sfx.wav", duration, loop=True,
-                                gain_db=float(settings["stems"].get("sfx", -120.0))),
+        "sfx": sfx_stem,
         "mix": {"path": str(ap), "sha256": sha, "duration": duration},
+        "sfxCount": len(sfx),
     }
     _artifact_json(ctx, "stems_manifest.json", manifest)
 

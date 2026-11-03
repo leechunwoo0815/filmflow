@@ -1,10 +1,10 @@
-# R3.0 创作闭环 v1（FR-32/33/34/35/38）
+# R3.0 创作闭环 v1（FR-32/33/34/35/36/38）
 
-> 代码：`7a0ee2c` / tag `r3.0-audio`（前序 `r3.0-takes`/`r3.0-creation`）；EXECUTOR_VERSION 2.8.0。
+> 代码：R3.0 v1 前序 `7a0ee2c` / tag `r3.0-audio`；FR-36 见 tag `r3.0-assets`；
+> `EXECUTOR_VERSION=2.9.1`。
 
 > 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。R3.0 v1 已于 2026-11-03 验收。
-> 本文覆盖 FR-32/33/34/35/38；FR-36 资产库、FR-37 模板/系列留到下一批，
-> 不虚报为 R3.0 全量。
+> 本文覆盖 FR-32/33/34/35/36/38；FR-37 模板/系列留到下一批，不虚报为 R3.0 全量。
 
 ## 本轮范围
 
@@ -15,6 +15,7 @@
 | FR-34 镜头语言 v1 | 时间轴相机 inspector：keyframes（t/zoom/x/y/rotate）、7 预设、曲线缩略图；转场 8 类+时长；program 更新走同一编译器 |
 | FR-38 Take 对比 | `/takes`：Run 列表/评分/当前、A/B 视频同步、差异叠加、场景采纳、promote/branch/软删除保护；`card/takes.json` |
 | FR-35 音频 v2 | `/audio`：多 Take/场景 Take 拼接、processed WAV（高通/降噪/齿音/EQ/静音裁剪/响度归一）、A/B 试听、onset/拍点、−14/−16/−18 响度预设、Stems 增益；`card/audio.mix.json`/`markers.json` |
+| FR-36 资产库 | `/assets`：全局/项目作用域、sha 去重、引用计数与使用处、许可/标签、图片/音频/字体/视频元数据与缩略图/波形、替换/删除保护、字体缺字；`scene.layers` 图片、`scene.fontSha`、`scene.audio_layers` SFX；G05 真实 SFX stem |
 
 ## 关键技术决策
 
@@ -35,8 +36,23 @@
 8. **音频 v2**：`card/audio.json.scenePrimary` 映射场景 Take；G01 有映射时按 scene start
    adelay+amix 拼成整条 voice.wav；processedFile 优先；`card/audio.mix.json` 的 targetLufs
    同时驱动 G05 loudnorm、G06 和 G07 QC；onset 用 5ms 能量 flux 本地检测，不引外部模型。
+9. **资产表与存储**：`asset` 表（scope/project_id/kind/path/sha256/bytes/meta/tags/license）；
+   全局 `~/.filmflow/assets/<sha2>/<sha><ext>`，项目 `<root>/.filmflow/assets/...`；
+   同作用域 sha 去重；项目引用全局同 sha 直接复用全局记录，不复制。
+10. **使用处扫描 timeline**：不建引用表；扫描 `scene.layers[].assetSha`、`scene.fontSha`、
+    `scene.audio_layers[].assetSha`；删除被引用资产 409 `E_ASSET_IN_USE` + 使用处；
+    替换只重写旧 sha 并返回 `affectedScenes`。
+11. **Scene DSL 资产解析**：compiler 通过 `asset_resolver` 把 sha 变成 URL；缺失抛
+    `E_ASSET_MISSING`（预览 409、节点失败），不静默降级。最终渲染走 FrameServer
+    `/project`/`/global-assets`；预览/9:16 从 `file://` 加载，内联 data URL 并预加载图片/字体。
+12. **SFX**：G05 读取 Run 快照 `audio_layers`，按绝对时间 adelay/volume/fade 生成
+    `card/stems/sfx.wav`，再与 voice/music 混音；stems manifest 记录 `sfxCount`。
+13. **缓存修正**：G01/G05/G06/G07 的缓存键纳入 `card/audio.json`、`card/audio.mix.json`
+    与 timeline 快照 sha；否则改响度/SFX 设置仍命中旧产物（实测 G05 cached 曾静音）。
+14. **字体**：字体资产许可来源/类型必填；fontTools 读 family/weight/cmap；编辑器选中字体后
+    400ms 防抖自动查缺字，红色列出。
 
-## 验收结果（2026-11-02，EXECUTOR_VERSION 2.8.0）
+## 验收结果（2026-11-03，EXECUTOR_VERSION 2.9.1）
 
 - [x] S03 +2s：S04/S05 自动后移，duration 40→42、frames 1008；`verify_r3.py` project 201。
 - [x] 分割 S02 → S02/S02b（transition=cut，文本独立），合并可还原；`verify_r3.py`。
@@ -48,7 +64,7 @@
 - [x] 100 场景 ops <0.2s（`test_timeline_ops.py`）；浏览器 100 场景 60fps 未实测。
 - [x] 10 条批注（含框选）在不同帧；点击跳帧 4.0s→4.000s；export→clear→import 恢复 10 条；
       审片包 6.8MB、内含 40.0s review.mp4 + review.json + README（`verify_r3.py` + `e2e_r3.py`）。
-- [x] **123 tests**（FR-35 后）；`e2e_ui.py`/`e2e_onboarding.py`/`e2e_r3.py`/`e2e_takes.py` 全绿；R2.5 回归（2.8.0）：
+- [x] **129 tests**（FR-36 后）；`e2e_ui.py`/`e2e_onboarding.py`/`e2e_r3.py`/`e2e_takes.py` 全绿；R2.5 回归（2.8.0）：
       5s 交付 24.1s（project 215/run 270）、干净 rumor 46/46（run 272，256.1s）、
       5s 黄金 SSIM 1.0（project 216/run 271；无音频 G 链失败不影响视觉断言）、相机 preview/final SSIM 0.989483（project 208/run 261）。
 - [x] FR-38：project 188 A=237 / B=254；视频 sha 不同；同步播放 1.324s vs 1.324s；差异面板；
@@ -56,17 +72,24 @@
 - [x] FR-35：project 211/run 266，G01 场景拼接 5.0s、G05 mix 5.0s、G06 **−13.8 LUFS**
       （target −14）、stems 5/5/5s；processed take、16 onsets、markers 1；`verify_r3_audio_v2.py`。
 - [x] `e2e_audio_v2.py`：Take/A-B/已处理标记、检测拍点、拼接试听、响度预设 −16↔−14。
-- [x] 明确未做 FR-36/37，见下节。
+- [x] **FR-36**：`verify_r3_assets.py` 50 图新增 2/去重 48；引用计数；删除 409 使用处；
+      替换只标记 S01；缺资产预览 409；字体缺 2 字；全局 sha 复用。`e2e_assets.py` UI 上传/
+      字体标红/时间轴插入/引用计数/删除阻断全绿。
+- [x] **FR-36 final 证据**：project 211 / run 275：D01/E03/F02 图片图层进入 final；G05
+      `sfxCount=1`，`card/stems/sfx.wav` 5.0s 非静音；G06/G07 通过。5s 黄金 project 223/run 282
+      6 帧 SSIM 1.0。
+- [x] FR-36 v1 已完成；FR-37 模板/系列留到下一批，见下节。
 
 ## 磁盘说明
 
 2026-11-03 已清理验收项目；文中 project 201/208/189 等 ID 是证据记录，目录已删除。当前演示项目：
-时间轴 202、审片/40s 174、Take 188、音频 211、5s 交付 215、黄金 216；脚本可复现全部结果。
+时间轴 202、审片/40s 174、Take 188、音频/资产 211（run 275）、5s 交付 215、黄金 216；
+FR-36 新增黄金 223/run 282；脚本可复现全部结果。
 
 ## 复现命令
 
 ```bash
-cd server && uv run pytest tests -q                       # 123
+cd server && uv run pytest tests -q                       # 129
 cd .. && uv run --project server python scripts/verify_r3.py
 uv run --project server python scripts/verify_r3_camera.py
 uv run --project server python scripts/verify_r3_takes.py
@@ -74,10 +97,13 @@ uv run --project server python scripts/e2e_r3.py
 uv run --project server python scripts/e2e_takes.py
 uv run --project server python scripts/verify_r3_audio_v2.py
 uv run --project server python scripts/e2e_audio_v2.py
+uv run --project server python scripts/verify_r3_assets.py
+uv run --project server python scripts/e2e_assets.py
 ```
 
 ## 明确不做（下一批）
 
-- FR-36 图片/字体资产库与 image 图层（需要 renderer/DSL 扩展）；FR-35 的 SFX 拖入因此未做。
+- FR-36 v1 边界：视频只入库不进入 NLE 图层；无智能裁切/主体检测；自定义字体走 FontFace
+  全量加载，不做按项目子集重嵌；大图/字体在预览 payload 内联 data URL；资产目录暂无自动 GC。
 - FR-37 模板另存/系列/批量（依赖 FR-46 R4 批量），本轮不做。
 - 任何 R4 能力。

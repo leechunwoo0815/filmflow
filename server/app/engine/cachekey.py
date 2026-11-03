@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.8.0"  # R3.0 FR-35：processed take / scene concat / loudness+stem settings
+EXECUTOR_VERSION = "2.9.1"  # FR-36：资产渲染/场景 SFX + 音频设置纳入 G01/G05/G06/G07 缓存键
 
 
 def canonical(obj) -> str:

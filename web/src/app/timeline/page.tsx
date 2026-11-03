@@ -35,6 +35,8 @@ function TimelineInner() {
   const [doc, setDoc] = useState<any>(null);
   const [script, setScript] = useState<any>({ sentences: [] });
   const [audio, setAudio] = useState<any>(null);
+  const [assetLists, setAssetLists] = useState<{ project: any[]; global: any[] }>({ project: [], global: [] });
+  const [fontCheck, setFontCheck] = useState<any>(null);
   const [version, setVersion] = useState(0);
   const [selectedId, setSelectedId] = useState("");
   const [history, setHistory] = useState<any[]>([]);
@@ -82,6 +84,23 @@ function TimelineInner() {
     }
   }, [projectId]);
   useEffect(() => { if (projectId) load().catch((e) => setMsg(String(e))); }, [projectId, load]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    Promise.all([
+      api<any>(`/assets?scope=project&projectId=${projectId}`),
+      api<any>("/assets?scope=global"),
+    ]).then(([p, g]) => setAssetLists({ project: p.items || [], global: g.items || [] }))
+      .catch((e) => setMsg(String(e.message || e)));
+  }, [projectId]);
+
+  const allAssets = useMemo(() => {
+    const seen = new Set<number>();
+    return [...assetLists.project, ...assetLists.global].filter((a: any) => !seen.has(a.id) && seen.add(a.id));
+  }, [assetLists]);
+  const imageAssets = allAssets.filter((a: any) => a.kind === "image");
+  const soundAssets = allAssets.filter((a: any) => a.kind === "audio");
+  const fontAssets = allAssets.filter((a: any) => a.kind === "font");
 
   useEffect(() => {
     const s = scenes.find((x) => x.id === selectedId);
@@ -134,6 +153,24 @@ function TimelineInner() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textDraft, selectedId]);
+
+  useEffect(() => {
+    const sha = selected?.fontSha;
+    if (!sha) { setFontCheck(null); return; }
+    const asset = fontAssets.find((a: any) => a.sha256 === sha);
+    if (!asset) { setFontCheck({ assetId: 0, ok: false, missingCount: 0, missing: [],
+      name: "字体资产缺失", missingText: "字体资产缺失，请重新选择" }); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const r = await api<any>(`/assets/${asset.id}/font-check`, {
+          method: "POST", body: JSON.stringify({ text: textDraft || sceneText(selected, script) }),
+        });
+        setFontCheck({ assetId: asset.id, name: asset.name, ...r });
+      } catch { /* 编辑输入期间不打断 */ }
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, textDraft, selected?.fontSha, fontAssets.length]);
 
   const undo = async () => {
     if (!history.length) return;
@@ -269,6 +306,28 @@ function TimelineInner() {
   const applyCamera = () => opRef.current?.("set_camera", {
     sceneId: selectedId, keyframes: cameraDraft, anchor: cameraAnchor,
   });
+  const addAsset = (asset: any, sceneId = selectedId) => {
+    if (!asset || !sceneId) return;
+    if (asset.kind === "image") {
+      opRef.current?.("add_image", { sceneId, assetSha: asset.sha256,
+        box: [480, 270, 960, 540], z: 20, fit: "cover", opacity: 1, name: asset.name });
+    } else if (asset.kind === "audio") {
+      opRef.current?.("add_sfx", { sceneId, assetSha: asset.sha256, at: 0,
+        gainDb: 0, fadeIn: 0.05, fadeOut: 0.1, name: asset.name });
+    } else if (asset.kind === "font") {
+      opRef.current?.("set_font", { sceneId, assetSha: asset.sha256 });
+    }
+  };
+  const checkFont = async (asset: any) => {
+    if (!asset) return;
+    try {
+      const text = sceneText(selected, script) || textDraft;
+      const r = await api<any>(`/assets/${asset.id}/font-check`, {
+        method: "POST", body: JSON.stringify({ text }),
+      });
+      setFontCheck({ assetId: asset.id, name: asset.name, ...r });
+    } catch (e: any) { setMsg(String(e.message || e)); }
+  };
   const addKeyframe = () => {
     if (!selected) return;
     const t = clamp(playhead - selected.start, 0, selected.end - selected.start);
@@ -312,6 +371,7 @@ function TimelineInner() {
           <button className="btn" onClick={() => setPlaying((p) => p ? 0 : 1)}>{playing ? "暂停" : "播放"}</button>
           <a className="btn" href={`/player?project=${projectId}${runId ? `&run=${runId}` : ""}`}>审片</a>
           <a className="btn" href={`/takes?project=${projectId}`}>Take 对比</a>
+          <a className="btn" href={`/assets?project=${projectId}`}>资产库</a>
           <a className="btn" href="/help">帮助</a>
         </div>
       </header>
@@ -352,7 +412,14 @@ function TimelineInner() {
                         onDragStart={(e) => { setDragId(s.id); e.dataTransfer.setData("text/plain", s.id); }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
-                          e.preventDefault(); const id = e.dataTransfer.getData("text/plain") || dragId;
+                          e.preventDefault();
+                          const raw = e.dataTransfer.getData("application/x-ff-asset");
+                          if (raw) {
+                            try { addAsset(JSON.parse(raw), s.id); } catch {}
+                            setDragId("");
+                            return;
+                          }
+                          const id = e.dataTransfer.getData("text/plain") || dragId;
                           if (id && id !== s.id) opRef.current?.("move", { sceneId: id, toIndex: i });
                           setDragId("");
                         }}
@@ -451,6 +518,86 @@ function TimelineInner() {
                 }}>在播放头分割</button>
                 <button className="btn" onClick={() => opRef.current?.("merge", { sceneId: selected.id, nextId: scenes[scenes.indexOf(selected) + 1]?.id })}>合并下一场</button>
                 <button className="btn" onClick={() => opRef.current?.("duplicate", { sceneId: selected.id })}>复制</button>
+              </div>
+              <h3 className="font-semibold mt-4 mb-1 flex items-center gap-2">资产
+                <a className="text-blue text-xs font-normal" href={`/assets?project=${projectId}`}>管理/导入</a>
+              </h3>
+              <div className="text-xs space-y-2">
+                <div>
+                  <div className="text-dim mb-1">图片（拖到场景块或点击插入）</div>
+                  <div className="flex gap-1 flex-wrap">
+                    {imageAssets.slice(0, 10).map((a: any) => (
+                      <button key={a.id} draggable className="chip" data-testid={`asset-insert-${a.id}`}
+                        onDragStart={(e) => e.dataTransfer.setData("application/x-ff-asset",
+                          JSON.stringify({ sha: a.sha256, kind: a.kind, name: a.name }))}
+                        onClick={() => addAsset(a)} title={`${a.name} ${a.sha256.slice(0, 8)}`}>
+                        {a.thumbUrl ? <img src={a.thumbUrl} alt="" className="inline w-5 h-4 object-cover mr-1" /> : null}
+                        {a.name}
+                      </button>
+                    ))}
+                    {!imageAssets.length && <span className="text-dim">资产库还没有图片</span>}
+                  </div>
+                  {(selected.layers || []).map((l: any) => (
+                    <div key={l.id} className="flex items-center gap-1 mt-1 border border-line rounded px-1 py-0.5">
+                      <span className="truncate flex-1">{l.name || l.id}</span>
+                      <select value={l.fit || "cover"} className="text-[10px]"
+                        onChange={(e) => opRef.current?.("update_image", { sceneId: selected.id,
+                          layerId: l.id, patch: { fit: e.target.value } })}>
+                        <option value="cover">cover</option>
+                        <option value="contain">contain</option>
+                      </select>
+                      <input type="range" min="0" max="1" step="0.05" value={l.opacity ?? 1}
+                        className="w-14" title="不透明度"
+                        onChange={(e) => opRef.current?.("update_image", { sceneId: selected.id,
+                          layerId: l.id, patch: { opacity: +e.target.value } })} />
+                      <button className="btn px-1" onClick={() => opRef.current?.("remove_layer",
+                        { sceneId: selected.id, layerId: l.id })}>×</button>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div className="text-dim mb-1">场景字体</div>
+                  <div className="flex gap-1">
+                    <select value={selected.fontSha || ""} className="flex-1"
+                      onChange={(e) => opRef.current?.("set_font", { sceneId: selected.id, assetSha: e.target.value })}>
+                      <option value="">默认（Noto Sans SC）</option>
+                      {fontAssets.map((a: any) => <option key={a.id} value={a.sha256}>{a.name}</option>)}
+                    </select>
+                    <button className="btn" disabled={!selected.fontSha}
+                      onClick={() => {
+                        const a = fontAssets.find((x: any) => x.sha256 === selected.fontSha);
+                        checkFont(a);
+                      }}>查缺字</button>
+                  </div>
+                  {fontCheck && selected.fontSha &&
+                    <div className={`mt-1 ${fontCheck.ok ? "text-green" : "text-red"}`}>
+                      {fontCheck.missingText ? fontCheck.missingText :
+                        fontCheck.ok ? `${fontCheck.name} 覆盖全部 ${fontCheck.total} 字` :
+                        `${fontCheck.name} 缺 ${fontCheck.missingCount} 字：` +
+                        (fontCheck.missing || []).map((c: string) => `「${c}」`).join("")}
+                    </div>}
+                </div>
+                <div>
+                  <div className="text-dim mb-1">SFX（拖到场景块或点击插入）</div>
+                  <div className="flex gap-1 flex-wrap">
+                    {soundAssets.slice(0, 10).map((a: any) => (
+                      <button key={a.id} draggable className="chip"
+                        onDragStart={(e) => e.dataTransfer.setData("application/x-ff-asset",
+                          JSON.stringify({ sha: a.sha256, kind: a.kind, name: a.name }))}
+                        onClick={() => addAsset(a)} title={a.name}>
+                        {a.name}
+                      </button>
+                    ))}
+                    {!soundAssets.length && <span className="text-dim">资产库还没有音频</span>}
+                  </div>
+                  {(selected.audio_layers || []).map((l: any) => (
+                    <div key={l.id} className="flex items-center gap-1 mt-1 border border-line rounded px-1 py-0.5">
+                      <span className="truncate flex-1">{l.name || l.id} @{Number(l.at || 0).toFixed(2)}s</span>
+                      <button className="btn px-1" onClick={() => opRef.current?.("remove_sfx",
+                        { sceneId: selected.id, layerId: l.id })}>×</button>
+                    </div>
+                  ))}
+                </div>
               </div>
               <h3 className="font-semibold mt-4 mb-1">转场</h3>
               <div className="flex gap-1">

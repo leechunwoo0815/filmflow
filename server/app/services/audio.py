@@ -384,7 +384,7 @@ def mix_path(root: str | Path) -> Path:
 def load_mix(root: str | Path) -> dict:
     data = _read(mix_path(root))
     base = {"schema": "filmflow.audio-mix/1", "preset": "-16", "targetLufs": -16.0,
-            "stems": {"voice": 0.0, "music": -8.0, "sfx": -120.0}}
+            "stems": {"voice": 0.0, "music": -8.0, "sfx": 0.0}}
     if data.get("schema") != base["schema"]:
         return base
     base.update({k: data.get(k) for k in ("preset", "targetLufs") if data.get(k) is not None})
@@ -406,7 +406,7 @@ def save_mix(root: str | Path, payload: dict) -> dict:
     src = payload.get("stems") or {}
     for k in ("voice", "music", "sfx"):
         try:
-            v = float(src.get(k, {"voice": 0.0, "music": -8.0, "sfx": -120.0}[k]))
+            v = float(src.get(k, {"voice": 0.0, "music": -8.0, "sfx": 0.0}[k]))
         except (TypeError, ValueError):
             raise ApiError(ErrorCode.E_VALIDATION, f"stems.{k} 必须是数字")
         if not -120 <= v <= 12:

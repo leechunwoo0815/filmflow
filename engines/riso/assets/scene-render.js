@@ -6,6 +6,64 @@ const SCENE_RENDER = (() => {
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
   const seg = (t, a, b) => clamp((t - a) / (b - a));
   const FONT = '"Noto Sans SC", "PingFang SC", sans-serif';
+  const IMAGE_CACHE = new Map();
+  const FONT_CACHE = new Map();
+  const absoluteUrl = (src) => new URL(src, location.href).href;
+
+  function loadImage(src) {
+    const url = absoluteUrl(src);
+    const cached = IMAGE_CACHE.get(url);
+    if (cached) return cached.loaded;
+    const img = new Image();
+    const loaded = new Promise((resolve) => {
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+    });
+    IMAGE_CACHE.set(url, { img, loaded });
+    img.src = url;
+    return loaded;
+  }
+
+  function imageFor(src) {
+    const entry = IMAGE_CACHE.get(absoluteUrl(src));
+    const img = entry && entry.img;
+    return img && img.complete && img.naturalWidth ? img : null;
+  }
+
+  function loadFont(family, src) {
+    if (!family || !src || !document.fonts || !window.FontFace) return Promise.resolve(null);
+    const key = family + '|' + src;
+    if (FONT_CACHE.has(key)) return FONT_CACHE.get(key);
+    const job = new FontFace(family, `url("${absoluteUrl(src)}")`).load()
+      .then((face) => { document.fonts.add(face); return face; })
+      .catch(() => null);
+    FONT_CACHE.set(key, job);
+    return job;
+  }
+
+  function walkLayers(layers, fn) {
+    (layers || []).forEach((layer) => {
+      fn(layer);
+      if (layer && layer.type === 'group') walkLayers(layer.children, fn);
+    });
+  }
+
+  async function preloadProgram(program) {
+    const jobs = [];
+    walkLayers((program || {}).layers, (layer) => {
+      if (layer.type === 'image' && layer.src) jobs.push(loadImage(layer.src));
+      if (layer.type === 'text' && layer.style && layer.style.fontUrl) {
+        jobs.push(loadFont(layer.style.font, layer.style.fontUrl));
+      }
+    });
+    await Promise.all(jobs);
+    return program;
+  }
+
+  async function preloadPrograms(programs) {
+    await Promise.all((programs || []).map((p) => preloadProgram(p.program || p)));
+    return programs;
+  }
 
   function cameraAt(camera, t) {
     const kfs = (camera || {}).keyframes;
@@ -110,6 +168,33 @@ const SCENE_RENDER = (() => {
     ctx.restore();
   }
 
+  function drawImageLayer(ctx, layer) {
+    const box = layer.box || [100, 100, 400, 300];
+    const src = layer.src || '';
+    const img = src ? imageFor(src) : null;
+    ctx.save();
+    if (!img) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(box[0], box[1], box[2], box[3]);
+      ctx.beginPath(); ctx.moveTo(box[0], box[1]); ctx.lineTo(box[0] + box[2], box[1] + box[3]);
+      ctx.moveTo(box[0] + box[2], box[1]); ctx.lineTo(box[0], box[1] + box[3]); ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    const iw = img.naturalWidth || img.width || 1;
+    const ih = img.naturalHeight || img.height || 1;
+    const cover = (layer.fit || 'cover') === 'cover';
+    const scale = cover ? Math.max(box[2] / iw, box[3] / ih) : Math.min(box[2] / iw, box[3] / ih);
+    const sw = Math.min(iw, box[2] / scale);
+    const sh = Math.min(ih, box[3] / scale);
+    const sx = (iw - sw) / 2;
+    const sy = (ih - sh) / 2;
+    ctx.globalAlpha = clamp(layer.opacity ?? 1);
+    ctx.drawImage(img, sx, sy, sw, sh, box[0], box[1], box[2], box[3]);
+    ctx.restore();
+  }
+
   function drawLayer(ctx, layer, t, duration, W, H) {
     if (layer.type === 'text') drawText(ctx, layer, t, duration, W, H);
     else if (layer.type === 'shape') drawShape(ctx, layer);
@@ -127,14 +212,7 @@ const SCENE_RENDER = (() => {
       (layer.children || []).slice().sort((a, b) => (a.z || 0) - (b.z || 0))
         .forEach((child) => drawLayer(ctx, child, t, duration, W, H));
     } else if (layer.type === 'image') {
-      const box = layer.box || [100, 100, 400, 300];
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-      ctx.lineWidth = 6;
-      ctx.strokeRect(box[0], box[1], box[2], box[3]);
-      ctx.beginPath(); ctx.moveTo(box[0], box[1]); ctx.lineTo(box[0] + box[2], box[1] + box[3]);
-      ctx.moveTo(box[0] + box[2], box[1]); ctx.lineTo(box[0], box[1] + box[3]); ctx.stroke();
-      ctx.restore();
+      drawImageLayer(ctx, layer);
     }
   }
 
@@ -280,5 +358,5 @@ const SCENE_RENDER = (() => {
     return out;
   }
 
-  return { renderProgram, renderFrameAt, cameraAt, wrapText };
+  return { renderProgram, renderFrameAt, cameraAt, wrapText, preloadProgram, preloadPrograms };
 })();

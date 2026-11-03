@@ -56,6 +56,17 @@ def validate_program(program: dict) -> list[str]:
                 errors.append(f"layers[{i}].component 未知：{name}")
             else:
                 errors.extend(f"layers[{i}].{e}" for e in validate_props(name, layer.get("props") or {}))
+        if layer.get("type") == "image":
+            if not layer.get("src"):
+                errors.append(f"layers[{i}].src 必填")
+            box = layer.get("box")
+            if not isinstance(box, (list, tuple)) or len(box) != 4:
+                errors.append(f"layers[{i}].box 必须是 [x,y,w,h]")
+            if layer.get("fit") not in (None, "cover", "contain"):
+                errors.append(f"layers[{i}].fit 非法：{layer.get('fit')}")
+            opacity = layer.get("opacity", 1)
+            if not isinstance(opacity, (int, float)) or not 0 <= opacity <= 1:
+                errors.append(f"layers[{i}].opacity 必须在 0..1")
     trans = program.get("transitions") or {}
     for key in ("in", "out"):
         t = trans.get(key) or {}
