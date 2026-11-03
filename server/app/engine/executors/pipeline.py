@@ -9,8 +9,17 @@ import threading
 from pathlib import Path
 from urllib.parse import quote
 
-from . import (executor, _artifact_json, _project_file, _read_json, _run_doc_file,
-               _task_path, _upstream_file, _upstream_json)
+from ..scene.transitions import transition_type as _transition_type
+from . import (
+    _artifact_json,
+    _project_file,
+    _read_json,
+    _run_doc_file,
+    _task_path,
+    _upstream_file,
+    _upstream_json,
+    executor,
+)
 
 # ---------- 帧服务（F01，单例线程内嵌） ----------
 
@@ -30,7 +39,7 @@ class FrameServer:
         if self.httpd is not None:
             return
         from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-        from urllib.parse import urlparse, parse_qs, unquote
+        from urllib.parse import parse_qs, unquote, urlparse
 
         root = self.project_root
         root_resolved = root.resolve()
@@ -441,10 +450,12 @@ async def d03(ctx):
 @executor("still-qa")
 async def d04(ctx):
     from io import BytesIO
+
     import numpy as np
     from PIL import Image
-    from ...models import Artifact
     from sqlmodel import select
+
+    from ...models import Artifact
     profiles = _profiles(ctx)
     base = _profile(ctx)
     rows = ctx["session"].exec(select(Artifact).where(
@@ -609,19 +620,6 @@ async def e03(ctx):
         dst2 = _project_file(ctx, "scenes/timeline_binding.json")
         dst2.parent.mkdir(parents=True, exist_ok=True)
         dst2.write_text(json.dumps(binding, ensure_ascii=False, indent=1), encoding="utf-8")
-
-
-def _transition_type(text) -> str:
-    t = str(text or "")
-    if t in ("cut", "dissolve", "wipe", "push", "paper-slide", "ink-bleed",
-             "glitch", "match-shape"):
-        return t
-    for key, value in (("硬切", "cut"), ("溶解", "dissolve"), ("擦", "wipe"), ("推", "push"),
-                       ("滑", "paper-slide"), ("墨", "ink-bleed"), ("故障", "glitch"),
-                       ("匹配", "match-shape")):
-        if key in t:
-            return value
-    return "match-shape"
 
 
 @executor("transitions")
@@ -797,6 +795,7 @@ async def e06(ctx):
 
 def _artifact_sha(ctx, node_id: str) -> str:
     from sqlmodel import select
+
     from ...models import Artifact
     rows = ctx["session"].exec(select(Artifact).where(
         Artifact.run_id == ctx["run_id"], Artifact.node_id == node_id)).all()  # type: ignore[arg-type]
@@ -851,6 +850,7 @@ def _write_manifest(ctx, manifest: dict, artifact: bool = False) -> None:
 
 def _upsert_scene_state(ctx, scene: dict, status: str, ms: int = 0) -> None:
     from sqlmodel import select
+
     from ...models import SceneState
     row = ctx["session"].exec(select(SceneState).where(
         SceneState.run_id == ctx["run_id"], SceneState.scene_id == scene["id"])).first()  # type: ignore[arg-type]
@@ -992,6 +992,7 @@ async def f02(ctx):
 async def f03(ctx):
     import numpy as np
     from PIL import Image
+
     from ...services.render_profiles import qa_policy
     profile = _profile(ctx)
     frames = profile["frames"] or round(profile["duration"] * profile["fps"])
@@ -1042,6 +1043,7 @@ async def f03(ctx):
         scene_report.append(s)
     if scenes:
         from sqlmodel import select
+
         from ...models import SceneState
         for s in scene_report:
             row = ctx["session"].exec(select(SceneState).where(
@@ -1090,6 +1092,7 @@ async def f04(ctx):
 @executor("video-qa")
 async def f05(ctx):
     import httpx  # noqa: F401
+
     from ...models import Run
     from ...services.render_profiles import ensure_final_ready
     profile = _profile(ctx)
@@ -1146,8 +1149,8 @@ async def _ffprobe(ctx, path: Path) -> dict:
 
 @executor("voice-ingest")
 async def g01(ctx):
-    from ...services import audio as audio_svc
     from ...services import artifacts as art
+    from ...services import audio as audio_svc
     take = audio_svc.primary_take(ctx["project_root"], "voice")
     dst = _project_file(ctx, "card/voice.wav")
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -1288,7 +1291,7 @@ def _timeline_sfx(ctx) -> list[dict]:
 
 
 async def _build_sfx_stem(ctx, sfx: list[dict], duration: float, gain_db: float) -> dict:
-    from ...services.artifacts import store_file, register
+    from ...services.artifacts import register, store_file
     raw = _project_file(ctx, "card/stems/sfx.raw.wav")
     raw.parent.mkdir(parents=True, exist_ok=True)
     if not sfx:
@@ -1355,7 +1358,7 @@ async def _make_stem(ctx, src: Path, out: Path, duration: float, loop: bool = Fa
 @executor("audio-mix")
 async def g05(ctx):
     from ...services import audio as audio_svc
-    from ...services.artifacts import store_file, register
+    from ...services.artifacts import register, store_file
     voice = _project_file(ctx, "card/voice.wav")
     take = audio_svc.primary_take(ctx["project_root"], "music")
     music = Path(ctx["params"].get("music_path") or
@@ -1556,8 +1559,9 @@ async def g07(ctx):
     res = await ctx["runner"].run(argv, timeout=600)
     if not res.ok:
         raise RuntimeError("master 封装失败")
-    from ...models import Approval, Artifact
     from sqlmodel import select
+
+    from ...models import Approval, Artifact
     from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], master, "MP4")
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "MP4", str(ap), sha)

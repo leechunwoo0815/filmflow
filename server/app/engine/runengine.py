@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,16 +13,15 @@ from ..config import settings
 from ..db import engine
 from ..events import emit
 from ..models import Approval, Artifact, NodeRun, Project, Run, Workflow
+from ..services import jobs as jobs_svc
+from ..services.render_profiles import PROFILE_NODES, profiles_sha
 from . import caps as caps_mod
-from .cachekey import (EXECUTOR_VERSION, file_sha256, gate_content_hash,
-                       node_cache_key)
-from .edges import N, UPSTREAM, data_descendants
+from .cachekey import EXECUTOR_VERSION, file_sha256, gate_content_hash, node_cache_key
+from .edges import UPSTREAM, N, data_descendants
 from .executors import REGISTRY
 from .locks import LockManager
 from .runner import ProcessRunner
 from .snapshot import ensure_run_snapshot
-from ..services import jobs as jobs_svc
-from ..services.render_profiles import PROFILE_NODES, profiles_sha
 
 ACTIVE: dict[int, asyncio.Task] = {}
 CANCELS: dict[int, asyncio.Event] = {}
@@ -32,6 +32,17 @@ TERMINAL_OK = {"succeeded", "cached"}
 DOC_NODES = {"A01", "B02", "B03", "B06", "D01", "E01", "E03"}
 # 这些节点写项目内文件（stills/proxy/frames/mp4/wav/master）；跨项目缓存会让消费者找不到文件
 PROJECT_LOCAL_NODES = {"D01", "D02", "E03", "E04", "E05", "F02", "F04", "G01", "G05", "G07"}
+# C01 是引擎包的缓存根；引擎文件变化必须从这里失效，下游靠 C01 产物哈希传播
+ENGINE_NODES = {"C01"}
+# 这些节点读项目文件而不是 DAG 边；文件变化必须进缓存键
+_PROJECT_INPUTS = {
+    "G01": ("card/audio.json",),
+    "G02": ("card/alignment.manual.json",),
+    "G04": ("card/audio.json",),
+    "G05": ("card/audio.json", "card/audio.mix.json"),
+    "G06": ("card/audio.mix.json",),
+    "G07": ("card/audio.mix.json",),
+}
 
 
 class EngineError(RuntimeError):
@@ -95,6 +106,7 @@ def _upstream_hashes(session: Session, run_id: int, node_id: str, states: dict, 
                 out[up] = ";".join(sorted(a.sha256 for a in arts))
                 continue
         out[up] = _external_fingerprint(project_root, up)
+    out.update(_external_input_hashes(project_root, node_id))
     return out
 
 
@@ -104,20 +116,115 @@ _EXTERNAL_FILES = {
 }
 
 
+def _library_fingerprint(lib: Path) -> str:
+    """风格库内容指纹：路径 + 所有非示例文件内容；库内容变化必须使 A03 失效。"""
+    if not lib.is_dir():
+        return f"nolib:{lib}"
+    h = hashlib.sha256()
+    h.update(str(lib.resolve()).encode("utf-8"))
+    for p in sorted(lib.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(lib)
+        if "示例" in rel.parts or any(part.startswith(".") for part in rel.parts):
+            continue
+        h.update(str(rel).encode("utf-8"))
+        h.update(file_sha256(str(p)).encode("utf-8"))
+    return h.hexdigest()
+
+
 def _external_fingerprint(project_root: str, node_id: str) -> str:
-    from .cachekey import file_sha256
     root = Path(project_root)
     parts = []
     for rel in _EXTERNAL_FILES.get(node_id, []):
         if rel == "_library_":
-            lib = settings.style_library_root
-            parts.append(file_sha256(str(lib / "_统计.json")) if (lib / "_统计.json").exists() else "nolib")
+            parts.append(_library_fingerprint(settings.style_library_root))
         elif rel == "project_root":
             parts.append(root.name)
         else:
             p = root / rel
             parts.append(file_sha256(str(p)) if p.exists() else "missing")
     return ";".join(parts) or "none"
+
+
+def _external_input_hashes(project_root: str, node_id: str) -> dict[str, str]:
+    if node_id not in _EXTERNAL_FILES:
+        return {}
+    return {f"_external:{node_id}": _external_fingerprint(project_root, node_id)}
+
+
+def _project_input_hashes(project_root: str, node_id: str) -> dict[str, str]:
+    root = Path(project_root)
+    hashes: dict[str, str] = {}
+    for rel in _PROJECT_INPUTS.get(node_id, ()):
+        p = root / rel
+        if p.exists():
+            hashes[rel] = file_sha256(str(p))
+    if node_id == "G04":
+        audio_dir = root / "card" / "audio"
+        if audio_dir.is_dir():
+            for p in sorted(audio_dir.glob("*.wav")):
+                hashes[str(p.relative_to(root))] = file_sha256(str(p))
+    return hashes
+
+
+def _style_primary(wf: Workflow, project_root: str) -> str:
+    meta = (wf.graph_json or {}).get("meta") or {}
+    decision = meta.get("style_decision") or {}
+    primary = str(decision.get("primary") or "")
+    if primary:
+        return primary
+    p = Path(project_root) / "card" / "style_decision.json"
+    if not p.exists():
+        return ""
+    try:
+        return str(json.loads(p.read_text(encoding="utf-8")).get("primary") or "")
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+
+def _engine_pack_sha(session: Session, wf: Workflow, project_root: str) -> str:
+    from ..models import Style
+    from ..services import engines as engines_svc
+
+    decision = ((wf.graph_json or {}).get("meta") or {}).get("style_decision") or {}
+    engine_id = str(decision.get("engine_id") or "")
+    primary = _style_primary(wf, project_root)
+    if not engine_id and primary:
+        style = session.get(Style, primary)
+        if style:
+            eng = engines_svc.engine_for_family(style.family)
+            if eng:
+                return str(eng.get("sha256") or engines_svc.compute_pack_sha(eng["engine_id"]))
+    if not engine_id:
+        task = Path(project_root) / "card" / "task.json"
+        if task.exists():
+            try:
+                engine_id = str(((json.loads(task.read_text(encoding="utf-8")).get("style") or {})
+                                 .get("engine_id") or ""))
+            except (OSError, json.JSONDecodeError):
+                engine_id = ""
+    return engines_svc.compute_pack_sha(engine_id) if engine_id else ""
+
+
+def _cache_params_for_node(session: Session, wf: Workflow, node_id: str, params: dict,
+                           project_root: str, snapshot: dict) -> dict:
+    cache_params = params
+    run_profiles = snapshot.get("render_profiles") or {}
+    if node_id in PROFILE_NODES and run_profiles:
+        cache_params = {**cache_params, "renderProfilesSha": profiles_sha(run_profiles)}
+    if node_id in PROJECT_LOCAL_NODES:
+        cache_params = {**cache_params, "projectRoot": str(project_root)}
+    if node_id in ENGINE_NODES:
+        cache_params = {**cache_params,
+                        "enginePackSha": _engine_pack_sha(session, wf, project_root)}
+    project_hashes = _project_input_hashes(project_root, node_id)
+    if project_hashes:
+        cache_params = {**cache_params, "projectInputsSha": project_hashes}
+        if node_id in ("G01", "G05"):
+            cache_params = {**cache_params,
+                            "timelineSha": snapshot.get("doc_snapshot_sha", "")}
+    return cache_params
 
 
 def _gate_valid(session: Session, run: Run, gate_id: str, content_hash: str) -> tuple[bool, bool]:
@@ -278,29 +385,7 @@ async def execute_node(run_id: int, node_id: str) -> dict:
 
         input_hashes = _upstream_hashes(session, run_id, node_id, states, project_root)
         doc_sha = snapshot.get("doc_snapshot_sha", "") if node_id in DOC_NODES else ""
-        cache_params = params
-        run_profiles = snapshot.get("render_profiles") or {}
-        if node_id in PROFILE_NODES and run_profiles:
-            cache_params = {**cache_params, "renderProfilesSha": profiles_sha(run_profiles)}
-        if node_id in PROJECT_LOCAL_NODES:
-            cache_params = {**cache_params, "projectRoot": str(project_root)}
-        # 音频/资产设置是项目文件而非 DAG 边：显式纳入缓存键，避免改设置仍命中旧产物
-        project_inputs = {
-            "G01": ("card/audio.json",),
-            "G05": ("card/audio.json", "card/audio.mix.json"),
-            "G06": ("card/audio.mix.json",),
-            "G07": ("card/audio.mix.json",),
-        }.get(node_id, ())
-        if project_inputs:
-            hashes = {}
-            for rel in project_inputs:
-                p = Path(project_root) / rel
-                if p.exists():
-                    hashes[rel] = file_sha256(str(p))
-            cache_params = {**cache_params, "projectInputsSha": hashes}
-            if node_id in ("G01", "G05"):
-                cache_params = {**cache_params,
-                                "timelineSha": snapshot.get("doc_snapshot_sha", "")}
+        cache_params = _cache_params_for_node(session, wf, node_id, params, project_root, snapshot)
         key = node_cache_key(node_id, EXECUTOR_VERSION, cache_params, input_hashes,
                              run.caps_json or [], doc_sha)
 

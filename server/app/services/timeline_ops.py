@@ -5,11 +5,10 @@ from copy import deepcopy
 from typing import Any
 
 from ..engine.scene.compiler import scene_text
+from ..engine.scene.transitions import TRANSITIONS
 
 READ_CPS = 5.2
 MIN_SCENE = 0.5
-TRANSITIONS = ("cut", "dissolve", "wipe", "push", "paper-slide", "ink-bleed",
-               "glitch", "match-shape")
 PRESETS = ("lock", "push-in", "pull-out", "pan-right", "follow", "handheld", "impact")
 
 

@@ -141,9 +141,9 @@ def main() -> int:
     _drive(rid, pid)
     items = _artifacts(rid)
 
-    # 1) D02 draft + review 静帧
+    # 1) D02 draft + review 静帧（contact sheet 没有 profile，归为 other）
     pngs = [a for a in items if a["node_id"] == "D02" and a["type"] == "PNG"]
-    sizes = sorted({((a.get("meta_json") or {}).get("profile"),
+    sizes = sorted({((a.get("meta_json") or {}).get("profile") or "other",
                      Image.open(a["path"]).size) for a in pngs})
     print("D02 stills:", sizes, flush=True)
     assert (("review", (1280, 720)) in sizes) and (("draft", (960, 540)) in sizes)
@@ -182,9 +182,9 @@ def main() -> int:
         assert (meta["width"], meta["height"], meta["fps"], meta["frames"]) == (*dims, fps, frames)
         assert abs(meta["duration"] - 5.0) <= 0.02
 
-    # 5) draft 与 final 场景内容一致（抽 6 帧，避开转场；motion=true 用 E03 运动 program）
+    # 5) draft 与 final 场景内容一致（抽帧含转场窗口，防止双实现漂移）
     worst = 1.0
-    for t in (0.5, 1.5, 3.2, 3.8, 4.2, 4.8):
+    for t in (0.5, 1.5, 2.45, 2.55, 3.2, 3.8, 4.2, 4.8):
         still = c.post(f"/projects/{pid}/preview/still",
                        json={"sceneId": "S01" if t < 2.5 else "S02", "time": t,
                              "profile": "draft", "watermark": False, "debounce": False,

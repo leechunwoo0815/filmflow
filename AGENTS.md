@@ -5,7 +5,7 @@
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
 > 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（逻辑约 75MiB；mp4 为稀疏文件，磁盘分配约 9.3MiB；库不入 git）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
-> **当前进度（2026-11-03 FR-39 + 专家审查）**：R2.0/R2.5 已完成；**R3.0 v1（FR-32–38）+ R3.5 FR-39 QA 修复建议已完成**（137 tests，`EXECUTOR_VERSION=2.9.2`）。**专家全量审查结论为 Conditional Go：先修 P0-1/P0-2/P0-3/P0-5 + P0-4a，再开 FR-40/41**；详见 `HANDOFF.md` §0.5 与 `docs/reviews/2026-11-03-expert-review-analysis.md`。R4 不做。
+> **当前进度（2026-11-03 FR-39 + 专家审查 Wave 0）**：R2.0/R2.5 已完成；**R3.0 v1（FR-32–38）+ R3.5 FR-39 QA 修复建议已完成**（全量收集 163；unit+BDD 151 已绿，integration 待隔离；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`）。**专家审查 Conditional Go：P0-1/P0-2/P1-02/03/04 已修，剩余 P0-3/P0-5 + P0-4a 完成后才开 FR-40/41**；详见 `HANDOFF.md` §0.5/§0.6 与 `docs/reviews/2026-11-03-expert-review-analysis.md`。R4 不做。
 > **完整接手 prompt**：[`QODER_PROMPT.md`](QODER_PROMPT.md)（历史 prompt；新 Agent 先看 HANDOFF §0/§6）。
 
 ## 这个仓库是什么

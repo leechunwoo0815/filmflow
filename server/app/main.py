@@ -7,10 +7,12 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .api.routes import router
 from .config import settings
 from .db import init_db
-from .api.routes import router
+from .security import LocalOriginMiddleware
 
 
 @asynccontextmanager
@@ -18,6 +20,7 @@ async def lifespan(app: FastAPI):
     init_db()
     # FR-29：清孤儿进程/旧 profile；恢复被 kill -9 中断的 Run Job
     from sqlmodel import Session
+
     from .db import engine
     from .engine import runengine
     from .services import jobs as jobs_svc
@@ -32,6 +35,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="FilmFlow", version="0.1.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/openapi.json")
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"], www_redirect=False)
+app.add_middleware(LocalOriginMiddleware)
 app.include_router(router)
 
 

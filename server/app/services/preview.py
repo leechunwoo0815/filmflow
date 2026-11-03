@@ -22,17 +22,18 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from ..config import detect_chrome, settings
+from ..engine.cachekey import file_sha256
+from ..engine.render_manifest import scene_hash
+from ..engine.scene.canonical import content_hash
+from ..engine.scene.compiler import compile_scene
+from ..engine.scene.transitions import transition_type as _transition_type
 from ..errors import ApiError, ErrorCode, not_found
 from ..models import Artifact, Project, Run, Style, Workflow
 from . import engines as engines_svc
 from . import project_docs as docs_svc
 from . import render_profiles as render_profiles_svc
-from ..engine.cachekey import file_sha256
-from ..engine.render_manifest import scene_hash
-from ..engine.scene.canonical import content_hash
-from ..engine.scene.compiler import compile_scene
 
-RENDERER_VER = "preview-1.7.0"  # text_scale + 资产图片/字体预加载；out spec 进缓存键
+RENDERER_VER = "preview-1.8.0"  # P0-2 转场映射统一；text_scale + 资产图片/字体预加载
 PREVIEW_PROFILES = render_profiles_svc.DEFAULT_PROFILES
 CACHE_LIMIT_BYTES = 500 * 1024 * 1024
 HTML_PATH = Path(__file__).resolve().parents[3] / "engines/riso/entry/film_spec.html"
@@ -131,16 +132,6 @@ def _resolve_engine(session: Session, root: Path, build: dict) -> tuple[str, str
         raise ApiError(ErrorCode.E_ENGINE_UNAVAILABLE, "无法确定预览引擎（先选择主风格）")
     sha = build.get("sha256") or engines_svc.compute_pack_sha(engine_id)
     return engine_id, sha
-
-
-def _transition_type(text) -> str:
-    t = str(text or "")
-    for key, value in (("硬切", "cut"), ("溶解", "dissolve"), ("擦", "wipe"), ("推", "push"),
-                       ("滑", "paper-slide"), ("墨", "ink-bleed"), ("故障", "glitch"),
-                       ("匹配", "match-shape")):
-        if key in t:
-            return value
-    return "match-shape"
 
 
 def _default_transitions(scenes: list[dict]) -> list[dict]:
@@ -422,6 +413,7 @@ class PreviewRenderer:
 
     async def __aenter__(self):
         from playwright.async_api import async_playwright
+
         from ..engine.runengine import LOCK_MANAGER
         f02_active = any(h.endswith(":F02") for h in LOCK_MANAGER.holders("chrome-queue"))
         self._pw = await async_playwright().start()
@@ -649,8 +641,8 @@ def find_by_db_job(db_job_id: int) -> PreviewJob | None:
 
 
 def cancel_job(job_id: str) -> dict:
-    from . import jobs as jobs_svc
     from ..db import engine as db_engine
+    from . import jobs as jobs_svc
     job = get_job(job_id)
     job.cancel_event.set()
     if job.status in ("queued", "running"):
@@ -817,8 +809,8 @@ async def _ffmpeg_encode(frames_dir: Path, fps: int, out: Path, crf: int, preset
 def _update_preview_job_progress(job: PreviewJob) -> None:
     if not job.db_job_id:
         return
-    from . import jobs as jobs_svc
     from ..db import engine as db_engine
+    from . import jobs as jobs_svc
     try:
         with Session(db_engine) as session:
             jobs_svc.update_job(session, job.db_job_id, progress=job.progress,
@@ -831,8 +823,8 @@ def _finish_preview_db(job: PreviewJob, status: str, *, error_code: str = "",
                        error_msg: str = "") -> None:
     if not job.db_job_id:
         return
-    from . import jobs as jobs_svc
     from ..db import engine as db_engine
+    from . import jobs as jobs_svc
     try:
         with Session(db_engine) as session:
             jobs_svc.finish_job(session, job.db_job_id, status, error_code=error_code,
@@ -844,8 +836,8 @@ def _finish_preview_db(job: PreviewJob, status: str, *, error_code: str = "",
 
 
 async def _heartbeat_preview(job: PreviewJob) -> None:
-    from . import jobs as jobs_svc
     from ..db import engine as db_engine
+    from . import jobs as jobs_svc
     while True:
         await asyncio.sleep(jobs_svc.HEARTBEAT_SECONDS)
         try:

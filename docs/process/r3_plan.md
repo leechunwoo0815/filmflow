@@ -1,7 +1,7 @@
 # R3.0 创作闭环 v1（FR-32/33/34/35/36/37/38）+ R3.5 FR-39
 
 > 代码：R3.0 v1 前序 `7a0ee2c` / tag `r3.0-audio`；FR-36 `r3.0-assets`；FR-37 `f887424` /
-> tag `r3.0-templates`；FR-39 `3bb81a0` / tag `r3.5-qa`；`EXECUTOR_VERSION=2.9.2`。
+> tag `r3.0-templates`；FR-39 `3bb81a0` / tag `r3.5-qa`；**当前 Wave 0 修复后 `EXECUTOR_VERSION=2.9.3`、preview `1.8.0`**。
 
 > 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。R3.0 v1 已于 2026-11-03 验收。
 > 本文覆盖 FR-32/33/34/35/36/37/38 与 R3.5 FR-39；FR-40/41 与 R4 未开始，不虚报。
@@ -65,7 +65,7 @@
 19. **QA 撤销**：`card/qa_fixes.json` 保存 before/after/afterVersion/verified；timeline 撤销若
     版本已变化则拒绝自动覆盖；误报率待下一次成功 Run 复核，不伪造。
 
-## 验收结果（2026-11-03，EXECUTOR_VERSION 2.9.2）
+## 验收结果（2026-11-03，FR-39 当时 EXECUTOR_VERSION 2.9.2）
 
 - [x] S03 +2s：S04/S05 自动后移，duration 40→42、frames 1008；`verify_r3.py` project 201。
 - [x] 分割 S02 → S02/S02b（transition=cut，文本独立），合并可还原；`verify_r3.py`。
@@ -77,7 +77,7 @@
 - [x] 100 场景 ops <0.2s（`test_timeline_ops.py`）；浏览器 100 场景 60fps 未实测。
 - [x] 10 条批注（含框选）在不同帧；点击跳帧 4.0s→4.000s；export→clear→import 恢复 10 条；
       审片包 6.8MB、内含 40.0s review.mp4 + review.json + README（`verify_r3.py` + `e2e_r3.py`）。
-- [x] **137 tests**（FR-39 后）；`e2e_ui.py`/`e2e_onboarding.py`/`e2e_r3.py`/`e2e_takes.py` 全绿；R2.5 回归（2.8.0）：
+- [x] **137 tests（FR-39 当时）**；`e2e_ui.py`/`e2e_onboarding.py`/`e2e_r3.py`/`e2e_takes.py` 全绿；R2.5 回归（2.8.0）：
       5s 交付 24.1s（project 215/run 270）、干净 rumor 46/46（run 272，256.1s）、
       5s 黄金 SSIM 1.0（project 216/run 271；无音频 G 链失败不影响视觉断言）、相机 preview/final SSIM 0.989483（project 208/run 261）。
 - [x] FR-38：project 188 A=237 / B=254；视频 sha 不同；同步播放 1.324s vs 1.324s；差异面板；
@@ -98,7 +98,7 @@
 - [x] FR-39：`verify_r3_qa.py` text_overflow 扩场景→即时验证→撤销、许可修复/撤销、
       缺资产定位、报告（**attempts=8/undone=8/successRate=1.0**；注意 successRate 当前口径
       存在结构性失真，见专家审查 P2-21）；`e2e_qa.py` UI 全绿。
-      执行器 2.9.2（text_scale），preview-1.7.0。
+      执行器 2.9.2（text_scale，FR-39 当时），preview-1.7.0。
 
 ## 磁盘说明
 
@@ -152,3 +152,14 @@ uv run --project server python scripts/e2e_qa.py
 
 准入：上述完成，且 `divergent 0/8`、连续两次 pytest 生产 DB 不变、LAN/Origin/Host 探测失败、
 QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
+
+### Wave 0 已完成（2026-11-03）
+
+- **P0-1**：Next dev 改 `127.0.0.1`；后端 Host/Origin 中间件；实测 LAN 000、错误 Host 400、跨源写 403。
+- **P0-2**：转场映射抽到 `server/app/engine/scene/transitions.py`，preview/final/schema/timeline_ops 共用；
+  `divergent 0/8`，新增 17 项测试。
+- **P1-02/03/04**：A01/A03/F01/G01 外部指纹进键；C01 `enginePackSha`；G02/G04 项目输入入键；
+  新增缓存失效测试；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`。
+- **P1-14**：`verify_r2_profiles.py` 排序修复，SSIM 选点加入转场窗口；待 P0-3 后实跑。
+- **测试**：全量收集 163（unit 144 + integration 12 + BDD 7）；unit+BDD 151 绿；integration 12 待 P0-3 后重跑。
+- **下一步**：P0-3 → P0-5 → P0-4a。

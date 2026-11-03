@@ -3,11 +3,10 @@ from __future__ import annotations
 
 from .canonical import canonical
 from .components import COMPONENT_NAMES, validate_props
+from .transitions import TRANSITIONS
 
 SCENE_SCHEMA = "filmflow.scene/1"
 LAYER_TYPES = {"text", "shape", "image", "group", "component"}
-TRANSITIONS = {"cut", "match-shape", "paper-slide", "wipe", "dissolve",
-               "ink-bleed", "glitch", "push"}
 FORBIDDEN = ("eval(", "new Function", "fetch(", "Date.now(", "Math.random(")
 
 
