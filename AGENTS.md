@@ -36,7 +36,7 @@ FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 
 R3.0 v1（FR-32–38）+ R3.5 FR-39。下一批：FR-40/41；不提前做 R4。
 第一验收：5 秒新项目全链出**用户文案**；改 S03 只渲 S03+邻接；单帧 p50 ≤2s；kill -9 后 ≤60s 恢复；rumor-39s 仍 46/46。
 预览验收：F02 运行中附加预览 p50 1.50s / p95 1.92s；5s 片段 13.2s；缓存 5ms（HANDOFF §2.3）。
-档位验收：D02 review/draft、E05 720p/24、F02 only-final、切档不重跑、draft vs final SSIM 0.9987（HANDOFF §2.4）。
+档位验收（2026-11-03 重跑，run 311）：D02 review/draft 混排不崩、E05 720p/24、F02 only-final、切档不重跑；draft vs final SSIM 稳定段最差 0.998663（≥0.98）、切点/入场 0.5s 窗口最差 0.952097（≥0.90）——旧口径只报 0.9987 稳定段，已修正（HANDOFF §2.4）。
 恢复验收：F02 中 kill -9，22.3s 恢复、frames=120、单 Job attempts=1（HANDOFF §2.5）。
 审阅验收：D03 逐场门禁、contact sheet、改 S03 diff 只标 S03（HANDOFF §3.1）。
 音频验收：waveform 49ms、手动对齐、许可、Stems 5s、LUFS -16/TP -10.5（HANDOFF §3.2）。

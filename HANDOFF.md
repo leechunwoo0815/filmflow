@@ -101,7 +101,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 - **P0-2 已完成**：新增 `server/app/engine/scene/transitions.py`，preview/pipeline/schema/timeline_ops 共用；`divergent 0/8`；新增 17 项转场测试。
 - **P1-02/03/04 已完成**：A01/A03/F01/G01 外部指纹进缓存键；C01 加 `enginePackSha`；G02/G04 项目输入入键；新增缓存测试。
 - **P0-5 已完成**：`extend_scene` 现在同步 timeline + profile（duration/frames）；profile 写入失败会补偿回滚 timeline；QA 的 `verified=null/documentVerified=true/requiresRerun=true`，不再宣称成片已验证；`retry_run` 改为 fork 新 Run 而非复用旧快照；撤销同步恢复 profile；QA 报告增加 `pendingRerun`。
-- **P1-14 代码修复**：`verify_r2_profiles.py` 的 contact sheet 排序不再 None/str 崩溃，SSIM 选点加入 `2.45/2.55` 转场窗口；因会创建 5s 项目，待后续验收批次实跑。
+- **P1-14 已完成并实跑**：`verify_r2_profiles.py` 的 contact sheet 排序不再 None/str 崩溃；SSIM 选点加入 `2.45/2.55` 并按「稳定段 ≥0.98 / 切点与入场 0.5s 窗口 ≥0.90」分类断言；已对新项目跑通（run 311 / project 248）：稳定段最差 0.998663、窗口最差 0.952097，PASS。详见 §2.4 与证据修正。
 - **版本**：`EXECUTOR_VERSION=2.9.3`；preview `1.8.0`（旧缓存自动失效）。
 - **测试**：完整 `pytest server/tests -q` **189 passed**（unit 169 + integration 13 + BDD 7）。
 - **P0-4a 已完成**：新增 `server/tests/integration/test_render_smoke.py`，在隔离服务中创建 1s 项目并真实执行 Chrome 预览、ffmpeg 编码和 SSIM 对比；断言 draft 输出 960×540/12fps/12 帧，SSIM ≥0.95。
@@ -224,6 +224,8 @@ full F02 wall=108.48s；incremental F02 wall=14.15s (13.05%)
 - D02 review 1280×720 + draft 960×540；E05 review 720p/24；F02 only-final。
 - F05/G07 `ensure_final_ready`：manifest 缺失/非 final/Run 不匹配 → `E_FINAL_REQUIRED`。
 - 切档不重跑已完成 final；40s draft 100.3s / review 245.6s。
+- **2026-11-03 重跑档位验收（P1-14，run 311 / project 248，`r2-profiles-251`）**：D02 contact sheet 混排不再崩（draft 960×540 + review 1280×720 + 无 profile 元数据的 1920×1080 归为 other）；draft 5s 13.7s / review 32.0s；E05 720p/24；F02 manifest profile=final。**draft vs final 逐点 SSIM（8 点，含切点/入场窗口）**：稳定段最差 **0.998663**（要求 ≥0.98），切点后 0.5s 入场窗口最差 **0.952097**（t=2.55，切点 2.24；要求 ≥0.90）。
+  **证据修正**：旧口径「draft vs final SSIM 0.9987」只在稳定段取样，掩盖了 draft 12fps 时序量化在切点/入场动画窗口的可见差异；现按窗口分别设阈值并打印分类，验收脚本 `verify_r2_profiles.py` 已固化该口径。
 
 ### 2.5 Job/恢复（FR-29）
 

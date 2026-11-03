@@ -224,7 +224,7 @@ P3 共 26 条，主题包括：模块级单例/配置未接线/组件扩展点�
 3. **P1-08**：timeline 409 保留 draft + 展示 diff + 强制覆盖。✅ 已完成（保留草稿 + 「只看服务端 / 保留本地并重试」，冲突期间暂停自动保存）。
 4. **P1-13**：9:16 变体读 Run 快照，或交付前校验 timeline hash。✅ 已完成（交付前比对当前 timeline 与 Run 快照哈希；生产库 22 个真实快照回归：18 放行 / 4 真实漂移拦截，零分歧）。
 5. **P1-15/P1-16/P1-17**：✅ 全部完成。P1-15（引用面含模板/其它文档/Run 快照）、P1-16/P1-18（入库需 source+type、引用中不可清空、rights.json 由真实资产生成、QA 不再预置 authorized）、P1-17（撤销链按 afterHash 链顶逐级 LIFO 回退 + 修掉 before/after 引用别名）。
-6. **P1-14/P1-19**：修 `verify_r2_profiles.py` 排序崩溃（✅ 代码已修，待实跑）；验收脚本自建自删（🟡 已开始：`scripts/_acceptance.py` + `verify_r3_qa.py` 已自包含，演示 227 不再被改写；其余脚本待迁）。
+6. **P1-14/P1-19**：修 `verify_r2_profiles.py` 排序崩溃并实跑通过 ✅（顺带纠正「draft vs final SSIM 0.9987」口径：切点/入场 0.5s 窗口实测最低 0.952，已改为分窗口阈值）；验收脚本自建自删（🟡 已开始：`scripts/_acceptance.py` + `verify_r3_qa.py` 已自包含，演示 227 不再被改写；其余脚本待迁）。
 
 ### Wave 2（1–2 周，L 级/治理）
 
