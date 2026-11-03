@@ -118,3 +118,28 @@
 - 全量：`pytest tests/unit tests/bdd` 188 passed；integration 13 项待整批跑。
 - 文档：HANDOFF/AGENTS 版本号与测试计数（201）已同步；P0-4b 40s 证据口径已更新。
 - 磁盘：r2-profiles-254 / golden-5s-253 的 frames+proxy 已清（2.4G 持平）。
+
+## 建设批 3 · F-QA-1 + F-DEL-1/2/3 修复（2026-11-04 01:10–01:50）
+
+### 交付门禁（F-DEL-1/2/3）· ✅ 修复 + 9 项单测
+- `delivery.py`：新增 `_load_run_snapshot_file`——只信磁盘 `runs/<id>/docs/snapshot.json`
+  （缺失/JSON 损坏/schema 不符 → E_DELIVERY_GATE），**不再用 ensure_run_snapshot 重建**（关死
+  F-DEL-1 的 no-op 通道）。
+- `_ensure_run_documents_match`：script + timeline 都必须在快照中且与当前一致（当前侧行缺省时用
+  与服务层同源的 default_doc 派生——copy.txt 被改仍会拦住真漂移）；profile 双方存在时也比对
+  （9:16 变体按当前 profile 重渲）。探针实测：新项目无 script 文档行时快照与派生同源放行。
+- `_title` 优先取快照 script（F-DEL-3），封面标题不再随当前文档漂移。
+- 单测：test_p1_foundations.py 重写为真实快照文件契约，9 项（缺文件/坏 JSON/错 schema/缺 timeline/
+  timeline 漂移/**script 漂移**/profile 漂移/全匹配放行/标题用快照）。
+- `verify_p1_governance.py` 第 5/6 步改为真实落盘快照契约（先 ensure 落盘、改盘上快照合成漂移），
+  去掉 monkeypatch；8 步全 ✓ 重跑通过。
+- 教训记录：我写的两个哈希探针中途异常未走 destroy，向 DB 泄漏 project 252/253——已用
+  `_acceptance.destroy` 清除，连同今晚验收产生的 249/250/251（报告已归档 docs/reports，
+  DB/目录不再保留），**`GET /api/projects` 回到基线 35**。
+
+### QA 撤销守卫（F-QA-1）· ✅ 修复 + 2 项单测
+- `qa.py`：set_lufs/fill_license 的 after_state 增加 `hash=content_hash(after)`；
+  `undo_fix` 的 mix/license 分支补 `_require_undo_head`（"混音配置"/"音乐许可"）——
+  修复后又手工改过 targetLufs/许可时拒绝撤销并提示；旧记录无 afterHash 时走 legacy 放行（兼容）。
+- 单测：手工改响度后撤销被拒 → 回到链顶后撤销放行并复原；许可同构（含"撤销回到不存在"）。
+- `pytest tests/unit tests/bdd` → **196 passed**（此前 188 + 门禁 7 新增 -2 重写 + QA 2）。

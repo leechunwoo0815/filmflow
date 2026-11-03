@@ -17,7 +17,7 @@ from sqlmodel import Session, select
 from ..config import detect_chrome
 from ..engine.fpscalc import fps_rational, frames_for, norm_fps
 from ..engine.scene.compiler import compile_scene
-from ..engine.snapshot import ensure_run_snapshot
+from ..engine.snapshot import ensure_run_snapshot  # imported 项目快照兜底仍用
 from ..models import Approval, Artifact, Asset, Job, NodeRun, Project, Run
 from . import assets as assets_svc
 from . import audio as audio_svc
@@ -148,8 +148,13 @@ def _alignment(session: Session, root: Path, run: Run, task: dict,
     return segments, "planned"
 
 
-def _title(session: Session, project: Project) -> str:
-    script = docs_svc.doc_payload(session, project.id or 0, project.root, "script")["content"]
+def _title(session: Session, project: Project, snapshot: dict | None = None) -> str:
+    """封面标题优先取 Run 快照 script（F-DEL-3：与成片一致，而不是当前文档）。"""
+    snap_script = (((snapshot or {}).get("docs") or {}).get("script") or {}).get("content") or {}
+    if snap_script.get("title") or snap_script.get("sentences"):
+        script = snap_script
+    else:
+        script = docs_svc.doc_payload(session, project.id or 0, project.root, "script")["content"]
     return str(script.get("title") or "").strip() or \
         (script.get("sentences") or [{}])[0].get("text", "").strip()
 
@@ -270,16 +275,56 @@ def _file_sha(path: Path) -> str:
     return h.hexdigest()
 
 
+def _load_run_snapshot_file(root: Path, run_id: int) -> dict:
+    """只信磁盘上的真实快照；缺失/损坏一律拦（F-DEL-1：重建快照会让门禁变 no-op）。"""
+    snap_path = Path(root) / "runs" / str(run_id) / "docs" / "snapshot.json"
+    if not snap_path.exists():
+        raise RuntimeError("E_DELIVERY_GATE: 该 Run 没有落盘快照（runs/<id>/docs/snapshot.json 缺失），"
+                           "无法证明文档一致性；请基于当前文档新建 Run 后再交付")
+    try:
+        snap = json.loads(snap_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        raise RuntimeError(f"E_DELIVERY_GATE: Run 快照损坏（{e}）；请新建 Run 后再交付") from e
+    from ..engine.snapshot import SNAPSHOT_SCHEMA
+    if snap.get("schema") != SNAPSHOT_SCHEMA:
+        raise RuntimeError("E_DELIVERY_GATE: Run 快照 schema 不符，请基于当前文档新建 Run 后再交付")
+    return snap
+
+
 def _ensure_run_documents_match(session: Session, run: Run, root: Path, project_id: int) -> dict:
-    """交付必须基于与所选 Run 一致的文档；Run 后再改文案会产出画面与字幕不符的 zip。"""
-    snapshot = ensure_run_snapshot(session, run, str(root))
-    snap_tl = ((snapshot.get("docs") or {}).get("timeline") or {}).get("content") or {}
-    if not snap_tl:
-        return snapshot
-    current_tl = docs_svc.doc_payload(session, project_id, str(root), "timeline")["content"]
-    if docs_svc.content_hash(snap_tl) != docs_svc.content_hash(current_tl):
-        raise RuntimeError("E_DELIVERY_GATE: 当前 timeline 与所选 Run 快照不一致；"
-                           "请用该 Run 重跑 F02/G07，或基于当前文档新建 Run 后再交付")
+    """交付必须基于与所选 Run 一致的文档；Run 后再改 script/timeline 会产出画面/字幕/9:16 不符的包。
+
+    F-DEL-1/2：此前只比 timeline、快照缺失时静默放行。现在 script/timeline 必须在快照里
+    且与当前一致；profile 双方都存在时也要一致（9:16 变体按当前 profile 重渲）。
+    """
+    snapshot = _load_run_snapshot_file(root, run.id)
+    docs = snapshot.get("docs") or {}
+
+    def current_content(kind: str) -> dict:
+        """当前文档内容：行存在用行；行缺省时与服务层同源派生（script←copy.txt 等）。"""
+        doc = docs_svc.get_doc(session, project_id, kind)
+        if doc is not None:
+            return doc.content_json or {}
+        try:
+            return docs_svc.default_doc(session, project_id, str(root), kind) or {}
+        except Exception:
+            return {}
+
+    for kind in ("script", "timeline"):
+        snap_content = (docs.get(kind) or {}).get("content") or {}
+        if not snap_content:
+            raise RuntimeError(f"E_DELIVERY_GATE: Run 快照缺少 {kind} 文档，无法证明一致性；"
+                               "请基于当前文档新建 Run 后再交付")
+        if docs_svc.content_hash(snap_content) != docs_svc.content_hash(current_content(kind)):
+            raise RuntimeError(f"E_DELIVERY_GATE: 当前 {kind} 与所选 Run 快照不一致；"
+                               "请用该 Run 重跑 F02/G07，或基于当前文档新建 Run 后再交付")
+    if (docs.get("profile") or {}).get("content"):
+        current_profile = docs_svc.get_doc(session, project_id, "profile")
+        if current_profile is not None and docs_svc.content_hash(
+                (docs.get("profile") or {}).get("content") or {}) != \
+                docs_svc.content_hash(current_profile.content_json or {}):
+            raise RuntimeError("E_DELIVERY_GATE: 当前 profile 与所选 Run 快照不一致"
+                               "（9:16 变体按当前 profile 重渲）；请新建 Run 后再交付")
     return snapshot
 
 
@@ -398,7 +443,7 @@ async def run_delivery(job_id: int) -> None:
         # 封面：16:9 取 D02 review；9:16 取变体中间帧
         title = ""
         with Session(db_engine) as session:
-            title = _title(session, project)
+            title = _title(session, project, snap)
         review = [a for a in stills if (a.meta_json or {}).get("profile") == "review"]
         if not review:
             raise RuntimeError("缺少 D02 review 静帧")

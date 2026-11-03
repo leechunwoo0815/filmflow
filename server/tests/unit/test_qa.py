@@ -235,3 +235,70 @@ def test_undo_removes_profile_doc_created_by_fix(tmp_path: Path):
             session.delete(leftover)
             session.commit()
         _cleanup(session, proj)
+
+
+def test_mix_undo_guard_rejects_manual_edit_after_fix(tmp_path: Path):
+    """F-QA-1：set_lufs 撤销必须走链顶守卫——修复后又手工改过 targetLufs 时拒绝撤销。"""
+    session, proj = _project(tmp_path)
+    try:
+        # 项目里先有一份 mix（targetLufs=-16），再走一次 set_lufs 修复到 -14
+        from app.services import audio as audio_svc
+        mix_before = {"schema": "filmflow.audio-mix/1",
+                      "preset": "-16", "targetLufs": -16.0,
+                      "stems": {"voice": 0.0, "music": -8.0, "sfx": 0.0}}
+        audio_svc.save_mix(proj.root, mix_before)
+        result = qa._apply(session, proj, {"location": {}}, "set_lufs",
+                           {"target": -14}, None,
+                           {"kind": "mix", "content": audio_svc.load_mix(proj.root)})
+        after_state = result[0]
+        assert after_state["hash"] == docs.content_hash(audio_svc.load_mix(proj.root))
+        entry = {"id": "fix_mixtest", "issueId": "x", "category": "lufs", "action": "set_lufs",
+                 "result": "applied", "before": {"kind": "mix", "content": mix_before},
+                 "after": after_state, "afterHash": after_state.get("hash")}
+        data = qa._read_fixes(proj.root)
+        data["items"].append(entry)
+        qa._write_fixes(proj.root, data)
+        # 手工把响度改回 -16（模拟修复后的人工编辑）
+        audio_svc.save_mix(proj.root, {**audio_svc.load_mix(proj.root),
+                                       "preset": "-16", "targetLufs": -16.0})
+        with pytest.raises(ValueError, match="混音配置"):
+            qa.undo_fix(session, proj, "fix_mixtest")
+        # 恢复到修复后状态（链顶）→ 撤销放行并回到 -16 前值
+        audio_svc.save_mix(proj.root, {**audio_svc.load_mix(proj.root),
+                                       "preset": "-14", "targetLufs": -14.0})
+        undone = qa.undo_fix(session, proj, "fix_mixtest")
+        assert undone["undone"] is True
+        assert float(audio_svc.load_mix(proj.root)["targetLufs"]) == -16.0
+    finally:
+        _cleanup(session, proj)
+
+
+def test_license_undo_guard_rejects_manual_edit_after_fix(tmp_path: Path):
+    """F-QA-1：fill_license 撤销同样受链顶守卫。"""
+    session, proj = _project(tmp_path)
+    try:
+        from app.services import audio as audio_svc
+        result = qa._apply(session, proj, {"location": {}}, "fill_license",
+                           {"source": "自制", "license": "CC0", "authorized": True},
+                           None, None)
+        after_state = result[0]
+        entry = {"id": "fix_lictest", "issueId": "x", "category": "license_missing",
+                 "action": "fill_license", "result": "applied",
+                 "before": {"kind": "license", "content": {}},
+                 "after": after_state, "afterHash": after_state.get("hash")}
+        data = qa._read_fixes(proj.root)
+        data["items"].append(entry)
+        qa._write_fixes(proj.root, data)
+        # 修复后手工换许可 → 撤销被拒
+        audio_svc.save_license(proj.root, {"source": "他人", "license": "MIT",
+                                           "authorized": True})
+        with pytest.raises(ValueError, match="音乐许可"):
+            qa.undo_fix(session, proj, "fix_lictest")
+        # 回到链顶 → 撤销放行，许可回到"不存在"（修复前没有）
+        audio_svc.save_license(proj.root, {"source": "自制", "license": "CC0",
+                                           "authorized": True})
+        undone = qa.undo_fix(session, proj, "fix_lictest")
+        assert undone["undone"] is True
+        assert not audio_svc.license_path(proj.root).exists()
+    finally:
+        _cleanup(session, proj)

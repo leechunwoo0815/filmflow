@@ -63,7 +63,7 @@ def check_transitions() -> None:
 def check_cache_inputs() -> None:
     from app.engine import runengine as re_mod
     from app.engine.cachekey import EXECUTOR_VERSION
-    assert EXECUTOR_VERSION == "2.9.3", EXECUTOR_VERSION
+    assert EXECUTOR_VERSION == "2.10.0", EXECUTOR_VERSION  # P1-12 fps 口径统一
     assert {"A01", "A03", "F01", "G01"} <= set(re_mod._EXTERNAL_FILES), sorted(re_mod._EXTERNAL_FILES)
     probe = re_mod._external_input_hashes("/nonexistent-ff-root", "A01")
     assert list(probe) == ["_external:A01"] and probe["_external:A01"], probe
@@ -126,6 +126,9 @@ def check_rights_and_delivery_gate(c: httpx.Client, pid: int) -> None:
         wf = s.exec(select(Workflow).where(Workflow.project_id == pid)).first()
         run = s.exec(select(Run).where(Run.workflow_id == wf.id).order_by(Run.id.desc())).first()
         assert run is not None, "临时项目应有 Run"
+        # F-DEL-1 修复后门禁只信磁盘快照：先确保快照真实落盘，再过门
+        from app.engine.snapshot import ensure_run_snapshot as _ensure_snap
+        _ensure_snap(s, run, str(proj.root))
         snap = delivery._ensure_run_documents_match(s, run, Path(proj.root), pid)
         assert ((snap.get("docs") or {}).get("timeline") or {}), "快照应含 timeline 文档"
         items, gaps = delivery._asset_rights(s, snap)
@@ -133,12 +136,13 @@ def check_rights_and_delivery_gate(c: httpx.Client, pid: int) -> None:
         ok("5 交付一致性 + rights", f"同 Run 快照放行；rights 逐项真实资产（当前 {len(items)} 项、"
                                    f"缺口 {len(gaps)}）")
 
-        # 合成漂移：当前 timeline 与快照不一致必须被拦
+        # 合成漂移：改写磁盘快照里的 timeline，使当前文档与快照不一致 → 必须被拦
+        snap_path = Path(proj.root) / "runs" / str(run.id) / "docs" / "snapshot.json"
         drifted = _json.loads(_json.dumps(snap))
         scenes = drifted["docs"]["timeline"]["content"].get("scenes") or []
         scenes.append({"id": "S99", "start": 99.0, "end": 99.5})
-        real = delivery.ensure_run_snapshot
-        delivery.ensure_run_snapshot = lambda *_: drifted
+        original = snap_path.read_text(encoding="utf-8")
+        snap_path.write_text(_json.dumps(drifted, ensure_ascii=False), encoding="utf-8")
         try:
             try:
                 delivery._ensure_run_documents_match(s, run, Path(proj.root), pid)
@@ -146,7 +150,7 @@ def check_rights_and_delivery_gate(c: httpx.Client, pid: int) -> None:
             except RuntimeError as e:
                 assert "E_DELIVERY_GATE" in str(e), str(e)
         finally:
-            delivery.ensure_run_snapshot = real
+            snap_path.write_text(original, encoding="utf-8")
         ok("6 漂移拦截", "timeline 与 Run 快照不一致 → E_DELIVERY_GATE")
 
 

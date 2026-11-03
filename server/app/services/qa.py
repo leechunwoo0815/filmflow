@@ -428,11 +428,14 @@ def _apply(session: Session, project: Project, issue: dict, action: str,
         before = audio_svc.load_mix(root)
         after = audio_svc.save_mix(root, {**before, "preset": str(int(target)),
                                           "targetLufs": target})
-        return {"kind": "mix", "before": before, "after": after}, {"targetLufs": target}
+        # F-QA-1：给撤销链提供链顶判据（此前 mix/license 撤销无守卫，会静默覆盖手工编辑）
+        return {"kind": "mix", "before": before, "after": after,
+                "hash": docs_svc.content_hash(after)}, {"targetLufs": target}
     if action == "fill_license":
         before = audio_svc.load_license(root)
         lic = audio_svc.save_license(root, payload)
-        return {"kind": "license", "before": before, "after": lic}, {}
+        return {"kind": "license", "before": before, "after": lic,
+                "hash": docs_svc.content_hash(lic)}, {}
     if action == "retry_run":
         rid = run_id or (_latest_run(session, project.id or 0).id
                          if _latest_run(session, project.id or 0) else None)
@@ -554,8 +557,15 @@ def undo_fix(session: Session, project: Project, fix_id: str) -> dict:
                 docs_svc.save_doc(session, pid, "profile", before["profileContent"],
                                   profile.version if profile else 0, "qa-undo")
     elif kind == "mix":
+        # F-QA-1：与 timeline 一致的链顶守卫——修复后若又被手工改动，只能倒序撤销
+        current_mix = audio_svc.load_mix(project.root)
+        _require_undo_head(data, entry, docs_svc.content_hash(current_mix),
+                           entry.get("afterHash"), None, None, "混音配置")
         audio_svc.save_mix(project.root, before.get("content") or {})
     elif kind == "license":
+        current_lic = audio_svc.load_license(project.root)
+        _require_undo_head(data, entry, docs_svc.content_hash(current_lic),
+                           entry.get("afterHash"), None, None, "音乐许可")
         prev = before.get("content") or {}
         if prev:
             audio_svc.save_license(project.root, prev)
