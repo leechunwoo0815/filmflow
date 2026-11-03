@@ -1,7 +1,7 @@
 # R3.0 创作闭环 v1（FR-32/33/34/35/36/37/38）+ R3.5 FR-39
 
 > 代码：R3.0 v1 前序 `7a0ee2c` / tag `r3.0-audio`；FR-36 `r3.0-assets`；FR-37 `f887424` /
-> tag `r3.0-templates`；FR-39 见 `r3.5-qa`；`EXECUTOR_VERSION=2.9.2`。
+> tag `r3.0-templates`；FR-39 `3bb81a0` / tag `r3.5-qa`；`EXECUTOR_VERSION=2.9.2`。
 
 > 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。R3.0 v1 已于 2026-11-03 验收。
 > 本文覆盖 FR-32/33/34/35/36/37/38 与 R3.5 FR-39；FR-40/41 与 R4 未开始，不虚报。
