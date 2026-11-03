@@ -208,3 +208,20 @@
   在事件循环内天然串行，load-modify-save 无 await 间断 → 无进程内交错；多 worker 本就不支持
   （HANDOFF §9.5）。加锁是伪需求，记录判断不改码。
 - `pytest tests/unit tests/bdd` → **204 passed**。
+
+## 建设批 8 · P3 安全抽查 + cleanup_projects.py --dry-run（2026-11-04 04:00–04:20）
+
+- **P3-SVG-XSS（实锤已修）**：`/assets/{id}/file` 对 SVG 返回 `image/svg+xml` 且无
+  nosniff/CSP——SVG 可携带 `<script>`、同源 :7860 直开=存储型脚本执行。现在统一加
+  `X-Content-Type-Options: nosniff` + `Content-Security-Policy: default-src 'none'; sandbox`；
+  回归测试：上传带 script 的 SVG → 断言两头。
+- **P3-artifact 白名单（纵深已补）**：`/artifacts/{id}/file` 原样 FileResponse(DB.path)；
+  现在强制 `_require_workspace_root(p.resolve())` + nosniff（DB 行被改后也不能任意读盘）。
+- **P3-:3000 安全头（已补）**：next.config.mjs dev 分支加 nosniff / X-Frame-Options: DENY /
+  Referrer-Policy: same-origin。
+- **P3-Chrome profile 可预测/9222、Asset 绝对路径、500MB base64**：记录为已知边界不本轮动
+  （9222 仅 F02 渲染窗口开启、绑 127.0.0.1；base64 上限已有 MAX_BYTES=500MB）。
+- **cleanup_projects.py**（--dry-run 默认）：与 HANDOFF §7.4 完全吻合——35 项中
+  **root 缺失且非演示 8 项**（228/229/232/233/235/236/237/238），演示保护名单拦截；
+  真删需 --confirm + 逐 id 显式 + 老板点头，本轮未删任何数据。
+- `pytest tests/unit tests/bdd` → **205 passed**。

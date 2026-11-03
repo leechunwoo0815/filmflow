@@ -1336,8 +1336,10 @@ async def artifact_file(artifact_id: int, session: Session = Depends(get_session
     p = Path(a.path)
     if not p.exists():
         raise not_found("产物文件")
+    # P3：产物路径来自 DB；仍强制落在工作区白名单内（防 DB 被改后任意读）
+    _require_workspace_root(p.resolve())
     from fastapi.responses import FileResponse
-    return FileResponse(p)
+    return FileResponse(p, headers={"X-Content-Type-Options": "nosniff"})
 
 
 # ---------- 门审批（T10/FR-8） ----------
@@ -1640,7 +1642,10 @@ async def assets_file(asset_id: int, session: Session = Depends(get_session)):
     p = Path(asset.path)
     if not p.exists():
         raise ApiError(ErrorCode.E_ASSET_MISSING, "资产文件缺失", status=404)
-    return FileResponse(p, filename=p.name,
+    # P3：SVG 可携带 <script>，同源直开=存储型脚本执行；CSP sandbox + nosniff 关死
+    headers = {"X-Content-Type-Options": "nosniff",
+               "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"}
+    return FileResponse(p, filename=p.name, headers=headers,
                         media_type=_ASSET_MEDIA.get((asset.meta_json or {}).get("ext", "")))
 
 
