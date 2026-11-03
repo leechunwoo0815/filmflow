@@ -1,0 +1,11 @@
+{
+ "projectId": 249,
+ "scenes": 100,
+ "loadMs": 3626,
+ "renderedSceneNodes": 203,
+ "longTaskCount": 5,
+ "longTaskTotalMs": 342,
+ "longTaskMaxMs": 83,
+ "avgFps5s": 59.8,
+ "clickSelectMs": 215
+}

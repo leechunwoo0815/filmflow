@@ -170,3 +170,18 @@
   FK ON）；`GET /api/projects` 两遍后恒 **35**。
 - `verify_p1_governance.py` FK 下 8 步全 ✓；`sqlite3` CLI 显示 foreign_keys=0 属连接级差异
   （API 进程连接已 ON）。
+
+## 建设批 5 · P1-10 ErrorBoundary + P1-11 100 场景实测（2026-11-04 03:00–03:20）
+
+### P1-10 · ✅
+- 新增 `web/src/app/error.tsx`（路由级：错误信息 + digest + 重试/回首页，data-testid=page-error）
+  与 `web/src/app/global-error.tsx`（layout 崩溃兜底）。`tsc --noEmit` 干净。
+
+### P1-11 · ✅ 实测关闭（数据先行，不臆断虚拟化）
+- 新增 `scripts/e2e_timeline_100.py`：自建 100 场景项目 → Playwright 打开 /timeline →
+  PerformanceObserver 长任务 + rAF 采样播放 5s → 报告归档 `docs/reports/p1-11-timeline-100.json`。
+- 实测（2026-11-04，M 系列 GPU，headless Chrome）：加载 3.6s；**播放 5s 平均 59.8fps**；
+  长任务 5 个 / 共 342ms / max 83ms；渲染场景节点 203（含轨道副本）；点击选中 215ms。
+- 结论：**"100 场景 60fps" 声明在本机成立**，暂不引入虚拟化（复杂度 > 收益）；HANDOFF §9.16
+  由"未实测"改为"已实测 ~60fps，>300 场景或低端机再评估"。
+- 项目自建自删，计数恒 35。
