@@ -25,6 +25,10 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 
 ### 0.2 第一小时必做
 
+> 若要交给专家做整夜自主循环开发（goal 模式），提示词已固化在
+> [`docs/process/expert-overnight-goal-prompt.md`](docs/process/expert-overnight-goal-prompt.md)：
+> 含收敛判据、先证伪再建设的顺序、每轮循环协议、反作弊条款与收尾产物要求。
+
 ```bash
 cd server && uv run pytest tests -q                       # 189 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s

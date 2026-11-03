@@ -55,6 +55,8 @@ R3.0 v1（FR-32–38）+ R3.5 FR-39。下一批：FR-40/41；不提前做 R4。
 
 ## 先跑什么
 
+> 专家整夜自主循环（goal 模式）的提示词：`docs/process/expert-overnight-goal-prompt.md`（先证伪交接声明，再按优先级补 P1/P2，每轮必须提交并留证据）。
+
 ```bash
 ./dev.sh
 cd server && uv run pytest tests -q                       # 189 项（含 integration 真实出片冒烟 + P0/P1 回归）
