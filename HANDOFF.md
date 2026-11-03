@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
 > 更新时间：2026-11-03（FR-37 交接） · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/36/37/38）已交付；下一批 R3.5（FR-39/40/41）或等待裁决**
-> 复核基线：FR-37 代码见 tag `r3.0-templates`；前序 FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）、`r3.0-takes`/`r3.0-creation`；R2.5 基线 `b7591bd`。
+> 复核基线：FR-37 代码 `f887424`（tag `r3.0-templates`）；前序 FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）、`r3.0-takes`/`r3.0-creation`；R2.5 基线 `b7591bd`。
 > 测试 **133 passed**；`EXECUTOR_VERSION=2.9.1`；DB 14 个项目、`filmflow-projects` 13 个目录。
 > **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008/0009/0010。**
 > 上下文压缩后继续开发时：从 §6.5 的 R3.5（FR-39/40/41）开始；不要提前做 R4，不要回滚已完成部分。
@@ -91,7 +91,7 @@ uv run --project server python scripts/e2e_templates.py             # 模板 UI
 | R3.0 FR-38 tag | `r3.0-takes` → `1d2fcf6` |
 | R3.0 FR-35 tag | `r3.0-audio` → `7a0ee2c` |
 | R3.0 FR-36 tag | `r3.0-assets` → `900076b` |
-| R3.0 FR-37 tag | `r3.0-templates` → 当前 HEAD |
+| R3.0 FR-37 tag | `r3.0-templates` → `f887424` |
 | R2.0 起始 tag | `r2-edge-fix` → `4f9e381` |
 | R2.0 Scene DSL | `r2-scene-dsl` → `53e6462` |
 | R2.0 增量 | `r2-incremental` → `07b5237` |
