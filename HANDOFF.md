@@ -391,7 +391,7 @@ PASS: R2.5 FR-28 40s 交付验收通过（run 305.4s / delivery 190.0s）
 - UI `/qa`：问题卡、位置/影响、自动按钮、manual 跳转、修复记录/撤销；画布/帮助入口。
 - 证据：
   - `verify_r3_qa.py`（project 227）：text_overflow → 扩场景 → 即时验证 → 撤销；
-    许可修复→验证→撤销；缺资产定位；报告 attempts=5/undone=5/successRate=1.0。
+    许可修复→验证→撤销；缺资产定位；报告 attempts=8/undone=8/successRate=1.0。
   - `e2e_qa.py`：QA 页问题卡、扩场景按钮、即时验证、UI 撤销。
   - `test_qa.py` 3 项 + `text_scale` 编译断言；**137 tests**。
   - `EXECUTOR_VERSION=2.9.2`（text_scale）；preview `preview-1.7.0`；46 节点/边不变。

@@ -47,6 +47,6 @@
 
 - `test_qa.py`：text_overflow→extend→verified→undo、license 修复、分类映射。
 - `verify_r3_qa.py`：project 227 text_overflow 修复/撤销、许可修复/撤销、缺资产定位、报告；
-  attempts=5、undone=5、successRate=1.0。
+  attempts=8、undone=8、successRate=1.0。
 - `e2e_qa.py`：`/qa` 问题卡、扩场景按钮、即时验证、UI 撤销。
 - 137 tests（QA 后）；黄金 5s 与 R3 既有证据保持；`EXECUTOR_VERSION=2.9.2`。
