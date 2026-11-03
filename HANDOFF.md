@@ -1,6 +1,6 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：2026-11-02 · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/38）已交付；FR-36/37 下一批**
+> 更新时间：2026-11-03 · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/38）已交付；FR-36/37 下一批**
 > 当前代码基线：R3.0 代码 `7a0ee2c`（tag `r3.0-audio`；`r3.0-takes`/`r3.0-creation` 为前序）；R2.5 基线 `b7591bd`。
 > **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008/0009。**
 > 上下文压缩后继续开发时：从 §6.5 的 R3 下一批（FR-36 → FR-37）开始，不要回滚 R2/R3 已完成部分。
@@ -17,8 +17,8 @@ cd /Users/litianyu/cc-projects/ai-v/filmflow
 curl -s http://127.0.0.1:7860/api/health
 ```
 
-Web 入口：`/`（模板/项目）、`/wizard`、`/canvas?project=&run=`、`/review?project=&run=`、
-`/audio?project=`、`/delivery?project=&run=`、`/help`。
+Web 入口：`/`（模板/项目）、`/wizard`、`/canvas?project=&run=`、`/editor`、`/timeline`、
+`/review`、`/player`、`/takes`、`/audio`、`/delivery`、`/help`。
 API 文档：`http://127.0.0.1:7860/api/docs`。
 
 ### 0.2 第一小时必做
@@ -73,7 +73,7 @@ uv run --project server python scripts/e2e_audio_v2.py              # 音频 v2 
 
 | 项 | 值 |
 |---|---|
-| R2.5 当前代码 | `64e6898`（FR-27/交付修复；当前 HEAD 以 `git log` 为准） |
+| R3.0 当前代码 | `7a0ee2c`（tag `r3.0-audio`；当前 HEAD 以 `git log` 为准） |
 | R2.5 FR-26 tag | `r2_5-review` → `a37570d` |
 | R2.5 FR-27 tag | `r2_5-audio` → `cd7312f` |
 | R2.5 FR-28 tag | `r2_5-delivery` → `9c4ac00` |
@@ -305,7 +305,7 @@ PASS: R2.5 FR-28 40s 交付验收通过（run 305.4s / delivery 190.0s）
 
 **R3.0 v1 的诚实边界**：撤销 30 步已用 30 个文档版本恢复验证，但 30 步 UI 连点未自动化；
 100 场景服务端 ops <0.2s，浏览器 100 场景 60fps 未实测；FR-38 没有音频波形对齐/帧差图，
-只做视频同步 + difference 叠加；FR-35/36/37 未开始。
+只做视频同步 + difference 叠加；FR-35 的 SFX 拖入依赖 FR-36；FR-36/37 未开始。
 
 ---
 
@@ -474,13 +474,13 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
   失败 `E_QC_*` 阻断并给修复建议；不渲染 9:16、不生成 zip。
 - **DeliveryService**：显式 post-run 作业（API/页面）；非导入项目必须已有 G07 `succeeded/cached`，
   否则 `E_DELIVERY_GATE`；完整包 QC 失败则 Job 失败；manifest 记录 G07 master sha + 全部文件 sha。
-- 代价：改 G07 已升 `EXECUTOR_VERSION=2.6.6`；普通 Run 只多一次 ffprobe/ebur128。
+- 代价：G07 QC 最初升到 2.6.6；当前总版本 2.8.0；普通 Run 只多一次 ffprobe/ebur128。
 
 ### 6.4 R2.5 DoD（收尾时逐项打勾）
 
 - [x] FR-26 全场景静帧/逐场门禁/diff（DONE）
 - [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
-- [x] FR-28 16:9+9:16+SRT+封面+QC+zip；5s 26.2s / **40s 190.0s**
+- [x] FR-28 16:9+9:16+SRT+封面+QC+zip；R2.5 5s 26.2s / 40s 190.0s（2.8.0 5s 24.1s）
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
 - [x] 102 tests、E2E、干净 rumor 46/46 回归（run 222，90.6s）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
@@ -526,12 +526,26 @@ curl -s http://127.0.0.1:7860/api/queue
 
 ### 7.3 数据/清理
 
-- 真实 DB：`~/.filmflow/filmflow.db`（测试 project/run 很多，属正常）。
+- 真实 DB：`~/.filmflow/filmflow.db`。2026-11-03 已清理为 12 个真实项目；重跑验收脚本会新建项目，
+  完成后需按 §7.4 清理。
 - 测试 DB：`/tmp/filmflow-test-home/filmflow.db`（可删，下次 pytest 重建）。
 - 8787 是 FrameServer；EADDRINUSE 先查健康检查/残留进程。
 - Chrome 残留：`/tmp/ff-{node}-{run_id}`、`/tmp/ff-chrome-{node}-{run_id}`；启动恢复会清理。
 - 预览缓存：`~/.filmflow/cache/preview/<project>`；交付：项目 `out/deliveries/<runId>`。
+### 7.4 项目/磁盘清单（2026-11-03 清理后）
+
+保留的 11 个 `filmflow-projects` 目录：
+`r2_5-audio-160`、`r2_5-delivery-216`、`r2_5-delivery-224`、`r2_5-delivery40-185`、
+`r3-audio-v2-221`、`r3-camera-199`、`r3-demo-20261103-1`、`golden-5s-217`、`golden-5s-225`、
+`rumor-clean-20261102`、`trace-x`；另有仓库外参考项目 `rumor-39s`。
+DB 共 12 个项目记录（含 rumor-39s）。重跑验收后按同一策略清理；不要直接 `rm -rf` 正在用的项目。
+
 - 风格库 76MB 外置，不入 git。
+- **磁盘现状（2026-11-03）**：`filmflow-projects` 约 1.0GB（11 个目录）、`~/.filmflow` 94MB、
+  `ai-v` 总计约 2.7GB；验收项目保留 174/188/202/211/215/216 等，见 §7.4。
+- **不要再让验收脚本无限建项目**：每次 40s 项目约 4.3GB（frames 2.7G + proxy 1.4G）；通过后
+  删除 `out/frames`、`out/proxy`，只留 film/artifacts/stills/交付包。DB 备份在
+  `~/.filmflow/backups/filmflow-before-orphan-cleanup-20261103-125802.db`（确认后可删）。
 
 ---
 
@@ -544,7 +558,7 @@ curl -s http://127.0.0.1:7860/api/queue
 - 改执行器行为必须升 `EXECUTOR_VERSION`（2.8.0）。
 - 路径白名单/禁止路径穿越；FrameServer 只服务 `/engine` 与 `/project`。
 - 76MB 风格库/示例 mp4 不入 git；`vendor/fy-code-animation` 只查方法，不 import。
-- R2.5 只做 FR-26/27/28/31；R3/R4 不做。
+- R3.0 v1 只做 FR-32/33/34/35/38；FR-36/37 下一批；R4 不提前做。
 - UI 自动化用系统 Chrome + 键盘输入（React 19 `fill()` 不触发 onChange）。
 
 ---
@@ -555,7 +569,7 @@ curl -s http://127.0.0.1:7860/api/queue
    预置数据库项目。模板音轨是占位文件，不会生成假音频。
 2. **FR-28 40s 已实测**：delivery 190.0s；比 5s（26.2s）慢主要来自 9:16 的 960 帧重渲。
 3. **G07 与交付边界**：G07 做 master + 核心 QC；交付包是显式 post-run 作业，必须等 G07 通过（ADR-0007）。
-4. **预览/档位 UI 未接**：API/服务可用；编辑器内预览按钮、档位切换 UI 留 R3。
+4. **档位 UI 未接**：API/服务可用；时间轴/审片已用预览，编辑器内档位切换 UI 仍留后续。
 5. **单 API worker**：Job 恢复/孤儿清理假设单进程；多 worker 不支持。
 6. **whisper 缺失**：本机无 whisper CLI/model；G02 manual；R2.5 音频不伪装词级。
 7. **golden baseline**：绑定 H2/1080p24/字体/风格库；换库需确认后 `--update`。
@@ -565,12 +579,16 @@ curl -s http://127.0.0.1:7860/api/queue
 11. **测试污染真实 DB**：大量 `it-*`/`r2-*`/`golden-*` project/run；清理先确认引用。
 12. **F02 固定 9222**：端口被占会启动失败；排查 `lsof -i :9222`。
 13. **UI i18n**：新页面中文优先；不要破坏既有 zh/en 切换。
-14. **R3 v1 未含**：FR-35/36/37；不要把这三项写成已完成。
+14. **R3 v1 未含**：FR-36/37；不要把这两项写成已完成。FR-35 已做，但 SFX 拖入等 FR-36。
 15. **时间轴撤销**：UI 历史 50 步；30 步只验证了文档版本恢复；长链 UI 连点未自动化。
 16. **时间轴性能**：100 场景 ops 服务端 <0.2s；浏览器 60fps 未实测。
 17. **审片批注**：项目级 review.json（不按 Run 分桶）；Take 对比已做，但无音频波形对齐与帧差图。
-18. **R3 版本**：EXECUTOR_VERSION 2.7.2；D01/E03/E04 已加入 project-local 缓存；
+18. **R3 版本**：EXECUTOR_VERSION 2.8.0；D01/E03/E04 已加入 project-local 缓存；
     新项目二次 Run 的 B02/B03 必须读 Run 快照 timeline，不能读旧 card/task.json。
+19. **A03 扫描**：风格库扫描已改 `asyncio.to_thread`，但版本升级/首次索引仍可能耗时数分钟；
+    不要把同步扫描塞回事件循环。
+20. **音频 v2 边界**：拍点是数值/检测列表，没有波形拖拽；SFX 未做；G07/Delivery 的 LUFS 范围
+    现在读 `card/audio.mix.json` 的 targetLufs（−14/16/18 ±1），别再写死 −16。
 
 ---
 
@@ -583,7 +601,7 @@ curl -s http://127.0.0.1:7860/api/queue
 - [ ] R2.5 review/audio/delivery verifier 全绿。
 - [ ] `verify_r3.py`、`verify_r3_camera.py`、`e2e_r3.py` 全绿。
 - [ ] 打开 `/timeline?project=202&run=252`、`/player?project=174&run=223`、`/takes?project=188`、`/audio?project=211`。
-- [ ] 读 §5、§6、§9；确认下一步是 R3 下一批 FR-35→FR-36→FR-37，不重做已完成 FR。
+- [ ] 读 §5、§6、§9；确认下一步是 R3 下一批 FR-36→FR-37，不重做已完成 FR。
 - [ ] 申报完成必须附：测试输出、产物路径+sha/时长、UI 截图/curl。
 
 ---
