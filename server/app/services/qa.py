@@ -333,12 +333,17 @@ def analyze(session: Session, project: Project, run_id: int | None = None) -> di
 
 
 def _timeline_before(session: Session, project: Project) -> dict:
-    doc = docs_svc.doc_payload(session, project.id or 0, project.root, "timeline")
-    return {"kind": "timeline", "version": doc["version"], "content": doc["content"]}
+    pid = project.id or 0
+    doc = docs_svc.doc_payload(session, pid, project.root, "timeline")
+    profile = docs_svc.get_doc(session, pid, "profile")
+    profile_content = profile.content_json if profile else docs_svc.default_doc(session, pid, project.root, "profile")
+    return {"kind": "timeline", "version": doc["version"], "content": doc["content"],
+            "profileVersion": profile.version if profile else 0, "profileContent": profile_content}
 
 
 def _apply(session: Session, project: Project, issue: dict, action: str,
-           payload: dict, run_id: int | None = None) -> tuple[dict, dict]:
+           payload: dict, run_id: int | None = None,
+           before_state: dict | None = None) -> tuple[dict, dict]:
     root = project.root
     pid = project.id or 0
     if action in ("extend_scene", "scale_text", "wrap_text"):
@@ -373,7 +378,26 @@ def _apply(session: Session, project: Project, issue: dict, action: str,
                 break
             new = tl_svc.set_text(content, script, sid, text[:cut] + "\n" + text[cut:], force=True)
         saved, _ = docs_svc.save_doc(session, pid, "timeline", new, doc["version"], "qa-fix")
-        return {"kind": "timeline", "version": saved.version}, {"sceneId": sid}
+        after_state = {"kind": "timeline", "version": saved.version}
+        if action == "extend_scene":
+            before = before_state or _timeline_before(session, project)
+            profile_content = dict(before.get("profileContent") or {})
+            profile_content.update({
+                "duration": float(new.get("duration") or 0),
+                "frames": int(new.get("frames") or 0),
+            })
+            try:
+                profile_saved, _ = docs_svc.save_doc(session, pid, "profile", profile_content,
+                                                     int(before.get("profileVersion") or 0), "qa-fix")
+            except Exception as e:
+                try:
+                    docs_svc.save_doc(session, pid, "timeline", before["content"], saved.version, "qa-fix-rollback")
+                except Exception:
+                    pass
+                raise ValueError(f"配置文件更新失败，已尝试回滚时间轴：{e}")
+            after_state.update({"profileVersion": profile_saved.version,
+                                "profileContent": profile_content})
+        return after_state, {"sceneId": sid}
     if action == "set_lufs":
         target = float(payload.get("target") or -16)
         before = audio_svc.load_mix(root)
@@ -389,15 +413,16 @@ def _apply(session: Session, project: Project, issue: dict, action: str,
                          if _latest_run(session, project.id or 0) else None)
         if not rid:
             raise ValueError("没有可重跑的 Run")
-        rows = session.exec(select(NodeRun).where(
-            NodeRun.run_id == rid, NodeRun.status == "failed")).all()  # type: ignore[arg-type]
-        for row in rows:
-            row.status = "idle"
-            session.add(row)
+        source = session.get(Run, rid)
+        if not source:
+            raise ValueError(f"Run {rid} 不存在")
+        new_run = Run(workflow_id=source.workflow_id, parent_run_id=source.id)
+        session.add(new_run)
         session.commit()
+        session.refresh(new_run)
         from ..engine import runengine as re
-        re.start_run(rid)
-        return {"kind": "run", "runId": rid, "requeued": len(rows)}, {"runId": rid}
+        re.start_run(new_run.id)
+        return {"kind": "run", "sourceRunId": rid, "newRunId": new_run.id}, {"sourceRunId": rid, "newRunId": new_run.id}
     raise ValueError(f"不支持的 QA 修复动作：{action}")
 
 
@@ -419,19 +444,36 @@ def apply_fix(session: Session, project: Project, issue_id: str, action: str,
         before_state = {"kind": "mix", "content": audio_svc.load_mix(project.root)}
     if action == "fill_license":
         before_state = {"kind": "license", "content": audio_svc.load_license(project.root)}
-    after_state, extra = _apply(session, project, issue, action, params, run_id)
+    after_state, extra = _apply(session, project, issue, action, params, run_id, before_state)
+    doc_verified = None
     verified = None
-    if action in ("extend_scene", "scale_text", "wrap_text", "fill_license", "missing_asset"):
+    requires_rerun = False
+    next_action = None
+    if action in ("extend_scene", "scale_text", "wrap_text"):
         after_issues = analyze(session, project, run_id)["issues"]
-        verified = not any(i["category"] == issue["category"] and
-                           i["location"]["sceneId"] == issue["location"]["sceneId"]
-                           for i in after_issues)
+        doc_verified = not any(i["category"] == issue["category"] and
+                               i["location"]["sceneId"] == issue["location"]["sceneId"]
+                               for i in after_issues)
+        requires_rerun = True
+        next_action = "run_new"
+    elif action == "set_lufs":
+        requires_rerun = True
+        next_action = "run_new"
+    elif action in ("fill_license", "missing_asset"):
+        after_issues = analyze(session, project, run_id)["issues"]
+        doc_verified = not any(i["category"] == issue["category"] and
+                               (not issue["location"].get("sceneId") or
+                                i["location"]["sceneId"] == issue["location"]["sceneId"])
+                               for i in after_issues)
+        verified = bool(doc_verified)
     entry = {"id": "fix_" + uuid.uuid4().hex[:12], "at": _now(),
              "issueId": issue_id, "category": issue["category"], "action": action,
              "projectId": project.id, "runId": run_id, "result": "applied",
-             "verified": verified, "before": before_state,
+             "verified": verified, "documentVerified": doc_verified,
+             "requiresRerun": requires_rerun, "nextAction": next_action,
+             "before": before_state,
              "after": after_state, "afterVersion": after_state.get("version"),
-             "extra": extra}
+             "afterProfileVersion": after_state.get("profileVersion"), "extra": extra}
     data = _read_fixes(project.root)
     data["items"].append(entry)
     _write_fixes(project.root, data)
@@ -451,6 +493,12 @@ def undo_fix(session: Session, project: Project, fix_id: str) -> dict:
             raise ValueError("时间轴在修复后又发生变化，不能自动撤销；请手动恢复")
         docs_svc.save_doc(session, project.id or 0, "timeline", before["content"],
                           current["version"], "qa-undo")
+        if before.get("profileContent") is not None:
+            profile = docs_svc.get_doc(session, project.id or 0, "profile")
+            if entry.get("afterProfileVersion") is not None and profile and profile.version != entry["afterProfileVersion"]:
+                raise ValueError("配置文件在修复后又发生变化，不能自动撤销；请手动恢复")
+            docs_svc.save_doc(session, project.id or 0, "profile", before["profileContent"],
+                              profile.version if profile else 0, "qa-undo")
     elif kind == "mix":
         audio_svc.save_mix(project.root, before.get("content") or {})
     elif kind == "license":
@@ -474,6 +522,7 @@ def report(project: Project) -> dict:
     active = [x for x in applied if not x.get("undone")]
     verified = [x for x in applied if x.get("verified") is True]
     unverified = [x for x in applied if x.get("verified") is None]
+    pending_rerun = [x for x in applied if x.get("requiresRerun") and not x.get("undone")]
     failed = [x for x in items if x.get("result") != "applied"]
     by_action: dict[str, int] = {}
     for x in items:
@@ -481,9 +530,10 @@ def report(project: Project) -> dict:
     return {"schema": FIX_SCHEMA, "projectId": project.id,
             "attempts": len(items), "applied": len(applied),
             "active": len(active), "verified": len(verified), "unverified": len(unverified),
+            "pendingRerun": len(pending_rerun),
             "failed": len(failed), "undone": sum(1 for x in items if x.get("undone")),
             "successRate": round(len(applied) / len(items), 4) if items else None,
             "verificationRate": round(len(verified) / len(applied), 4) if applied else None,
             "falsePositiveRate": None,
-            "note": "falsePositive 需下一次成功 Run 后复核；本报告只统计修复尝试与即时验证。",
+            "note": "falsePositive 需下一次成功 Run 后复核；timeline/LUFS 修复的 verified=null 表示文档级已处理但成片需新 Run 验证。",
             "byAction": by_action, "items": items}

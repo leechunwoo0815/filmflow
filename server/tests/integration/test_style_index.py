@@ -1,17 +1,14 @@
 """T02 集成测试：A03 索引器跑真实风格库（断言 341/343/10 集/193 封面 + FTS 中文子串）。"""
-import os
 import sys
 from pathlib import Path
-
-import pytest
 
 SERVER = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVER))
 
-pytestmark = pytest.mark.skipif(
-    not (Path.home() / "Documents" / "fy-style-library" / "代码动画_341种风格提示词").is_dir(),
-    reason="真实风格库不存在",
-)
+# P0-3：不做静默 skip；若环境缺风格库，require_style_library 会明确失败，除非传 --allow-missing-env。
+import pytest
+
+pytestmark = pytest.mark.requires_style_library
 
 
 def test_scan_real_library(isolated_db):

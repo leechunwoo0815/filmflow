@@ -22,19 +22,26 @@ def qa() -> dict:
     return req("GET", f"/projects/{PID}/qa")
 
 
-def restore(original: dict) -> dict:
-    cur = req("GET", f"/projects/{PID}/docs/timeline")
+def restore_doc(kind: str, original: dict) -> dict:
+    cur = req("GET", f"/projects/{PID}/docs/{kind}")
     if cur["content"] == original["content"]:
         return cur
-    return req("PUT", f"/projects/{PID}/docs/timeline", {
+    return req("PUT", f"/projects/{PID}/docs/{kind}", {
         "content": original["content"], "base_version": cur["version"],
         "author": "qa-verify-cleanup"})
+
+
+def restore(original: dict, original_profile: dict | None = None) -> None:
+    restore_doc("timeline", original)
+    if original_profile is not None:
+        restore_doc("profile", original_profile)
 
 
 def main() -> int:
     if c.get("/health", timeout=3).status_code != 200:
         raise SystemExit("API 未就绪")
     original = req("GET", f"/projects/{PID}/docs/timeline")
+    original_profile = req("GET", f"/projects/{PID}/docs/profile")
     scene_id = original["content"]["scenes"][0]["id"]
     try:
         long_text = "这一句话需要再多一点时间读。"
@@ -49,13 +56,19 @@ def main() -> int:
         fix = req("POST", f"/projects/{PID}/qa/fix", {
             "issueId": issue["id"], "action": "extend_scene",
             "payload": {"sceneId": scene_id, "delta": 0.5}})["fix"]
-        assert fix["verified"] is True, fix
+        assert fix["verified"] is None and fix["documentVerified"] is True, fix
+        assert fix["requiresRerun"] is True and fix["nextAction"] == "run_new", fix
         assert not any(i["category"] == "text_overflow" for i in qa()["issues"])
-        print("✓ 1. text_overflow → 扩场景 0.5s → 即时验证", flush=True)
+        prof = req("GET", f"/projects/{PID}/docs/profile")["content"]
+        tl = req("GET", f"/projects/{PID}/docs/timeline")["content"]
+        assert abs(prof["duration"] - float(tl["duration"])) < 1e-6, (prof, tl)
+        print("✓ 1. text_overflow → 扩场景 0.5s → 文档/ profile 同步，成片待新 Run 验证", flush=True)
 
         req("POST", f"/projects/{PID}/qa/undo", {"fixId": fix["id"]})
         assert any(i["category"] == "text_overflow" for i in qa()["issues"])
-        print("✓ 2. 修复可撤销，问题复现", flush=True)
+        prof2 = req("GET", f"/projects/{PID}/docs/profile")["content"]
+        assert abs(prof2["duration"] - float(original_profile["content"]["duration"])) < 1e-6
+        print("✓ 2. 修复可撤销，timeline/profile 同步恢复", flush=True)
 
         lic = next((i for i in qa()["issues"] if i["category"] == "license_missing"), None)
         assert lic, qa()["issues"]
@@ -88,7 +101,7 @@ def main() -> int:
         print("PASS: FR-39 QA 修复建议验收通过")
         return 0
     finally:
-        restore(original)
+        restore(original, original_profile)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 本地代码动画全生命周期 Web 工作台。**46 节点 / 7 阶段 / 341 条风格库 / 3 个渲染引擎（riso · code-video · ink）/ 中英双语。**
 
-## 当前状态：参考片全链已贯通 ✅ · R2.0/R2.5/R3.0 v1 + R3.5 FR-39 已完成 ✅ · 专家审查 Wave 0 已修 P0-1/P0-2/P1-02/03/04 · 剩余 P0-3/P0-5/P0-4a 通过后再开 FR-40/41
+## 当前状态：参考片全链已贯通 ✅ · R2.0/R2.5/R3.0 v1 + R3.5 FR-39 已完成 ✅ · 专家审查 P0 Gate 已达成 · P0-4b/P1 治理继续推进
 
 ```
 文案 → 索引 341 → 预演/推荐 → 风格门 → tokens → 任务卡+校验门 → 引擎编译
@@ -15,7 +15,7 @@
 实测（rumor-39s 导入全链，Run #1）：46/46 节点 succeeded · 49 产物 · 9 条审批记录（含驳回→重批历史）· master.mp4 = 69.9MB · 三引擎可生产 61 条。
 
 > ⚠️ 以上是**导入参考片**的实测。R2.0 参数化链路正在按 [docs/process/r2-plan.md](docs/process/r2-plan.md) 实施：
-> Phase 1 边表/Contract v2、Phase 2 文档模型与 Run 快照、Phase 3 5s 新项目参数化静帧 + `film_spec` 逐帧渲染（120 帧 / 5.000s / F05 通过）、Phase 4 场景级增量（改 S02 只渲 66/120 帧，S01 复用）、Phase 5 PreviewService（F02 运行中 CDP 附加 p50 1.31s/p95 1.44s，5s 片段 12.7s，缓存 5ms）、Phase 6 draft/review/final 档位（D02 双静帧、E05 720p/24、F02 only-final、切档不重跑）、Phase 7 持久化 Job 与 kill -9 恢复（F02 22.3s 恢复）、Phase 8 黄金项目/视觉回归（5s/15s/40s SSIM 1.0，干净 rumor 46/46）已完成；R2.0 DoD 通过。R2.5 已完成 FR-26 全场景静帧审阅（contact sheet/逐场门禁/review diff）、FR-27 音频工作台（waveform/对齐/许可/G05 Stems）、FR-28 交付 v1（5s 26.2s / 40s 190.0s，9 文件/QC/zip/9:16）与 FR-31 新手引导（模板音频占位/标题预演/只读示例/Studio 引导）。**R3.0 创作闭环 v1** 已交付 FR-32 时间轴（拖拽/ripple/分割/相机/转场/250ms 预览）、FR-33 审片播放器（帧锚定批注/导出导入/审片包）、FR-34 相机关键帧、FR-35 音频 v2（多 Take/处理/拼接/拍点/响度/Stems）、FR-38 Take 对比（评分/当前/同步/差异/采纳/分支）、FR-36 资产库（全局/项目 sha 去重、引用/替换、图片/字体/SFX、缺资产阻断）、FR-37 模板/系列（项目/场景模板、变量、模板锁/升级、≤5 小系列）、FR-39 QA 修复建议（分类/定位/扩场景/字号/换行/LUFS/许可/撤销/报告）；专家审查 Wave 0 后，先修剩余 P0 再做 FR-40/41。
+> Phase 1 边表/Contract v2、Phase 2 文档模型与 Run 快照、Phase 3 5s 新项目参数化静帧 + `film_spec` 逐帧渲染（120 帧 / 5.000s / F05 通过）、Phase 4 场景级增量（改 S02 只渲 66/120 帧，S01 复用）、Phase 5 PreviewService（F02 运行中 CDP 附加 p50 1.31s/p95 1.44s，5s 片段 12.7s，缓存 5ms）、Phase 6 draft/review/final 档位（D02 双静帧、E05 720p/24、F02 only-final、切档不重跑）、Phase 7 持久化 Job 与 kill -9 恢复（F02 22.3s 恢复）、Phase 8 黄金项目/视觉回归（5s/15s/40s SSIM 1.0，干净 rumor 46/46）已完成；R2.0 DoD 通过。R2.5 已完成 FR-26 全场景静帧审阅（contact sheet/逐场门禁/review diff）、FR-27 音频工作台（waveform/对齐/许可/G05 Stems）、FR-28 交付 v1（5s 26.2s / 40s 190.0s，9 文件/QC/zip/9:16）与 FR-31 新手引导（模板音频占位/标题预演/只读示例/Studio 引导）。**R3.0 创作闭环 v1** 已交付 FR-32 时间轴（拖拽/ripple/分割/相机/转场/250ms 预览）、FR-33 审片播放器（帧锚定批注/导出导入/审片包）、FR-34 相机关键帧、FR-35 音频 v2（多 Take/处理/拼接/拍点/响度/Stems）、FR-38 Take 对比（评分/当前/同步/差异/采纳/分支）、FR-36 资产库（全局/项目 sha 去重、引用/替换、图片/字体/SFX、缺资产阻断）、FR-37 模板/系列（项目/场景模板、变量、模板锁/升级、≤5 小系列）、FR-39 QA 修复建议（分类/定位/扩场景/字号/换行/LUFS/许可/撤销/报告）；专家审查 P0 Gate 已达成，P0-4b/P1 治理继续推进。
 
 ## 快速开始
 

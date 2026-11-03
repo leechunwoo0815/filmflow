@@ -1,7 +1,7 @@
 # R3.0 创作闭环 v1（FR-32/33/34/35/36/37/38）+ R3.5 FR-39
 
 > 代码：R3.0 v1 前序 `7a0ee2c` / tag `r3.0-audio`；FR-36 `r3.0-assets`；FR-37 `f887424` /
-> tag `r3.0-templates`；FR-39 `3bb81a0` / tag `r3.5-qa`；**当前 Wave 0 修复后 `EXECUTOR_VERSION=2.9.3`、preview `1.8.0`**。
+> tag `r3.0-templates`；FR-39 `3bb81a0` / tag `r3.5-qa`；**专家审查 P0 修复后 `EXECUTOR_VERSION=2.9.3`、preview `1.8.0`**。
 
 > 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。R3.0 v1 已于 2026-11-03 验收。
 > 本文覆盖 FR-32/33/34/35/36/37/38 与 R3.5 FR-39；FR-40/41 与 R4 未开始，不虚报。
@@ -153,13 +153,16 @@ uv run --project server python scripts/e2e_qa.py
 准入：上述完成，且 `divergent 0/8`、连续两次 pytest 生产 DB 不变、LAN/Origin/Host 探测失败、
 QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
 
-### Wave 0 已完成（2026-11-03）
+### P0 Gate 已完成（2026-11-03）
 
 - **P0-1**：Next dev 改 `127.0.0.1`；后端 Host/Origin 中间件；实测 LAN 000、错误 Host 400、跨源写 403。
 - **P0-2**：转场映射抽到 `server/app/engine/scene/transitions.py`，preview/final/schema/timeline_ops 共用；
   `divergent 0/8`，新增 17 项测试。
 - **P1-02/03/04**：A01/A03/F01/G01 外部指纹进键；C01 `enginePackSha`；G02/G04 项目输入入键；
   新增缓存失效测试；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`。
-- **P1-14**：`verify_r2_profiles.py` 排序修复，SSIM 选点加入转场窗口；待 P0-3 后实跑。
-- **测试**：全量收集 163（unit 144 + integration 12 + BDD 7）；unit+BDD 151 绿；integration 12 待 P0-3 后重跑。
-- **下一步**：P0-3 → P0-5 → P0-4a。
+- **P0-3**：integration 使用独立临时 uvicorn/HOME/workspace；删除硬编码 skipif，缺风格库默认失败；
+  连续 pytest 生产 DB 不变。
+- **P0-5**：`extend_scene` 同步 timeline + profile（失败补偿回滚）；QA `verified=null/documentVerified=true/requiresRerun=true`；`retry_run` fork 新 Run；撤销同步恢复 profile；报告增加 `pendingRerun`。
+- **P0-4a**：新增 `test_render_smoke.py`，真实 Chrome + ffmpeg + SSIM，断言 1s draft 输出 960×540/12fps/12 帧且帧一致性 ≥0.95。
+- **测试**：完整 `pytest server/tests -q` **164 passed**（unit 144 + integration 13 + BDD 7），连跑生产 DB 不变。
+- **下一步**：P0-4b（40s 增量脚本/原分辨率 golden/证据归档）；P1 安全/数据/缓存治理。

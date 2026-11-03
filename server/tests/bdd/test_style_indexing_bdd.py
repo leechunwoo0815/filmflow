@@ -8,10 +8,7 @@ SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 FEATURES = SERVER.parent / "bdd" / "features"
 
-pytestmark = pytest.mark.skipif(
-    not (Path.home() / "Documents" / "fy-style-library" / "代码动画_341种风格提示词").is_dir(),
-    reason="真实风格库不存在",
-)
+pytestmark = pytest.mark.requires_style_library
 
 from pytest_bdd import given, parsers, scenarios, then, when  # noqa: E402
 

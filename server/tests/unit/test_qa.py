@@ -58,15 +58,21 @@ def test_analyze_fix_verify_undo(tmp_path: Path):
         assert overflow["location"]["sceneId"] == "S01"
         fix = qa.apply_fix(session, proj, overflow["id"], "extend_scene",
                            {"sceneId": "S01", "delta": 0.5})
-        assert fix["result"] == "applied" and fix["verified"] is True
+        assert fix["result"] == "applied" and fix["verified"] is None
+        assert fix["documentVerified"] is True and fix["requiresRerun"] is True
         after = qa.analyze(session, proj)
         assert all(i["category"] != "text_overflow" for i in after["issues"])
+        prof = docs.doc_payload(session, proj.id, proj.root, "profile")["content"]
+        assert prof["duration"] == 2.5 and prof["frames"] == 60
         report = qa.report(proj)
-        assert report["applied"] == 1 and report["verified"] == 1
+        assert report["applied"] == 1 and report["verified"] == 0
+        assert report["pendingRerun"] == 1
         entry = qa.undo_fix(session, proj, fix["id"])
         assert entry["undone"] is True
         restored = qa.analyze(session, proj)
         assert any(i["category"] == "text_overflow" for i in restored["issues"])
+        prof2 = docs.doc_payload(session, proj.id, proj.root, "profile")["content"]
+        assert prof2["duration"] == 2.0 and prof2["frames"] == 48
         assert qa.report(proj)["items"][0]["undone"] is True
     finally:
         _cleanup(session, proj)
