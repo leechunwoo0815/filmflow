@@ -28,6 +28,8 @@ def test_sqlite_pragmas_are_configured():
     with engine.connect() as conn:
         assert str(conn.exec_driver_sql("PRAGMA journal_mode").scalar()).lower() == "wal"
         assert int(conn.exec_driver_sql("PRAGMA synchronous").scalar()) == 1
+        # P1-06 收尾：级联删除就位后外键强制开启
+        assert int(conn.exec_driver_sql("PRAGMA foreign_keys").scalar()) == 1
 
 
 def test_a05_auto_approve_requires_import_or_style_decision():

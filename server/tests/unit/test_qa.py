@@ -1,6 +1,7 @@
 """FR-39：QA 分类、安全修复、即时验证、撤销与报告。"""
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -39,14 +40,14 @@ def _project(tmp_path: Path):
 
 
 def _cleanup(session: Session, proj: Project) -> None:
-    docs_rows = session.exec(select(ProjectDoc).where(ProjectDoc.project_id == proj.id)).all()
-    for doc in docs_rows:
-        for rev in session.exec(select(DocRevision).where(DocRevision.doc_id == doc.id)).all():
-            session.delete(rev)
-        session.delete(doc)
-    session.delete(proj)
-    session.commit()
+    # P1-06：统一走级联删除服务（foreign_keys=ON 后手工逐删顺序易漏）
+    from app.services.project_cleanup import delete_project
+    root, pid = proj.root, proj.id
+    session.rollback()
     session.close()
+    with Session(engine) as s:
+        delete_project(s, pid, remove_dir=False)
+    shutil.rmtree(root, ignore_errors=True)
 
 
 def test_analyze_fix_verify_undo(tmp_path: Path):

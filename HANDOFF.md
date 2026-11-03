@@ -2,7 +2,7 @@
 
 > 更新时间：2026-11-03 20:00（本地，darwin）· **R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；专家审查 Conditional Go 的 P0 Gate 已全部关闭；P1 治理已推进 14 项，剩余见 §0.6/§6.5**
 > 复核基线：本轮 P1 治理最后一个提交 `9bc0f95`（master，已推送 `git@github.com:leechunwoo0815/filmflow`）；FR-39 代码 `3bb81a0`（tag `r3.5-qa`）、FR-37 `f887424`、FR-36 `900076b`、`7a0ee2c`、R2.5 基线 `b7591bd`。本轮 9 个提交的清单见 §0.6 表尾。
-> 测试 **201 passed（unit 181 + integration 13 + BDD 7）**，`pytest server/tests -q` 约 55s；integration 用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.10.0`、preview `1.8.0`。
+> 测试 **213 passed（unit 183 + integration 13 + BDD 7；`foreign_keys=ON`）**，`pytest server/tests -q` 约 55s；integration 用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.10.0`、preview `1.8.0`。
 > 数据现状：**DB 35 个项目 / `filmflow-projects` 29 个目录 2.3GB / `~/.filmflow` 1.1GB**（审计与验证残留，删除需老板点头；口径见 §0.5/§7.4）。
 > **先读本文 §0（§0.5 审查结论、§0.6 状态表、§0.7 破坏性语义与运维坑）、§5、§6.5；再读 `AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
 > 上下文压缩后继续开发时：按 §6.5 的顺序做 P1 剩余项，不要提前做 R4，不要回滚已完成部分；申报完成必须按 §0.7 的复现命令附证据。
@@ -30,7 +30,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 > 含收敛判据、先证伪再建设的顺序、每轮循环协议、反作弊条款与收尾产物要求。
 
 ```bash
-cd server && uv run pytest tests -q                       # 201 passed
+cd server && uv run pytest tests -q                       # 213 passed
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -132,10 +132,10 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 | P1-01 CSRF/Host/Origin | ✅（并入 P0-1） | 同上 | 同上；未加 token（本机工作台，老板可另行决定） |
 | P1-02/03/04 缓存键 | ✅ | [server/app/engine/runengine.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/runengine.py) `_library_fingerprint/_external_input_hashes/_project_input_hashes/_engine_pack_sha` | `server/tests/unit/test_cache_inputs.py` 6 项；`EXECUTOR_VERSION=2.9.3` 使旧缓存自动失效 |
 | P1-05 A05 自动批准 | ✅ | `runengine._auto_approve_a05` 需 `imported` 或 `style_decision` | `test_p1_foundations.py`（`session=None` 早退即证明守卫在前） |
-| P1-06 SQLite | 🟡 | [server/app/db.py:20-31](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/db.py#L20) WAL + `synchronous=NORMAL` | `test_p1_foundations.py` 断言 `journal_mode=wal`、`synchronous=1`。**`foreign_keys=ON` 故意未开**：现有删除路径/无级联会立刻炸测试，需先做删除顺序批次 |
+| P1-06 SQLite | ✅ 收尾 | [server/app/db.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/db.py) WAL + NORMAL + **`foreign_keys=ON`**；[server/app/services/project_cleanup.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/project_cleanup.py) 级联删除（project/run/workflow/doc 四类关联面）+ `DELETE /projects/{id}?confirm=true`（演示保护名单） | FK 开启钓出 qa.undo 删 profile 行残留 docrevision 的真 bug（已修）；`_acceptance.destroy` 与测试清理全改走级联服务；213 tests 全绿 |
 | P1-07 迁移框架 | ✅ | [server/app/db.py:73](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/db.py#L73) `MIGRATIONS` + `:80` `apply_migrations` | `server/tests/unit/test_migrations.py` 3 项；生产库连跑两次 `init_db()` 无变化（登记仍 [1,2,3]） |
 | P1-08 时间轴 409 保稿 | ✅ | [web/src/app/timeline/page.tsx](file:///Users/litianyu/cc-projects/ai-v/filmflow/web/src/app/timeline/page.tsx)（`conflict` 态、`data-testid="timeline-conflict"`） | 409 时保留草稿 + 「只看服务端 / 保留本地并重试（对新版本重放）」，冲突期间暂停自动保存；`pnpm --dir web exec tsc --noEmit` 干净 |
-| P1-09 多步写事务 | ⛔ 未做 | `templates.py` materialize / `takes.py` branch / `assets.py` replace | 专家为"部分确认"（未构造失败注入）。建议批次：对每个多 commit + 文件写序列做故障注入 + 回滚断言 |
+| P1-09 多步写事务 | ✅ 四路故障注入 | [server/tests/unit/test_multi_step_writes.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_multi_step_writes.py)：branch Run 失败→文档倒序回滚（base 用当前版本）；replace 中途失败→已改项目回滚；模板 materialize 失败→delete_project 清半成品；qa extend profile 失败→timeline 补偿（锁定） |
 | P1-10 ErrorBoundary | ⛔ 未做 | `web/src/app/**` 无 `error.tsx` | 需加全局/页面级 boundary + 失败可见 |
 | P1-11 时间轴性能 | ⛔ 未做 | `web/src/app/timeline/page.tsx` 全量 `.map()` | 「100 场景 60fps」是**未实测的声明**；先测再决定虚拟化 |
 | P1-12 非整数 fps | ✅ | [server/app/engine/fpscalc.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/fpscalc.py) 唯一口径（norm_fps/frames_for/frame_at/fps_rational）；preview/render_profiles/compiler/pipeline/routes/templates/manifest 全接线 | `test_fps_math.py` 12 项；`EXECUTOR_VERSION=2.10.0`；golden 5s 原帧 run 312 SSIM 1.0；档位验收重跑数字与 run 309 一致（0.998663/0.952097）；final 门放行 NTSC 23.976（<23.9 才拦）|
@@ -929,7 +929,7 @@ curl -s http://127.0.0.1:7860/api/queue
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`（或按 §0.7 配方重启）；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **201 passed（unit 181 + integration 13 + BDD 7）**
+- [ ] `cd server && uv run pytest tests -q` → **213 passed（unit 183 + integration 13 + BDD 7）**
 - [ ] 连跑两次上面这条，`GET /api/projects` 计数不变（当前 35）——这是 P0-3 的核心验收。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）。

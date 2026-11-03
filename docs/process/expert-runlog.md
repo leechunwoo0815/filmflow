@@ -143,3 +143,30 @@
   修复后又手工改过 targetLufs/许可时拒绝撤销并提示；旧记录无 afterHash 时走 legacy 放行（兼容）。
 - 单测：手工改响度后撤销被拒 → 回到链顶后撤销放行并复原；许可同构（含"撤销回到不存在"）。
 - `pytest tests/unit tests/bdd` → **196 passed**（此前 188 + 门禁 7 新增 -2 重写 + QA 2）。
+
+## 建设批 4 · P1-06 级联删除 + P1-09 故障注入 + foreign_keys=ON（2026-11-04 02:00–02:50）
+
+### P1-06 · ✅ 完成
+- 新增 `server/app/services/project_cleanup.py`：`plan_delete`（dry-run 报告）/`delete_project`
+  （级联清库 + 白名单校验 + 目录删除 + 演示保护名单）；关联面覆盖四类：
+  project_id / run_id / workflow_id / **doc_id（docrevision，初版漏了，FK 立刻钓出）**。
+- 新端点 `DELETE /projects/{id}?confirm=true`（不带 confirm 返回计划不执行；演示项目需 confirm_demo）。
+- `db.py` 开启 `PRAGMA foreign_keys=ON`（P1-06 收尾前置全部就位）；pragma 断言进 test_p1_foundations。
+- FK 开启立即钓出 1 个**生产级真 bug**：`qa.undo_fix` 删"修复前不存在"的 profile 文档行时
+  残留 docrevision 子行 → 已修（先删子行再删行）。
+- `scripts/_acceptance.py::destroy` 改走 delete_project（手工顺序在 FK 下必炸）；本轮泄漏的
+  临时项目 249 已用它清除；测试三处旧式清理（test_qa/_assets×2）全部改走级联服务。
+
+### P1-09 · ✅ 完成（4 路故障注入全绿，server/tests/unit/test_multi_step_writes.py）
+1. take branch：Run 建成前失败 → script/timeline 倒序补偿回滚（base_version 用当前行版本，
+   用 before 版本会 E_DOC_CONFLICT 吞掉补偿——注入测试钓出的第二个坑）；
+2. assets replace：多项目循环中途失败 → 已改项目倒序回滚（asset-replace-rollback）；
+3. qa extend_scene：profile 保存失败 → timeline 补偿（P0-5 已有，注入锁定为回归）；
+4. saved 模板 materialize：项目行出现后任何失败（资产/文档/锁）→ delete_project 清半成品
+   （拆出 `_finish_saved_template_materialize` 包补偿）。
+
+### 验证
+- `pytest tests` 连跑两遍：**213 passed / 213 passed**（unit 175 + P1-09 4 + integration 13 + BDD 7；
+  FK ON）；`GET /api/projects` 两遍后恒 **35**。
+- `verify_p1_governance.py` FK 下 8 步全 ✓；`sqlite3` CLI 显示 foreign_keys=0 属连接级差异
+  （API 进程连接已 ON）。

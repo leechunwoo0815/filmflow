@@ -545,8 +545,13 @@ def undo_fix(session: Session, project: Project, fix_id: str) -> dict:
         if before.get("profileContent") is not None:
             profile = docs_svc.get_doc(session, pid, "profile")
             if not before.get("profileExisted"):
-                # 修复前没有 profile 文档行：撤销要回到"没有"，否则派生默认值会被固化为残缺文档
+                # 修复前没有 profile 文档行：撤销要回到"没有"，否则派生默认值会被固化为残缺文档。
+                # P1-06：先删 docrevision 子行再删文档行，否则 foreign_keys=ON 下 FK 失败。
                 if profile:
+                    from ..models import DocRevision
+                    for rev in session.exec(select(DocRevision).where(
+                            DocRevision.doc_id == profile.id)).all():  # type: ignore[arg-type,union-attr]
+                        session.delete(rev)
                     session.delete(profile)
                     session.commit()
             else:

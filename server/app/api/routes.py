@@ -294,6 +294,20 @@ async def projects_create(payload: ProjectCreateIn, session: Session = Depends(g
     return {"project": table_dict(p), "workflow_id": wf.id, "run_id": run.id}
 
 
+@router.delete("/projects/{project_id}")
+async def projects_delete(project_id: int, confirm: bool = False, remove_dir: bool = True,
+                          confirm_demo: bool = False,
+                          session: Session = Depends(get_session)):
+    """P1-06：删除项目（级联清库 + 目录）。必须显式 confirm=true；演示项目受保护名单拦截。"""
+    if not confirm:
+        from ..services import project_cleanup as cleanup_svc
+        return {"warning": "这是级联删除，重发请求并带 confirm=true 才会执行",
+                **cleanup_svc.plan_delete(session, project_id)}
+    from ..services.project_cleanup import delete_project
+    return delete_project(session, project_id, remove_dir=remove_dir,
+                          confirm_demo=confirm_demo)
+
+
 @router.post("/projects/import")
 async def projects_import(payload: dict, session: Session = Depends(get_session)):
     """导入参考项目：读 task.json → workflow + run + 初始状态（T06）。"""
@@ -644,6 +658,25 @@ async def _materialize_saved_template(session: Session, tpl: Template, variables
     proj = session.get(Project, pid)
     if not proj:
         raise not_found("项目")
+    # P1-09：项目行出现后的任何失败（资产/文档/锁）都必须清掉半成品，不留孤儿项目
+    try:
+        return _finish_saved_template_materialize(
+            session, tpl, content, content_sub, profile, pid, proj, result,
+            missing_copy, missing_profile, missing_content, name)
+    except Exception:
+        from ..services.project_cleanup import delete_project
+        try:
+            delete_project(session, pid, remove_dir=True)
+        except Exception:
+            pass
+        raise
+
+
+async def _finish_saved_template_materialize(session, tpl, content, content_sub, profile,
+                                             pid, proj, result,
+                                             missing_copy, missing_profile, missing_content,
+                                             name) -> dict:
+    proj = session.get(Project, pid) if proj is None else proj
     assets_svc.ensure_asset_shas(session, content.get("sourceProjectId"), proj.root,
                                  content.get("assetShas") or [])
     current_profile = docs_svc.doc_payload(session, pid, proj.root, "profile")
@@ -1658,19 +1691,34 @@ async def assets_replace(asset_id: int, payload: AssetReplaceIn,
     target_ids = sorted({u["projectId"] for u in usages if u.get("projectId")}) if old.scope == "global" else \
         ([old.project_id] if old.project_id else [])
     changed_projects = []
-    for pid in target_ids:
-        doc = session.exec(select(ProjectDoc).where(
-            ProjectDoc.project_id == pid, ProjectDoc.kind == "timeline")).first()  # type: ignore[arg-type]
-        if not doc:
-            continue
-        content = json.loads(json.dumps(doc.content_json or {}))
-        scenes = assets_svc.replace_doc_refs(content, old.sha256, new.sha256)
-        if not scenes:
-            continue
-        saved, diff = docs_svc.save_doc(session, pid, "timeline", content, doc.version,
-                                        "asset-replace")
-        changed_projects.append({"projectId": pid, "version": saved.version,
-                                 "scenes": scenes, "diff": diff[:50]})
+    before_docs: list[tuple[int, dict, int]] = []  # (pid, 保存前内容, 保存前版本)
+    try:
+        for pid in target_ids:
+            doc = session.exec(select(ProjectDoc).where(
+                ProjectDoc.project_id == pid, ProjectDoc.kind == "timeline")).first()  # type: ignore[arg-type]
+            if not doc:
+                continue
+            content = json.loads(json.dumps(doc.content_json or {}))
+            scenes = assets_svc.replace_doc_refs(content, old.sha256, new.sha256)
+            if not scenes:
+                continue
+            before_docs.append((pid, json.loads(json.dumps(doc.content_json or {})),
+                                doc.version))
+            saved, diff = docs_svc.save_doc(session, pid, "timeline", content, doc.version,
+                                            "asset-replace")
+            changed_projects.append({"projectId": pid, "version": saved.version,
+                                     "scenes": scenes, "diff": diff[:50]})
+    except Exception:
+        # P1-09：多项目替换中途失败 → 倒序把已改项目回滚（base 用当前行版本）
+        for pid, content_before, _version_before in reversed(before_docs):
+            try:
+                row = session.exec(select(ProjectDoc).where(
+                    ProjectDoc.project_id == pid, ProjectDoc.kind == "timeline")).first()
+                docs_svc.save_doc(session, pid, "timeline", content_before,
+                                  row.version if row else 0, "asset-replace-rollback")
+            except Exception:
+                pass
+        raise
     untouched = {}
     for u in usages:
         if u.get("source") in ("template", "run", "doc"):
@@ -2355,24 +2403,46 @@ async def project_take_branch(project_id: int, run_id: int, payload: dict | None
     script, timeline, profile = _take_source_docs(session, proj, source)
     if not timeline.get("scenes"):
         raise ApiError(ErrorCode.E_VALIDATION, "该 Take 没有可复制的 timeline 快照", status=409)
-    if script.get("text"):
-        current = docs_svc.get_doc(session, project_id, "script")
-        docs_svc.save_doc(session, project_id, "script", script,
-                          current.version if current else 0,
-                          payload.get("author", "take-branch") if payload else "take-branch")
-    current_tl = docs_svc.get_doc(session, project_id, "timeline")
-    tl_svc.normalize(timeline, script)
-    docs_svc.save_doc(session, project_id, "timeline", timeline,
-                      current_tl.version if current_tl else 0, "take-branch")
-    if profile:
-        current_pf = docs_svc.get_doc(session, project_id, "profile")
-        docs_svc.save_doc(session, project_id, "profile",
-                          {"schema": docs_svc.SCHEMAS["profile"], **profile},
-                          current_pf.version if current_pf else 0, "take-branch")
-    new_run = Run(workflow_id=source.workflow_id, parent_run_id=source.id)
-    session.add(new_run)
-    session.commit()
-    session.refresh(new_run)
+    author = payload.get("author", "take-branch") if payload else "take-branch"
+    saved_docs: list[tuple[str, dict, int]] = []  # (kind, 保存前内容, 保存前版本)
+    try:
+        if script.get("text"):
+            current = docs_svc.get_doc(session, project_id, "script")
+            if current is not None:
+                saved_docs.append(("script", deepcopy(current.content_json or {}),
+                                   current.version))
+            docs_svc.save_doc(session, project_id, "script", script,
+                              current.version if current else 0, author)
+        current_tl = docs_svc.get_doc(session, project_id, "timeline")
+        tl_svc.normalize(timeline, script)
+        if current_tl is not None:
+            saved_docs.append(("timeline", deepcopy(current_tl.content_json or {}),
+                               current_tl.version))
+        docs_svc.save_doc(session, project_id, "timeline", timeline,
+                          current_tl.version if current_tl else 0, author)
+        if profile:
+            current_pf = docs_svc.get_doc(session, project_id, "profile")
+            if current_pf is not None:
+                saved_docs.append(("profile", deepcopy(current_pf.content_json or {}),
+                                   current_pf.version))
+            docs_svc.save_doc(session, project_id, "profile",
+                              {"schema": docs_svc.SCHEMAS["profile"], **profile},
+                              current_pf.version if current_pf else 0, author)
+        new_run = Run(workflow_id=source.workflow_id, parent_run_id=source.id)
+        session.add(new_run)
+        session.commit()
+        session.refresh(new_run)
+    except Exception:
+        # P1-09：Run 没建成就回滚已保存的文档（倒序补偿），不留半分支。
+        # base_version 用当前行版本（补偿时行号已被前推，用 before 版本会 E_DOC_CONFLICT）。
+        for kind, content_before, _version_before in reversed(saved_docs):
+            try:
+                row = docs_svc.get_doc(session, project_id, kind)
+                docs_svc.save_doc(session, project_id, kind, content_before,
+                                  row.version if row else 0, "take-branch-rollback")
+            except Exception:
+                pass
+        raise
     audit(session, "take.branch", f"{project_id}:run:{run_id}",
           after={"newRunId": new_run.id, "parentRunId": source.id})
     return {"runId": new_run.id, "parentRunId": source.id}

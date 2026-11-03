@@ -30,29 +30,14 @@ def create(client, name: str, copy_text: str) -> dict:
 
 
 def destroy(client, pid: int, root: Path) -> None:
-    for asset in (client.get("/assets", params={"scope": "project", "projectId": pid})
-                  .json().get("items") or []):
-        client.delete(f"/assets/{asset['id']}", params={"force": "true"})
-    from sqlalchemy import delete as sa_delete
-    from sqlmodel import Session, SQLModel, select
+    """P1-06 后统一走级联删除服务（foreign_keys=ON 下手工顺序会踩 FK）。"""
+    from sqlmodel import Session
 
     from app.db import engine
-    from app.models import Project, Run, Workflow
+    from app.services.project_cleanup import delete_project
 
     with Session(engine) as s:
-        wf_ids = [w.id for w in s.exec(select(Workflow).where(
-            Workflow.project_id == pid)).all()]
-        run_ids = [r.id for r in s.exec(select(Run).where(Run.workflow_id.in_(wf_ids))).all()] if wf_ids else []
-        for table in SQLModel.metadata.sorted_tables:
-            cols = {c.name for c in table.columns}
-            if "project_id" in cols:
-                s.exec(sa_delete(table).where(table.c.project_id == pid))
-            elif "run_id" in cols and run_ids:
-                s.exec(sa_delete(table).where(table.c.run_id.in_(run_ids)))
-        p = s.get(Project, pid)
-        if p:
-            s.delete(p)
-        s.commit()
+        delete_project(s, pid, remove_dir=False)
     shutil.rmtree(root, ignore_errors=True)
 
 

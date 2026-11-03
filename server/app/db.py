@@ -19,14 +19,16 @@ engine = create_engine(
 
 @event.listens_for(engine, "connect")
 def _configure_sqlite(dbapi_connection, _connection_record) -> None:
-    """SQLite 连接级配置：WAL + 常规同步。
+    """SQLite 连接级配置：WAL + 常规同步 + 外键强制。
 
-    外键强制需先补齐级联/删除顺序，暂不在本轮开启，避免把既有清理路径变成运行期故障。
+    P1-06 收尾：级联删除服务（services/project_cleanup.delete_project）已就位、
+    DELETE /projects/{id} 与测试清理路径全部改走它之后，外键才敢开。
     """
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
     finally:
         cursor.close()
 

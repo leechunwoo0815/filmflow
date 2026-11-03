@@ -43,15 +43,14 @@ def env(tmp_path: Path):
         session.commit()
         session.refresh(proj)
         yield session, proj, root
-        docs = session.exec(select(ProjectDoc).where(ProjectDoc.project_id == proj.id)).all()
+        # P1-06：级联删除服务清库行；资产文件单独清理
+        from app.services.project_cleanup import delete_project
         rows = session.exec(select(Asset).where(Asset.project_id == proj.id)).all()
-        for doc in docs:
-            session.delete(doc)
         for asset in rows:
             Path(asset.path).unlink(missing_ok=True)
-            session.delete(asset)
-        session.delete(proj)
-        session.commit()
+        pid = proj.id
+        session.rollback()
+        delete_project(session, pid, remove_dir=False)
 
 
 def test_import_50_images_dedupes_and_metadata(env):
@@ -219,17 +218,13 @@ def usage_env(tmp_path: Path):
         try:
             yield session, proj, root, run, docs, rows, tpls
         finally:
-            for t in tpls:
-                session.delete(t)
             for a in rows:
                 Path(a.path).unlink(missing_ok=True)
-                session.delete(a)
-            for d in docs:
-                session.delete(d)
-            session.delete(run)
-            session.delete(wf)
-            session.delete(proj)
-            session.commit()
+            # P1-06：级联删除服务（含 run/workflow/template/projectdoc）
+            from app.services.project_cleanup import delete_project
+            pid = proj.id
+            session.rollback()
+            delete_project(session, pid, remove_dir=False)
 
 
 def _add_doc(session, docs, proj, kind, content):
