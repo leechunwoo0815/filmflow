@@ -2,7 +2,7 @@
 
 > 更新时间：2026-11-03（FR-39 + 专家审查） · **R2.0/R2.5 已完成；R3.0 v1（FR-32–38）+ R3.5 FR-39 已交付；专家审查为 Conditional Go，先修 P0 再开 FR-40/41**
 > 复核基线：FR-39 代码 `3bb81a0`（tag `r3.5-qa`）；前序 FR-37 `f887424`（`r3.0-templates`）、FR-36 `900076b`（`r3.0-assets`）、`7a0ee2c`（`r3.0-audio`）；R2.5 基线 `b7591bd`。
-> 测试 **189 passed（unit 169 + integration 13 + BDD 7）**；integration 已改用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；P0-4b 验证新增 r2/golden 项目后 DB **32 个项目 / 26 个目录**（审计/验证残留，清理前先读 §0.5）。
+> 测试 **189 passed（unit 169 + integration 13 + BDD 7）**；integration 已改用独立临时 uvicorn/HOME/workspace，连跑两次生产 DB 不变；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；P1 治理批次（含档位验收重跑）后 DB **35 个项目 / 29 个目录**（审计/验证残留，清理前先读 §0.5）。
 > **先读本文 §0（尤其 §0.5 专家审查 P0）、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
 > 上下文压缩后继续开发时：先修 §0.5 的 P0 阻塞，再开 §6.5 的 FR-40/41；不要提前做 R4，不要回滚已完成部分。
 
