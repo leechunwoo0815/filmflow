@@ -1,11 +1,11 @@
-"""测试基座：导入前设置隔离的 FILMFLOW_HOME（测试共享一个临时库；A03 扫描幂等 upsert）。"""
+"""测试基座：导入前设置一次性隔离 FILMFLOW_HOME（每次 pytest 独立临时库；A03 扫描幂等 upsert）。"""
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
 
-_TEST_HOME = Path(tempfile.gettempdir()) / "filmflow-test-home"
-_TEST_HOME.mkdir(parents=True, exist_ok=True)
+_TEST_HOME = Path(tempfile.mkdtemp(prefix="filmflow-test-home-"))
 os.environ["FILMFLOW_HOME"] = str(_TEST_HOME)
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
@@ -34,10 +34,15 @@ def pytest_configure(config):
 
 @pytest.fixture(scope="session", autouse=True)
 def _init_test_db():
-    """所有测试共享同一临时库：先建表，避免 BDD 在集成测试之前跑时缺表。"""
+    """所有测试共享本次运行的临时库：先建表，避免 BDD 在集成测试之前跑时缺表。"""
     from app.db import init_db
     init_db()
-    yield
+    try:
+        yield
+    finally:
+        from app.db import engine
+        engine.dispose()
+        shutil.rmtree(_TEST_HOME, ignore_errors=True)
 
 
 @pytest.fixture()

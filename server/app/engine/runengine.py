@@ -477,13 +477,15 @@ def _auto_approve_a05(session: Session, run: Run, wf: Workflow, states: dict, pr
     哈希在 A04 产物落定后计算，保证门 content_hash 与上游一致（不产生假 stale）。
     """
     meta = (wf.graph_json or {}).get("meta", {})
+    decision = meta.get("style_decision") or {}
+    if not meta.get("imported") and not decision:
+        return
     existing = session.exec(select(Approval).where(
         Approval.run_id == run.id, Approval.gate_id == "A05", Approval.decision == "approved")).first()  # type: ignore[arg-type]
     if existing is not None:
         return
     params = _node_params(_graph(wf), "A05")
     ch = gate_content_hash("A05", params, _upstream_hashes(session, run.id, "A05", states, project_root))
-    decision = meta.get("style_decision") or {}
     session.add(Approval(run_id=run.id, gate_id="A05", decision="approved", policy="inherit",
                          content_hash=ch, author="local",
                          note=decision.get("reason") or "导入继承原风格"))

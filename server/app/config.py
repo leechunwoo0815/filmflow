@@ -1,16 +1,32 @@
 """FilmFlow 服务端配置。所有路径默认值集中在这里，运行时可被环境变量覆盖。"""
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _default_style_library() -> Path:
     return Path.home() / "Documents" / "fy-style-library" / "代码动画_341种风格提示词"
+
+
+def _parse_workspace_roots(value: str | list[str] | list[Path]) -> list[Path]:
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        if s.startswith("["):
+            parts = json.loads(s)
+        else:
+            parts = [part.strip() for part in re.split(r"[:,;\n]", s) if part.strip()]
+        return [Path(p) for p in parts]
+    return [Path(p) for p in value]
 
 
 class Settings(BaseSettings):
@@ -22,13 +38,20 @@ class Settings(BaseSettings):
 
     home: Path = Path.home() / ".filmflow"
     # 允许登记项目根的目录白名单（规格 §2.3 / §11）
-    workspace_roots: list[Path] = [Path.home() / "cc-projects" / "ai-v"]
+    workspace_roots_raw: str = Field(
+        default_factory=lambda: str(Path.home() / "cc-projects" / "ai-v"),
+        validation_alias=AliasChoices("FILMFLOW_WORKSPACE_ROOTS", "FILMFLOW_WORKSPACE_ROOTS_RAW"),
+    )
 
     style_library_root: Path = _default_style_library()
 
     whisper_model: str = "ggml-medium"       # ADR-0001：medium 档
     chrome_queue_limit: int = 1              # Chrome 全局串行（规格 §5.2）
     analysis_concurrency: int = 2            # 纯分析节点并发（规格 §9.3）
+
+    @property
+    def workspace_roots(self) -> list[Path]:
+        return _parse_workspace_roots(self.workspace_roots_raw)
 
     @property
     def db_path(self) -> Path:

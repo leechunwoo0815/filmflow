@@ -1,6 +1,7 @@
 """数据库会话与建表。"""
 from __future__ import annotations
 
+from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
 
 from .config import settings
@@ -11,6 +12,20 @@ engine = create_engine(
     connect_args={"check_same_thread": False, "timeout": 30},
     pool_size=20, max_overflow=40, pool_pre_ping=True, pool_recycle=1800,
 )
+
+
+@event.listens_for(engine, "connect")
+def _configure_sqlite(dbapi_connection, _connection_record) -> None:
+    """SQLite 连接级配置：WAL + 常规同步。
+
+    外键强制需先补齐级联/删除顺序，暂不在本轮开启，避免把既有清理路径变成运行期故障。
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+    finally:
+        cursor.close()
 
 
 def init_db() -> None:
