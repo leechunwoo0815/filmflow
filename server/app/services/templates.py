@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..models import Template
+from . import assets
 
 PROJECT_SCHEMA = "filmflow.project-template/1"
 SCENE_SCHEMA = "filmflow.scene-template/1"
@@ -99,17 +100,7 @@ def extract_variables(value) -> list[str]:
 
 
 def collect_asset_shas(timeline: dict) -> list[str]:
-    shas: set[str] = set()
-    for scene in timeline.get("scenes") or []:
-        for layer in scene.get("layers") or []:
-            if layer.get("assetSha"):
-                shas.add(str(layer["assetSha"]))
-        if scene.get("fontSha"):
-            shas.add(str(scene["fontSha"]))
-        for sfx in scene.get("audio_layers") or []:
-            if sfx.get("assetSha"):
-                shas.add(str(sfx["assetSha"]))
-    return sorted(shas)
+    return sorted({sha for sha, _field, _path in assets.walk_refs(timeline)})
 
 
 def project_template_content(*, profile: dict, timeline: dict, style_id: str = "",

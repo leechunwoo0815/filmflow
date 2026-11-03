@@ -5,6 +5,10 @@ import { api } from "@/lib/api";
 
 type Asset = any;
 
+const SOURCE_LABEL: Record<string, string> = {
+  doc: "其它文档", template: "模板", run: "历史 Run 快照",
+};
+
 function fmtBytes(n: number) {
   if (!n) return "0 B";
   if (n < 1024) return `${n} B`;
@@ -113,9 +117,10 @@ function AssetCard({ asset, all, onChanged, projectId }: {
           {asset.usages?.length ? asset.usages.map((u: any, i: number) => (
             <div key={i} className="text-dim">
               {u.projectName} · {u.sceneId} · {u.layerId || u.field} · {u.layerType}
+              {u.source !== "timeline" && <span className="ml-1">（{SOURCE_LABEL[u.source] || u.source}）</span>}
               {projectId === u.projectId && <a className="text-blue ml-1" href={`/timeline?project=${u.projectId}`}>打开</a>}
             </div>
-          )) : <div className="text-dim">未被时间轴引用</div>}
+          )) : <div className="text-dim">未被任何文档/模板/Run 快照引用</div>}
           <div className="flex gap-1 mt-1">
             <select value={replaceId} onChange={(e) => setReplaceId(e.target.value)}>
               <option value="">选择同类型替换资产</option>

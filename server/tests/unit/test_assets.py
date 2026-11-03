@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import sys
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from app.db import engine  # noqa: E402
 from app.engine.scene.compiler import compile_scene  # noqa: E402
 from app.engine.scene.schema import validate_program  # noqa: E402
 from app.errors import ApiError  # noqa: E402
-from app.models import Asset, Project, ProjectDoc  # noqa: E402
+from app.models import Asset, Project, ProjectDoc, Run, Template, Workflow  # noqa: E402
 from app.services import assets  # noqa: E402
 from app.services import timeline_ops as tl  # noqa: E402
 from app.services.project_docs import build_script_doc  # noqa: E402
@@ -182,3 +183,125 @@ def test_timeline_ops_add_image_sfx_and_font():
     new, _ = tl.apply(new, script, "remove_layer", {
         "sceneId": "S01", "layerId": new["scenes"][0]["layers"][0]["id"]})
     assert new["scenes"][0]["layers"] == []
+
+
+def _write_snapshot(root: Path, run_id: int, snapshot: dict) -> None:
+    snap_dir = root / "runs" / str(run_id) / "docs"
+    snap_dir.mkdir(parents=True)
+    (snap_dir / "snapshot.json").write_text(json.dumps(snapshot, ensure_ascii=False),
+                                            encoding="utf-8")
+
+
+@pytest.fixture()
+def usage_env(tmp_path: Path):
+    """引用面测试：项目 + workflow + run + 快照目录。"""
+    root = tmp_path / "project"
+    root.mkdir()
+    with Session(engine) as session:
+        proj = Project(name=f"usage-test-{tmp_path.name}", root=str(root))
+        session.add(proj)
+        session.commit()
+        session.refresh(proj)
+        wf = Workflow(project_id=proj.id, name="main", graph_json={"meta": {}})
+        session.add(wf)
+        session.commit()
+        session.refresh(wf)
+        run = Run(workflow_id=wf.id, status="succeeded")
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        docs, rows, tpls = [], [], []
+        try:
+            yield session, proj, root, run, docs, rows, tpls
+        finally:
+            for t in tpls:
+                session.delete(t)
+            for a in rows:
+                Path(a.path).unlink(missing_ok=True)
+                session.delete(a)
+            for d in docs:
+                session.delete(d)
+            session.delete(run)
+            session.delete(wf)
+            session.delete(proj)
+            session.commit()
+
+
+def _add_doc(session, docs, proj, kind, content):
+    doc = ProjectDoc(project_id=proj.id, kind=kind, content_json=content)
+    session.add(doc)
+    session.commit()
+    session.refresh(doc)
+    docs.append(doc)
+    return doc
+
+
+def test_walk_refs_covers_nested_lists_and_font_shas():
+    refs = assets.walk_refs({"scenes": [{"layers": [{"assetSha": "a" * 64}],
+                                         "fontSha": "f" * 64,
+                                         "audio_layers": [{"assetSha": "a" * 64}]}],
+                             "assetShas": ["a" * 64, "", 7]})
+    shas = sorted({s for s, _f, _p in refs})
+    assert shas == sorted(["a" * 64, "f" * 64])
+    assert {f for _s, f, _p in refs} == {"layer", "font", "list"}
+    assert any(p.endswith("scenes[0].layers[0].assetSha") for _s, _f, p in refs)
+
+
+def test_scan_usages_covers_docs_templates_and_run_snapshots(usage_env):
+    session, proj, root, run, docs, rows, tpls = usage_env
+    asset, _ = assets.import_asset(session, "project", root, "a.png", _png((9, 9, 9)))
+    rows.append(asset)
+    sha = asset.sha256
+    _add_doc(session, docs, proj, "timeline",
+             {"scenes": [{"id": "S01", "layers": [{"id": "img01", "assetSha": sha}]}]})
+    _add_doc(session, docs, proj, "audio",
+             {"sfx": [{"id": "hit", "assetSha": sha}]})
+    tpl = Template(kind="scene", name="引用模板", version=3,
+                   content_json={"scenes": [{"layers": [{"assetSha": sha}]}], "assetShas": [sha]})
+    session.add(tpl)
+    session.commit()
+    session.refresh(tpl)
+    tpls.append(tpl)
+    _write_snapshot(root, run.id, {"schema": "filmflow.run-snapshot/1",
+                                   "docs": {"timeline": {"content": {"scenes": [
+                                       {"id": "S01", "layers": [{"assetSha": sha}]}]}}}})
+
+    live = assets.scan_usages(session, sha=sha, project_ids=[proj.id])
+    assert {u["source"] for u in live[sha]} == {"timeline", "doc", "template"}
+    history = assets.scan_usages(session, sha=sha, project_ids=[proj.id], include_history=True)
+    assert {u["source"] for u in history[sha]} == {"timeline", "doc", "template", "run"}
+    run_usage = next(u for u in history[sha] if u["source"] == "run")
+    assert run_usage["runId"] == run.id and run_usage["sceneId"] == f"Run {run.id}"
+    doc_usage = next(u for u in live[sha] if u["source"] == "doc")
+    assert doc_usage["sceneId"] == "文档:audio"
+    tpl_usage = next(u for u in live[sha] if u["source"] == "template")
+    assert tpl_usage["templateId"] == tpl.id and tpl_usage["sceneId"] == "v3"
+    # 模板里 assetShas 索引与真实图层同一容器，不重复计数
+    assert len([u for u in live[sha] if u["source"] == "template"]) == 1
+    assert len([u for u in live[sha] if u["source"] == "doc"]) == 1
+
+
+def test_delete_blocked_by_template_only(usage_env):
+    session, proj, root, run, docs, rows, tpls = usage_env
+    asset, _ = assets.import_asset(session, "project", root, "solo.png", _png((8, 8, 8)))
+    rows.append(asset)
+    tpl = Template(kind="project", name="仅模板引用", content_json={"assetShas": [asset.sha256]})
+    session.add(tpl)
+    session.commit()
+    tpls.append(tpl)
+    with pytest.raises(ApiError) as e:
+        assets.delete_asset(session, asset.id)
+    assert e.value.detail["code"] == "E_ASSET_IN_USE"
+    assert e.value.detail["details"]["usages"][0]["source"] == "template"
+
+
+def test_delete_blocked_by_run_snapshot_only(usage_env):
+    session, proj, root, run, docs, rows, tpls = usage_env
+    asset, _ = assets.import_asset(session, "project", root, "ghost.png", _png((7, 7, 7)))
+    rows.append(asset)
+    _write_snapshot(root, run.id, {"docs": {"timeline": {"content": {"scenes": [
+        {"id": "S01", "fontSha": asset.sha256}]}}}})
+    assert assets.scan_usages(session, sha=asset.sha256, project_ids=[proj.id]) == {}
+    with pytest.raises(ApiError) as e:
+        assets.delete_asset(session, asset.id)
+    assert e.value.detail["details"]["usages"][0]["source"] == "run"

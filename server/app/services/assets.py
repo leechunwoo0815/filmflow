@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 
 from ..config import settings
 from ..errors import ApiError, ErrorCode
-from ..models import Asset, Project, ProjectDoc
+from ..models import Asset, Project, ProjectDoc, Run, Template, Workflow
 
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
 AUDIO_EXT = {".wav", ".mp3", ".m4a"}
@@ -266,36 +266,113 @@ def _project_ids_for_scan(session: Session, project_ids: list[int] | None) -> li
     return session.exec(select(Project)).all()
 
 
+REF_KEYS = {"assetSha": "layer", "fontSha": "font", "assetShas": "list"}
+
+
+def walk_refs(node, path: str = "") -> list[tuple[str, str, str]]:
+    """递归遍历任意 JSON，产出 (sha, field, 路径)；模板/快照/其它文档结构一变也不漏扫。"""
+    found: list[tuple[str, str, str]] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in REF_KEYS and isinstance(value, str) and value.strip():
+                found.append((value.strip(), REF_KEYS[key], f"{path}.{key}"))
+            elif key == "assetShas" and isinstance(value, list):
+                for i, item in enumerate(value):
+                    if isinstance(item, str) and item.strip():
+                        found.append((item.strip(), "list", f"{path}.assetShas[{i}]"))
+            else:
+                found.extend(walk_refs(value, f"{path}.{key}" if path else key))
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            found.extend(walk_refs(item, f"{path}[{i}]"))
+    return found
+
+
+def _timeline_usages(doc: ProjectDoc, proj: Project, sha: str | None) -> list[tuple[str, dict]]:
+    """时间轴保留结构化定位（场景 id / 图层 id），比通用遍历更好用。"""
+    hits: list[tuple[str, dict]] = []
+
+    def emit(s: str, scene_id, layer_id, field: str, layer_type: str) -> None:
+        if s and (sha is None or s == sha):
+            hits.append((s, {"projectId": proj.id, "projectName": proj.name, "sceneId": scene_id,
+                             "layerId": layer_id, "field": field, "layerType": layer_type,
+                             "source": "timeline"}))
+
+    for scene in (doc.content_json or {}).get("scenes") or []:
+        sid = scene.get("id")
+        for layer in scene.get("layers") or []:
+            emit(str(layer.get("assetSha") or ""), sid, layer.get("id"), "layer",
+                 str(layer.get("type") or "image"))
+        emit(str(scene.get("fontSha") or ""), sid, None, "font", "font")
+        for sfx in scene.get("audio_layers") or []:
+            emit(str(sfx.get("assetSha") or ""), sid, sfx.get("id"), "sfx", "audio")
+    return hits
+
+
+def _owner(entry: dict) -> tuple:
+    return (entry.get("source"), entry.get("projectId"), entry.get("templateId"), entry.get("runId"))
+
+
 def scan_usages(session: Session, sha: str | None = None,
-                project_ids: list[int] | None = None) -> dict[str, list[dict]]:
-    """扫描项目 timeline 文档里的图片图层 / 字体 / SFX，返回 sha → 使用处。"""
+                project_ids: list[int] | None = None,
+                include_history: bool = False) -> dict[str, list[dict]]:
+    """引用面 = 时间轴 + 其它项目文档 + 模板；include_history 时再含 Run 快照（删除/替换保护用）。"""
     out: dict[str, list[dict]] = {}
-    for proj in _project_ids_for_scan(session, project_ids):
-        doc = session.exec(select(ProjectDoc).where(
-            ProjectDoc.project_id == proj.id, ProjectDoc.kind == "timeline")).first()  # type: ignore[arg-type]
-        if not doc:
-            continue
-        for scene in (doc.content_json or {}).get("scenes") or []:
-            sid = scene.get("id")
-            for layer in scene.get("layers") or []:
-                s = str(layer.get("assetSha") or "")
-                if s and (sha is None or s == sha):
-                    out.setdefault(s, []).append({
-                        "projectId": proj.id, "projectName": proj.name, "sceneId": sid,
-                        "layerId": layer.get("id"), "field": "layer",
-                        "layerType": layer.get("type") or "image"})
-            fs = str(scene.get("fontSha") or "")
-            if fs and (sha is None or fs == sha):
-                out.setdefault(fs, []).append({
-                    "projectId": proj.id, "projectName": proj.name, "sceneId": sid,
-                    "layerId": None, "field": "font", "layerType": "font"})
-            for sfx in scene.get("audio_layers") or []:
-                s = str(sfx.get("assetSha") or "")
-                if s and (sha is None or s == sha):
-                    out.setdefault(s, []).append({
-                        "projectId": proj.id, "projectName": proj.name, "sceneId": sid,
-                        "layerId": sfx.get("id"), "field": "sfx", "layerType": "audio"})
-    return out
+
+    def add(s: str, entry: dict) -> None:
+        out.setdefault(s, []).append(entry)
+
+    projects = _project_ids_for_scan(session, project_ids)
+    for proj in projects:
+        for doc in session.exec(select(ProjectDoc).where(
+                ProjectDoc.project_id == proj.id)).all():  # type: ignore[arg-type]
+            if doc.kind == "timeline":
+                for s, entry in _timeline_usages(doc, proj, sha):
+                    add(s, entry)
+                continue
+            for s, field, ref_path in walk_refs(doc.content_json or {}):
+                if sha is not None and s != sha:
+                    continue
+                add(s, {"projectId": proj.id, "projectName": proj.name, "sceneId": f"文档:{doc.kind}",
+                        "layerId": ref_path, "field": field, "layerType": doc.kind, "source": "doc"})
+
+    for tpl in session.exec(select(Template)).all():  # type: ignore[arg-type]
+        for s, field, ref_path in walk_refs(tpl.content_json or {}):
+            if sha is not None and s != sha:
+                continue
+            add(s, {"projectId": None, "projectName": f"模板:{tpl.name}", "sceneId": f"v{tpl.version}",
+                    "layerId": ref_path, "field": field, "layerType": tpl.kind,
+                    "templateId": tpl.id, "source": "template"})
+
+    if include_history:
+        root_by_project = {p.id: p.root for p in projects}
+        name_by_project = {p.id: p.name for p in projects}
+        project_of_workflow = {w.id: w.project_id for w in session.exec(
+            select(Workflow)).all() if w.project_id in root_by_project}  # type: ignore[arg-type]
+        for run in session.exec(select(Run)).all():  # type: ignore[arg-type]
+            pid = project_of_workflow.get(run.workflow_id)
+            if pid is None:
+                continue
+            snap_path = Path(root_by_project[pid]) / "runs" / str(run.id) / "docs" / "snapshot.json"
+            if not snap_path.exists():
+                continue
+            try:
+                snap = json.loads(snap_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            for s, field, ref_path in walk_refs(snap.get("docs") or {}):
+                if sha is not None and s != sha:
+                    continue
+                add(s, {"projectId": pid, "projectName": name_by_project[pid],
+                        "sceneId": f"Run {run.id}", "layerId": ref_path, "field": field,
+                        "layerType": "snapshot", "runId": run.id, "source": "run"})
+
+    def dedupe(entries: list[dict]) -> list[dict]:
+        # assetShas 是模板/文档里的派生索引；同一容器已扫到真实图层时不重复计数
+        owners = {(_owner(e)) for e in entries if e["field"] != "list"}
+        return [e for e in entries if e["field"] != "list" or _owner(e) not in owners]
+
+    return {s: dedupe(entries) for s, entries in out.items()}
 
 
 def asset_dto(asset: Asset, usages: list[dict] | None = None) -> dict:
@@ -366,7 +443,8 @@ def update_asset(session: Session, asset_id: int, payload: dict) -> Asset:
 def delete_asset(session: Session, asset_id: int, force: bool = False) -> dict:
     asset = get_asset(session, asset_id)
     usages = scan_usages(session, sha=asset.sha256,
-                         project_ids=[asset.project_id] if asset.scope == "project" else None)
+                         project_ids=[asset.project_id] if asset.scope == "project" else None,
+                         include_history=True)
     sites = usages.get(asset.sha256, [])
     if sites and not force:
         raise ApiError(ErrorCode.E_ASSET_IN_USE,

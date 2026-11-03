@@ -1654,7 +1654,7 @@ async def assets_replace(asset_id: int, payload: dict,
     usages = assets_svc.scan_usages(
         session, sha=old.sha256,
         project_ids=[old.project_id] if old.scope == "project" else None).get(old.sha256, [])
-    target_ids = sorted({u["projectId"] for u in usages}) if old.scope == "global" else \
+    target_ids = sorted({u["projectId"] for u in usages if u.get("projectId")}) if old.scope == "global" else \
         ([old.project_id] if old.project_id else [])
     changed_projects = []
     for pid in target_ids:
@@ -1670,11 +1670,16 @@ async def assets_replace(asset_id: int, payload: dict,
                                         "asset-replace")
         changed_projects.append({"projectId": pid, "version": saved.version,
                                  "scenes": scenes, "diff": diff[:50]})
+    untouched = {}
+    for u in usages:
+        if u.get("source") in ("template", "run", "doc"):
+            untouched[u["source"]] = untouched.get(u["source"], 0) + 1
     audit(session, "asset.replace", str(asset_id),
-          after={"with": new.id, "projects": changed_projects})
+          after={"with": new.id, "projects": changed_projects, "untouched": untouched})
     return {"old": assets_svc.asset_dto(old, usages),
             "new": assets_svc.asset_dto(new, []),
             "projects": changed_projects,
+            "untouched": untouched,
             "affectedScenes": sorted({s for p in changed_projects for s in p["scenes"]})}
 
 

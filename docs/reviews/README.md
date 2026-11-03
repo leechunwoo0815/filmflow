@@ -14,4 +14,4 @@
 
 ## 当前结论
 
-**Conditional Go 的 P0 Gate 已达成**。P0-1、P0-2、P0-3、P0-5、P0-4a、P0-4b 已完成并有回归证据（完整 `pytest server/tests` **169 passed**，integration 已隔离；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；5s 原帧 golden SSIM=1.0）。15s/40s 原帧 baseline 按需生成；P1/P2/P3 继续按路线图治理。详见分析文档 §0、§4 与 `HANDOFF.md` §0.5/§0.6。
+**Conditional Go 的 P0 Gate 已达成**。P0-1、P0-2、P0-3、P0-5、P0-4a、P0-4b 已完成并有回归证据（完整 `pytest server/tests` **173 passed**，integration 已隔离；`EXECUTOR_VERSION=2.9.3`、preview `1.8.0`；5s 原帧 golden SSIM=1.0）。15s/40s 原帧 baseline 按需生成；P1/P2/P3 继续按路线图治理。详见分析文档 §0、§4 与 `HANDOFF.md` §0.5/§0.6。
