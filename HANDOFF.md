@@ -1,7 +1,7 @@
 # FilmFlow 交接文档（HANDOFF）
 
 > 更新时间：2026-11-03（FR-36 交接） · **R2.0/R2.5 已完成；R3.0 创作闭环 v1（FR-32/33/34/35/36/38）已交付；FR-37 下一批**
-> 复核基线：FR-36 代码见当前 HEAD（tag `r3.0-assets`）；前序 `7a0ee2c`（`r3.0-audio`）、`r3.0-takes`/`r3.0-creation`；R2.5 基线 `b7591bd`。
+> 复核基线：FR-36 代码 `900076b`（tag `r3.0-assets`）；前序 `7a0ee2c`（`r3.0-audio`）、`r3.0-takes`/`r3.0-creation`；R2.5 基线 `b7591bd`。
 > 测试 **129 passed**；`EXECUTOR_VERSION=2.9.1`；DB 13 个项目、`filmflow-projects` 12 个目录。
 > **先读本文 §0、§1、§5、§6；再读 `AGENTS.md`、`docs/process/r3_plan.md`、PRD-002、ADR-0005/0007/0008/0009。**
 > 上下文压缩后继续开发时：从 §6.5 的 R3 下一批（FR-37）开始，不要回滚 R2/R3 已完成部分。
@@ -79,7 +79,7 @@ uv run --project server python scripts/e2e_assets.py                # 资产库 
 
 | 项 | 值 |
 |---|---|
-| R3.0 当前代码 | FR-36 之后 HEAD（tag `r3.0-assets`；前序 `r3.0-audio` → `7a0ee2c`） |
+| R3.0 当前代码 | `900076b`（tag `r3.0-assets`；前序 `r3.0-audio` → `7a0ee2c`） |
 | R2.5 FR-26 tag | `r2_5-review` → `a37570d` |
 | R2.5 FR-27 tag | `r2_5-audio` → `cd7312f` |
 | R2.5 FR-28 tag | `r2_5-delivery` → `9c4ac00` |
@@ -87,7 +87,7 @@ uv run --project server python scripts/e2e_assets.py                # 资产库 
 | R3.0 v1 tag | `r3.0-creation` → `7ecf84a` |
 | R3.0 FR-38 tag | `r3.0-takes` → `1d2fcf6` |
 | R3.0 FR-35 tag | `r3.0-audio` → `7a0ee2c` |
-| R3.0 FR-36 tag | `r3.0-assets` → 当前 HEAD |
+| R3.0 FR-36 tag | `r3.0-assets` → `900076b` |
 | R2.0 起始 tag | `r2-edge-fix` → `4f9e381` |
 | R2.0 Scene DSL | `r2-scene-dsl` → `53e6462` |
 | R2.0 增量 | `r2-incremental` → `07b5237` |
