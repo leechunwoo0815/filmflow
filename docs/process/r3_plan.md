@@ -65,7 +65,7 @@
 19. **QA 撤销**：`card/qa_fixes.json` 保存 before/after/afterVersion/verified；timeline 撤销若
     版本已变化则拒绝自动覆盖；误报率待下一次成功 Run 复核，不伪造。
 
-## 验收结果（2026-11-03，EXECUTOR_VERSION 2.9.1）
+## 验收结果（2026-11-03，EXECUTOR_VERSION 2.9.2）
 
 - [x] S03 +2s：S04/S05 自动后移，duration 40→42、frames 1008；`verify_r3.py` project 201。
 - [x] 分割 S02 → S02/S02b（transition=cut，文本独立），合并可还原；`verify_r3.py`。

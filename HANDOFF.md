@@ -19,7 +19,7 @@ curl -s http://127.0.0.1:7860/api/health
 ```
 
 Web 入口：`/`（模板/项目）、`/wizard`、`/canvas?project=&run=`、`/editor`、`/timeline`、
-`/review`、`/player`、`/takes`、`/audio`、`/delivery`、`/help`。
+`/review`、`/player`、`/takes`、`/audio`、`/assets`、`/templates`、`/qa`、`/delivery`、`/help`。
 API 文档：`http://127.0.0.1:7860/api/docs`。
 
 ### 0.2 第一小时必做
