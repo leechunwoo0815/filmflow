@@ -5,7 +5,16 @@ export async function api<T = any>(path: string, init?: RequestInit): Promise<T>
   });
   if (!res.ok) {
     let detail: any = {};
-    try { detail = (await res.json())?.detail || {}; } catch {}
+    try {
+      detail = (await res.json())?.detail || {};
+      // 兜底：数组形态（FastAPI 原生 422）没有 message，用第一条错误拼出来
+      if (Array.isArray(detail)) {
+        const first = detail[0] || {};
+        detail = { code: "E_VALIDATION",
+          message: `${(first.loc || []).slice(1).join(".") || "请求体"}: ${first.msg || res.status}`,
+          details: { errors: detail } };
+      }
+    } catch {}
     const err: any = new Error(detail.message || `${res.status}`);
     err.status = res.status;
     err.code = detail.code;
