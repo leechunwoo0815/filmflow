@@ -96,7 +96,9 @@ def main() -> int:
     req("POST", f"/projects/{pid}/audio/license", {
         "source": "local-sine", "license": "CC0", "authorized": True, "expires": "2099-12-31"})
     onsets = req("GET", f"/projects/{pid}/audio/onset?takeId={take_b['id']}").json()
-    assert onsets["count"] >= 0
+    # P2-27：count>=0 是恒真断言。换成结构真断言：count 必须等于 onsets 列表长度
+    # （count 与列表各说各话 = 端点坏）；正弦合成的"语音"上不预设 >0，避免环境假失败。
+    assert onsets["count"] == len(onsets.get("onsets") or []), onsets
     req("POST", f"/projects/{pid}/audio/markers", {
         "markers": [{"time": scenes[0]["start"], "label": "S01"}], "onsets": onsets["onsets"]})
     print("project", pid, "run", rid, "takes", take_a["id"], take_b["id"],

@@ -52,7 +52,11 @@ def test_f03_catches_missing_frame(tmp_path, monkeypatch):
     monkeypatch.setattr("app.engine.executors.pipeline._artifact_json", _artifact_json_stub)
     with pytest.raises(RuntimeError) as e:
         asyncio.run(f03(_ctx(root)))
-    assert "缺失帧" in str(e.value) and 5 in json.loads((root / "frame_report.json").read_text())["missing"] if (root / "frame_report.json").exists() else True or "缺失帧" in str(e.value)
+    # P2-27：原来的 `assert ... if file.exists() else True or ...` 是恒真断言。
+    # F03 失败时 frame_report.json **必须存在**且点名缺的帧——文件不在就让读它自己炸。
+    assert "缺失帧" in str(e.value)
+    report = json.loads((root / "frame_report.json").read_text())
+    assert 5 in report["missing"], report
 
 
 def test_f03_catches_black_frame(tmp_path, monkeypatch):

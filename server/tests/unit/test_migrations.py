@@ -59,3 +59,23 @@ def test_job_table_has_queue_columns_after_migrations(tmp_engine):
     with tmp_engine.begin() as conn:
         cols = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(job)").fetchall()}
     assert {"priority", "lease_until", "heartbeat_at", "cancel_requested", "error_code"} <= cols
+
+
+def test_p2_09_unique_indexes_are_really_unique(tmp_engine):
+    """P2-09：三个名字带 unique 的索引必须真是 UNIQUE（迁移 5 在旧库上重建）。"""
+    apply_migrations(MIGRATIONS, tmp_engine)
+    with tmp_engine.begin() as conn:
+        for name in ("ix_preview_unique", "ix_node_run_unique", "ix_asset_scope_sha"):
+            row = conn.exec_driver_sql(f"PRAGMA index_info({name})").fetchall()
+            assert row, f"{name} 不存在"
+    from app.models import NodeRun
+    with Session(tmp_engine) as session:
+        session.add(NodeRun(run_id=501, node_id="A01", status="idle"))
+        session.commit()
+        session.add(NodeRun(run_id=501, node_id="A01", status="idle"))
+        try:
+            session.commit()
+            raise AssertionError("noderun 的 (run_id,node_id) 唯一索引没有生效")
+        except Exception as e:
+            assert "UNIQUE" in str(e).upper(), e
+            session.rollback()

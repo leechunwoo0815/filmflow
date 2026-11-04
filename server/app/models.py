@@ -64,7 +64,8 @@ class StylePreview(SQLModel, table=True):
     engine_sha: str
     renderer_ver: str
     created_at: datetime = Field(default_factory=utcnow)
-    __table_args__ = (Index("ix_preview_unique", "style_id", "variant", "engine_sha", "renderer_ver"),)
+    __table_args__ = (Index("ix_preview_unique", "style_id", "variant", "engine_sha",
+                            "renderer_ver", unique=True),)
 
 
 class StylePick(SQLModel, table=True):
@@ -113,7 +114,7 @@ class NodeRun(SQLModel, table=True):
     params_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
     progress: float = 0.0
     message: str = ""
-    __table_args__ = (Index("ix_node_run_unique", "run_id", "node_id"),)
+    __table_args__ = (Index("ix_node_run_unique", "run_id", "node_id", unique=True),)
 
 
 class Artifact(SQLModel, table=True):
@@ -142,7 +143,7 @@ class Asset(SQLModel, table=True):
     license_json: dict = Field(default_factory=dict, sa_column=Column(JSON))
     archived: bool = Field(default=False, index=True)
     created_at: datetime = Field(default_factory=utcnow)
-    __table_args__ = (Index("ix_asset_scope_sha", "scope", "project_id", "sha256"),)
+    __table_args__ = (Index("ix_asset_scope_sha", "scope", "project_id", "sha256", unique=True),)
 
 
 class Template(SQLModel, table=True):

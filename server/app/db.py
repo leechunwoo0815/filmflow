@@ -79,6 +79,19 @@ def _migrate_run_columns(conn) -> None:
     _add_columns_on(conn, "run", _RUN_COLUMNS)
 
 
+def _unique_indexes(conn) -> None:
+    """P2-09：三个名字带 unique 的索引此前实际没加 UNIQUE。生产库已实测 0 重复
+    （noderun 每 run 每节点一行、retry 复用行不新造），重建为真 UNIQUE 索引。
+    模型层（models.py）同步 unique=True，全新库由 create_all 直接建成 unique。"""
+    for name, table, cols in (
+        ("ix_preview_unique", "stylepreview", "style_id, variant, engine_sha, renderer_ver"),
+        ("ix_node_run_unique", "noderun", "run_id, node_id"),
+        ("ix_asset_scope_sha", "asset", "scope, project_id, sha256"),
+    ):
+        conn.exec_driver_sql(f"DROP INDEX IF EXISTS {name}")
+        conn.exec_driver_sql(f"CREATE UNIQUE INDEX IF NOT EXISTS {name} ON {table} ({cols})")
+
+
 # 迁移登记处：version 单调递增，函数必须幂等（重跑安全）。
 # 新加列/改表请在此追加一条，并在 server/tests/unit/test_migrations.py 补断言。
 MIGRATIONS: list[tuple[int, str, Callable]] = [
@@ -86,6 +99,7 @@ MIGRATIONS: list[tuple[int, str, Callable]] = [
     (2, "文档与快照：projectdoc/docrevision/approval", _noop),
     (3, "job 持久队列列补齐", _migrate_job_columns),
     (4, "run.snapshot_sha：落盘快照与库内封印绑定", _migrate_run_columns),
+    (5, "P2-09：stylepreview/noderun/asset 三个 unique 索引转真 UNIQUE", _unique_indexes),
 ]
 
 

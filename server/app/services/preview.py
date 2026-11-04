@@ -36,7 +36,7 @@ from . import render_profiles as render_profiles_svc
 
 from ..atomicwrite import write_atomic
 
-RENDERER_VER = "preview-1.8.0"  # P0-2 转场映射统一；text_scale + 资产图片/字体预加载
+RENDERER_VER = "preview-1.9.0"  # P2-35：字体 CSS 优先级与 final 对齐（noto-sans-sc/embed.css 优先）
 PREVIEW_PROFILES = render_profiles_svc.DEFAULT_PROFILES
 CACHE_LIMIT_BYTES = 500 * 1024 * 1024
 HTML_PATH = Path(__file__).resolve().parents[3] / "engines/riso/entry/film_spec.html"
@@ -176,7 +176,10 @@ def resolve_context(session: Session, project_id: int) -> PreviewContext:
         tokens, _family = _tokens_from_style(session, root)
     engine_id, engine_sha = _resolve_engine(session, root, build)
     font_css = ""
-    for rel in ("fonts/embed.css", "fonts/noto-sans-sc/embed.css"):
+    # P2-35：优先级必须与 final（executors/pipeline._engine_url）一致——C02 下载的
+    # Noto Sans SC 变量字体优先，通用 embed.css 只做回退；反过来的话编辑器预览和
+    # 成片用的是两套字体，用户在预览里调的版式到成片就漂了。
+    for rel in ("fonts/noto-sans-sc/embed.css", "fonts/embed.css"):
         p = root / rel
         if p.exists():
             font_css = p.read_text(encoding="utf-8", errors="replace")

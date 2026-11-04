@@ -2665,9 +2665,12 @@ async def job_get(job_id: int, session: Session = Depends(get_session)):
 
 
 @router.get("/audit")
-async def audit_list(limit: int = 200, session: Session = Depends(get_session)):
-    rows = session.exec(select(AuditLog).order_by(AuditLog.id.desc())).all()  # type: ignore[arg-type]
-    return {"items": [table_dict(r) for r in rows[:limit]]}
+async def audit_list(limit: int = 200, offset: int = 0,
+                     session: Session = Depends(get_session)):
+    # P2：limit 下推 SQL（此前全表 .all() 再内存切片；审计表会随使用无限增长）
+    rows = session.exec(select(AuditLog).order_by(AuditLog.id.desc())
+                        .offset(max(0, offset)).limit(max(0, min(limit, 1000))))  # type: ignore[arg-type]
+    return {"items": [table_dict(r) for r in rows.all()]}
 
 
 @router.get("/runs/{run_id}/events")

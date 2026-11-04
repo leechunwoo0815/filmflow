@@ -68,3 +68,91 @@ def test_delivery_job_rejects_foreign_run(tmp_path):
             from app.services.project_cleanup import delete_project
             for pid in (a.id, b.id):
                 delete_project(session, pid, remove_dir=False, force=True)
+
+
+def test_delivery_job_rejects_duplicate_active(tmp_path):
+    """P2-05：同一 Run 不允许两个在飞交付作业（并发会 rmtree/重建同一个交付目录）。"""
+    from sqlmodel import select
+
+    from app.errors import ApiError
+    from app.models import Job, Project, Run, Workflow
+    from app.services import delivery, jobs as jobs_svc
+
+    with Session(engine) as session:
+        p = Project(name="judge-del-dup", root=str(tmp_path / "dup"))
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        wf = Workflow(project_id=p.id, name="main", graph_json={"meta": {}})
+        session.add(wf)
+        session.commit()
+        session.refresh(wf)
+        run = Run(workflow_id=wf.id, status="succeeded")
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        try:
+            job = delivery.create_job(session, p, run.id, "final")
+            with pytest.raises(ApiError) as e:
+                delivery.create_job(session, p, run.id, "final")
+            assert e.value.detail["code"] == "E_DELIVERY_GATE", e.value.detail
+            assert "已有在飞" in e.value.detail["message"], e.value.detail
+            # 作业收尾（canceled）后允许再次交付
+            jobs_svc.finish_job(session, job.id, "canceled", error_code="E_RUN_CANCELED")
+            job2 = delivery.create_job(session, p, run.id, "final")
+            jobs_svc.finish_job(session, job2.id, "canceled")
+        finally:
+            for j in session.exec(select(Job).where(Job.run_id == run.id,
+                                                    Job.kind == "delivery")).all():
+                if j.status in ("queued", "leased", "running", "retry_wait"):
+                    jobs_svc.finish_job(session, j.id, "canceled")
+            from app.services.project_cleanup import delete_project
+            delete_project(session, p.id, remove_dir=False, force=True)
+
+
+def test_gate_inherit_only_within_workflow(tmp_path):
+    """P2-01：跨 Run 门继承必须限定同 workflow——不同项目撞相同 content_hash
+    不许互相继承人工门批准（此前查询没过滤，注释与代码不符）。"""
+    from app.engine import runengine
+    from app.engine.edges import N
+    from app.models import Approval, Project, Run, Workflow
+
+    gate = next(g for g, spec in N.items()
+                if spec.get("gate") == "human" and spec.get("policy", "inherit") == "inherit")
+    content = "same-content-hash"
+
+    with Session(engine) as session:
+        pa = Project(name="judge-inherit-a", root=str(tmp_path / "ia"))
+        pb = Project(name="judge-inherit-b", root=str(tmp_path / "ib"))
+        session.add_all([pa, pb])
+        session.commit()
+        session.refresh(pa)
+        session.refresh(pb)
+        wfa = Workflow(project_id=pa.id, name="main", graph_json={"meta": {}})
+        wfb = Workflow(project_id=pb.id, name="main", graph_json={"meta": {}})
+        session.add_all([wfa, wfb])
+        session.commit()
+        session.refresh(wfa)
+        session.refresh(wfb)
+        run_a1 = Run(workflow_id=wfa.id, status="succeeded")
+        run_a2 = Run(workflow_id=wfa.id, status="blocked")
+        run_b1 = Run(workflow_id=wfb.id, status="blocked")
+        session.add_all([run_a1, run_a2, run_b1])
+        session.commit()
+        session.refresh(run_a1)
+        session.refresh(run_a2)
+        session.refresh(run_b1)
+        session.add(Approval(run_id=run_a1.id, gate_id=gate, decision="approved",
+                             policy="inherit", content_hash=content, author="test"))
+        session.commit()
+        try:
+            # 同 workflow 的另一个 Run：继承生效
+            ok, stale = runengine._gate_valid(session, run_a2, gate, content)
+            assert (ok, stale) == (True, False), (ok, stale)
+            # 不同项目（不同 workflow）撞了相同 hash：不许继承
+            ok, stale = runengine._gate_valid(session, run_b1, gate, content)
+            assert (ok, stale) == (False, False), (ok, stale)
+        finally:
+            from app.services.project_cleanup import delete_project
+            for pid in (pa.id, pb.id):
+                delete_project(session, pid, remove_dir=False, force=True)
