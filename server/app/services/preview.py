@@ -40,7 +40,7 @@ from . import render_profiles as render_profiles_svc
 
 from ..atomicwrite import write_atomic
 
-RENDERER_VER = "preview-1.9.0"  # P2-35：字体 CSS 优先级与 final 对齐（noto-sans-sc/embed.css 优先）
+RENDERER_VER = "preview-2.0.0"  # P2-14：相机单源（camera_from_e02）+ 引擎 ease 支持；P2-35 字体 CSS 对齐
 PREVIEW_PROFILES = render_profiles_svc.DEFAULT_PROFILES
 CACHE_LIMIT_BYTES = 500 * 1024 * 1024
 HTML_PATH = Path(__file__).resolve().parents[3] / "engines/riso/entry/film_spec.html"
@@ -223,16 +223,21 @@ def _scene_by_id(ctx: PreviewContext, scene_id: str) -> dict:
 
 
 def _camera(scene: dict, profile: dict) -> dict:
-    start, end = float(scene.get("start", 0)), float(scene.get("end", 0))
-    if scene.get("camera_keyframes"):
-        return {"scene": scene["id"], "keyframes": scene["camera_keyframes"],
-                "anchor": scene.get("camera_anchor") or [int(profile["width"]) / 2,
-                                                         int(profile["height"]) / 2],
-                "note": scene.get("camera", "自定义关键帧")}
-    return {"scene": scene["id"], "zoom": [[start, 1.0], [end, 1.03]],
-            "pan": [[start, 0], [end, 0]],
-            "anchor": [int(profile["width"]) / 2, int(profile["height"]) / 2],
-            "note": scene.get("camera", "默认缓推 3%")}
+    # P2-14：预览的相机构造此前是另一套方言（zoom/pan 时段对，且 t 用场景绝对
+    # start/end）——场景 start>0 时 cameraAt 的插值全程 clamp 在第一帧，"默认缓推 3%"
+    # 在预览里根本不发生，而 final（compiler.camera_from_e02，0 基关键帧）会发生。
+    # 现在统一走 compiler 的同一构造：0 基、ease 透传、默认推近一致。
+    from ..engine.scene.compiler import camera_from_e02
+    w, h = int(profile["width"]), int(profile["height"])
+    duration = max(0.1, float(scene.get("end", 0)) - float(scene.get("start", 0)))
+    camera = None
+    if scene.get("camera_keyframes") or scene.get("camera_anchor"):
+        camera = {"anchor": scene.get("camera_anchor"),
+                  "keyframes": scene.get("camera_keyframes")}
+    out = camera_from_e02(camera, duration, w, h)
+    out["scene"] = scene["id"]
+    out["note"] = scene.get("camera", "默认缓推 3%")
+    return out
 
 
 def build_programs(ctx: PreviewContext, motion: bool, scene_id: str | None = None) -> list[dict]:

@@ -140,3 +140,27 @@ def test_apply_fix_failure_recorded_and_reported(tmp_path: Path, monkeypatch):
     rep2 = qa.report(proj)
     assert rep2["failed"] == 1 and rep2["applied"] == 1
     assert rep2["successRate"] == pytest.approx(0.5)
+
+
+# ---------- P2-14：预览相机与 final 同源（camera_from_e02），ease 不再被忽略 ----------
+
+def test_preview_camera_unified_with_compiler():
+    from app.engine.scene.compiler import camera_from_e02
+    from app.services.preview import _camera as preview_camera
+
+    profile = {"width": 1920, "height": 1080, "fps": 24}
+    scene = {"id": "S02", "start": 5.0, "end": 9.0, "camera": "默认缓推 3%"}
+    out = preview_camera(scene, profile)
+    ref = camera_from_e02(None, 4.0, 1920, 1080)
+    assert [(k["t"], k["zoom"]) for k in out["keyframes"]] == \
+           [(k["t"], k["zoom"]) for k in ref["keyframes"]], "0 基关键帧（旧实现用 [start,end] 时段对，start>0 时推近不会发生）"
+    assert out["anchor"] == ref["anchor"]
+
+    scene2 = {"id": "S03", "start": 0.0, "end": 4.0,
+              "camera_keyframes": [
+                  {"t": 0.0, "zoom": 1.0, "x": 0, "y": 0, "rotate": 0, "ease": "easeOut"},
+                  {"t": 4.0, "zoom": 1.1, "x": 20, "y": 0, "rotate": 0, "ease": "easeOut"}],
+              "camera_anchor": [960, 400]}
+    out2 = preview_camera(scene2, profile)
+    assert out2["keyframes"][0]["ease"] == "easeOut", "ease 必须透传到渲染方言（此前恒被当 linear）"
+    assert out2["anchor"] == [960, 400]

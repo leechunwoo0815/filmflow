@@ -73,7 +73,17 @@ const SCENE_RENDER = (() => {
       if (t >= kfs[i].t && t <= kfs[i + 1].t) { a = kfs[i]; b = kfs[i + 1]; break; }
     }
     const span = b.t - a.t;
-    const p = span > 0 ? clamp((t - a.t) / span) : 0;
+    // P2-14：关键帧的 ease 字段此前被完全忽略（恒线性）。ease 语义取**出发点关键帧**
+    // （a.ease），与 CSS/常见动画惯例一致；linear 保持逐字节原样（golden 基线不动）。
+    const p0 = span > 0 ? clamp((t - a.t) / span) : 0;
+    const EASE = {
+      linear: (x) => x,
+      easein: (x) => x * x,
+      easeout: (x) => 1 - (1 - x) * (1 - x),
+      easeinout: (x) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2),
+    };
+    const easeFn = EASE[String(a.ease || 'linear').toLowerCase()] || EASE.linear;
+    const p = easeFn(p0);
     const z = a.zoom + (b.zoom - a.zoom) * p;
     const x = (a.x || 0) + ((b.x || 0) - (a.x || 0)) * p;
     const y = (a.y || 0) + ((b.y || 0) - (a.y || 0)) * p;
