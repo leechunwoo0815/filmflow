@@ -1,9 +1,17 @@
 """测试基座：导入前设置一次性隔离 FILMFLOW_HOME（每次 pytest 独立临时库；A03 扫描幂等 upsert）。"""
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 from pathlib import Path
+
+# 生产库路径必须在覆盖 FILMFLOW_HOME 之前取：P0-3 的验收原句是"连续两次 pytest 后
+# 生产 DB 项目数不变"，所以要在会话前后各读一次真实库（只读，绝不写）。
+_PROD_HOME = Path(os.environ.get("FILMFLOW_HOME") or (Path.home() / ".filmflow"))
+_PROD_DB = _PROD_HOME / "filmflow.db"
+# 子 conftest（integration）拿不到覆盖前的 env，用这个键把真实 HOME 传下去
+os.environ["FILMFLOW_PROD_HOME"] = str(_PROD_HOME)
 
 _TEST_HOME = Path(tempfile.mkdtemp(prefix="filmflow-test-home-"))
 os.environ["FILMFLOW_HOME"] = str(_TEST_HOME)
@@ -15,6 +23,26 @@ import pytest
 
 from app.config import detect_chrome, detect_ffmpeg, settings
 
+_PROD_TABLES = ("project", "run", "draft", "docrevision", "job", "asset", "template")
+
+
+def _prod_snapshot() -> dict | None:
+    """生产库计数快照；库不存在（干净机器）返回 None，守卫自动跳过。"""
+    if not _PROD_DB.exists():
+        return None
+    con = sqlite3.connect(f"file:{_PROD_DB}?mode=ro", uri=True, timeout=5)
+    try:
+        counts = {}
+        for t in _PROD_TABLES:
+            try:
+                counts[t] = con.execute(f"select count(*) from {t}").fetchone()[0]
+            except sqlite3.OperationalError:
+                continue
+        counts["project_ids"] = [r[0] for r in con.execute("select id from project order by id")]
+        return counts
+    finally:
+        con.close()
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -22,6 +50,12 @@ def pytest_addoption(parser):
         action="store_true",
         default=False,
         help="允许在缺少风格库/Chrome/ffmpeg时跳过相关测试（默认直接失败，不静默skip）",
+    )
+    parser.addoption(
+        "--allow-prod-drift",
+        action="store_true",
+        default=False,
+        help="允许测试期间生产库发生变化（例如同时在用工作台）；默认会话结束后计数必须一致",
     )
 
 
@@ -51,6 +85,32 @@ def isolated_db():
     from app.db import init_db
     init_db()
     yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _production_db_untouched(request):
+    """P0-3 验收守卫：跑完整套测试，生产库计数必须一模一样。
+
+    专家原句是"连续两次 pytest 后生产 DB 项目数不变"，此前只靠人工核对（还核对错过：
+    文档写"当前 24"、库里其实 25）。集成测试现在起独立 uvicorn + 独立 FILMFLOW_HOME，
+    这条守卫就是那道隔离真的没漏的证明——漏了会在这里炸，而不是靠人事后发现。
+    """
+    before = _prod_snapshot()
+    yield
+    if before is None or request.config.getoption("--allow-prod-drift"):
+        return
+    after = _prod_snapshot()
+    if after == before:
+        return
+    delta = {k: (before.get(k), after.get(k)) for k in set(before) | set(after or {})
+             if k != "project_ids" and before.get(k) != (after or {}).get(k)}
+    new_ids = sorted(set((after or {}).get("project_ids", [])) - set(before["project_ids"]))
+    gone_ids = sorted(set(before["project_ids"]) - set((after or {}).get("project_ids", [])))
+    pytest.fail(
+        f"测试期间生产库 {_PROD_DB} 被写脏了：计数变化 {delta}"
+        f"{'；新增项目 ' + str(new_ids) if new_ids else ''}"
+        f"{'；消失项目 ' + str(gone_ids) if gone_ids else ''}"
+        "。若这是你自己在用工作台，加 --allow-prod-drift 重跑。", pytrace=False)
 
 
 @pytest.fixture(autouse=True)

@@ -19,7 +19,9 @@ sys.path.insert(0, str(ROOT / "server"))
 from _acceptance import (
     DEMO_PROJECTS,
     POLLUTION_EXEMPT,
+    TEARDOWN_PENDING,
     audit_script_pollution,
+    audit_script_teardown,
     require_scratch_project,
 )
 
@@ -94,3 +96,19 @@ def test_guard_refuses_protected_names_even_with_new_id():
     with pytest.raises(SystemExit) as e:
         require_scratch_project(_StubClient(items), "e2e_demo.py", ["--project", "778"])
     assert "拒绝" in str(e.value)
+
+
+def test_teardown_ratchet_blocks_new_leaking_scripts():
+    """建了项目却不自删的脚本只许减少、不许增加（残留项目的唯一来源）。
+
+    实测：改造前生产库里堆了 14 个验收残留项目 / 约 800MB，其中一个 golden-5s 占 541MB。
+    存量 9 个登记在 `TEARDOWN_PENDING`，改完一个就从名单里删一个。
+    """
+    offenders = set(audit_script_teardown(ROOT / "scripts"))
+    assert offenders <= TEARDOWN_PENDING, (
+        f"新增了建项目却不自删的脚本：{sorted(offenders - TEARDOWN_PENDING)}；"
+        "用 _acceptance.Cleanup 包住建项目的流程，别往 TEARDOWN_PENDING 里加名字")
+    # 反向证明判据有效：已改造/本来就自删的脚本不在名单里
+    assert "golden_run.py" not in offenders
+    assert "e2e_timeline_100.py" not in offenders
+    assert "verify_r3_qa.py" not in offenders

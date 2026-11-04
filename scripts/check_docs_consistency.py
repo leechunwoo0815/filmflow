@@ -5,7 +5,7 @@
 
 1. `EXECUTOR_VERSION`（代码里那份）== 文档里出现的所有版本号；
 2. 迁移登记的 version 列表 == 文档里的 `[1,2,…]`；
-3. `pytest --collect-only` 的用例数 == 文档声称的 passed 数（允许写成 `N passed` 或 `N passed + M skipped`）；
+3. `pytest --collect-only` 的用例数 == 文档声称的通过数（允许 `N passed`／`N passed + M skipped`／`+ K xfailed`）；
 4. 生产库项目行数 == §7.4 的「DB N 个项目」；
 5. `verify_p1_governance.py` 的实际步骤数 == §0.6.3 声称的「N 项」；
 6. 一批已知**已经反了**的说法不许再出现（`foreign_keys 仍关闭`、`没有 DELETE /projects` 等）。
@@ -99,11 +99,14 @@ def main() -> int:
                 problems.append(f"{doc.name}:{n} 迁移登记 {got} ≠ 代码里的 {versions}")
         # 约定：文档里 `N passed` 只允许指**当前实测**；历史跑分写中文（如「273 项通过」）
         # 允许 `288 passed + 1 skipped`——环境门控的 skip（如 :8787 被占用）不该让守卫变红
-        for n, line, m in lines_with(doc, re.compile(r"(\d+) passed(?: \+ (\d+) skipped)?")):
-            claimed = int(m.group(1)) + int(m.group(2) or 0)
+        # 也允许 `+ K xfailed`：已知阻塞但仍在真跑的用例（B9 的 P0-5 渲染级 E2E）必须能被如实申报
+        for n, line, m in lines_with(doc, re.compile(
+                r"(\d+) passed(?: \+ (\d+) skipped)?(?: \+ (\d+) xfailed)?")):
+            claimed = int(m.group(1)) + int(m.group(2) or 0) + int(m.group(3) or 0)
             if claimed != n_tests and not HISTORIC.search(line):
                 problems.append(f"{doc.name}:{n} 测试数 {m.group(1)} passed"
                                 f"{(' + ' + m.group(2) + ' skipped') if m.group(2) else ''}"
+                                f"{(' + ' + m.group(3) + ' xfailed') if m.group(3) else ''}"
                                 f" = {claimed} ≠ 实测 collected {n_tests}"
                                 "（历史值请写成中文，别用 `N passed`）")
         for n, line, m in lines_with(doc, re.compile(r"(?:连查|复核)\s*\**(\d+) 项")):

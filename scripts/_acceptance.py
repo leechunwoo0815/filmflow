@@ -13,6 +13,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from typing import Self
 
 SERVER = Path(__file__).resolve().parents[1] / "server"
 if str(SERVER) not in sys.path:
@@ -31,7 +32,9 @@ def create(client, name: str, copy_text: str) -> dict:
 
 
 # 需要被验收脚本主动取消的 Run 状态（闸门另有判定，见 _settle）
-BUSY_RUN = ("running", "queued", "paused", "needs_changes")
+# blocked 也要取消：停在门上的 Run 会把作业 parked 成 retry_wait，心跳 120s 内
+# 删除闸门判它"在飞"，不取消就得干等两分钟（实测踩过：验收脚本因此超时留下残留项目）。
+BUSY_RUN = ("running", "queued", "paused", "needs_changes", "blocked")
 
 
 def _settle(client, pid: int, timeout: float = 150.0) -> None:
@@ -92,6 +95,53 @@ def throwaway(client, name: str, copy_text: str):
         destroy(client, proj["id"], proj["root"])
 
 
+class Cleanup:
+    """登记本脚本建的项目，退出时（**含异常**）统一删掉；`--keep` 保留现场。
+
+    为什么要有它：10 个 verify/golden 脚本此前建完不删，异常退出更是连成功路径的清理都跳过。
+    实测一晚下来生产库里堆了 14 个残留项目、约 800MB（golden-5s ×6、r2-profiles ×4、
+    r2-verify-5s ×2、r3-audio-v2 ×1、审计遗留 ×1），其中 541MB 的是一个 golden-5s。
+
+    用法：
+        clean = Cleanup(c, keep=args.keep)
+        with clean:
+            pid = clean.track(body["project"]["id"], root)
+    """
+
+    def __init__(self, client, keep: bool = False):
+        self.client = client
+        self.keep = keep
+        self.tracked: list[tuple[int, Path]] = []
+
+    def track(self, pid: int, root) -> int:
+        self.tracked.append((int(pid), Path(root)))
+        return int(pid)
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        if self.keep:
+            for pid, root in self.tracked:
+                print(f"  --keep：保留项目 {pid}（{root}）", flush=True)
+            return False
+        for pid, root in reversed(self.tracked):
+            try:
+                destroy(self.client, pid, root)
+            except SystemExit as e:                     # _settle 等不到作业停时会 SystemExit
+                print(f"  清理未完成 project={pid}: {e}", flush=True)
+            except Exception as e:  # noqa: BLE001 —— 清理失败绝不能盖掉原始异常
+                print(f"  清理失败 project={pid}: {type(e).__name__}: {e}", flush=True)
+        self.tracked.clear()
+        return False
+
+
+def add_keep_flag(parser) -> None:
+    """给验收脚本统一加 --keep（默认跑完自删）。"""
+    parser.add_argument("--keep", action="store_true",
+                        help="保留本脚本建的临时项目（默认跑完/失败都自删）")
+
+
 # ---------- 演示项目污染闸门（判官 P1-9 / §六 #9） ----------
 
 DEMO_PROJECTS = {202: "r3-demo-20261103", 174: "r2_5-delivery40", 188: "r3-camera",
@@ -145,6 +195,62 @@ def audit_script_pollution(scripts_dir) -> tuple[list[str], list[str]]:
                 and not any(tok in body for tok in SELFBUILT_TOKENS):
             unguarded.append(py.name)
     return demo_lines, unguarded
+
+
+# 建项目但按设计不自删的脚本（新增豁免必须写理由，这里是唯一登记处）：
+#   cleanup_projects.py         —— 清理工具本身，只按 --id 删，不建项目
+#   smoke_m1.py                 —— 导入既有 rumor-39s 参考片，不新建项目目录
+#   verify_rumor_regression.py  —— 同上，46/46 基线就在 rumor 上
+#   drive_run.py                —— 运维驱动器，Run/项目由操作者显式指定
+#   probe_profile_ssim_offset.py —— 只读探针
+#   e2e_ui.py / e2e_onboarding.py / e2e_error_visibility.py —— 走 UI，只读既有演示页面
+TEARDOWN_EXEMPT = {"cleanup_projects.py", "smoke_m1.py", "verify_rumor_regression.py",
+                   "drive_run.py", "probe_profile_ssim_offset.py", "e2e_ui.py",
+                   "e2e_onboarding.py", "e2e_error_visibility.py"}
+
+_CREATOR_TOKENS = ('"/projects/import"', '"/projects"', "create_project(",
+                   '"/drafts"', "build_golden_project(")
+_TEARDOWN_TOKENS = ("Cleanup(", "throwaway(", "scratch_project(", "destroy(",
+                    "destroy_project(", "build_take_state(", "build_review_source(",
+                    "build_template_source(")
+# 或者显式对项目发 DELETE（e2e_timeline_100 走的是这条）
+_TEARDOWN_RE = (r"\.delete\(\s*f?[\"']/projects/", r"[\"']DELETE[\"'],\s*f?[\"']/projects/")
+
+
+# 已知"建项目但不自删"的存量脚本：改造一个就从这里删一个，**新脚本不许进这个名单**。
+# 实测代价：一晚积了 14 个残留项目 / 约 800MB（其中一个 golden-5s 541MB）。
+TEARDOWN_PENDING = {
+    "verify_r2_5_audio.py", "verify_r2_5_delivery.py", "verify_r2_5_delivery_40s.py",
+    "verify_r2_incremental.py", "verify_r2_preview.py", "verify_r2_profiles.py",
+    "verify_r2_recovery.py", "verify_r3_audio_v2.py", "verify_r3_camera.py",
+}
+
+
+def audit_script_teardown(scripts_dir) -> list[str]:
+    """建了项目却没有自删入口的脚本——生产库里残留项目的唯一来源。
+
+    与 `audit_script_pollution` 共用一份判据风格：静态扫描，`verify_p1_governance.py`
+    的第 16 项和单测都调它，避免两边漂移。
+    """
+    import re
+    from pathlib import Path
+
+    scripts_dir = Path(scripts_dir)
+    offenders: list[str] = []
+    skip = set(TEARDOWN_EXEMPT) | {"verify_p1_governance.py", "_acceptance.py",
+                                   "_scratch_state.py"}
+    for py in sorted(scripts_dir.glob("*.py")):
+        if py.name.startswith("_") or py.name in skip:
+            continue
+        body = py.read_text(encoding="utf-8")
+        if not any(tok in body for tok in _CREATOR_TOKENS):
+            continue
+        if any(tok in body for tok in _TEARDOWN_TOKENS):
+            continue
+        if any(re.search(pat, body) for pat in _TEARDOWN_RE):
+            continue
+        offenders.append(py.name)
+    return offenders
 
 
 def require_scratch_project(client, argv_name: str, argv: list[str]) -> int:

@@ -158,15 +158,58 @@ def build_golden_project(name: str, label: str = "") -> tuple[int, int, Path, st
     return r["run_id"], r["project"]["id"], root, primary
 
 
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else ""
+
+
+def _environment(root: Path) -> dict:
+    """黄金报告的环境指纹（专家 P0-4b：基线绑 Chrome/ffmpeg/字体/风格库，报告必须能看出来）。
+
+    没有这一段时，Chrome 自动升级或字体换版都会让 SSIM 莫名其妙掉下来，
+    而报告里没有任何线索能区分"代码回归"和"环境变了"。
+    """
+    import platform
+
+    from app.config import detect_chrome, settings
+    from app.engine.cachekey import EXECUTOR_VERSION
+
+    def _version(cmd: list[str]) -> str:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=20, check=False)
+            return (r.stdout or r.stderr).splitlines()[0].strip()[:160]
+        except (OSError, subprocess.SubprocessError, IndexError):
+            return ""
+
+    chrome = detect_chrome()
+    font = root / "fonts" / "src" / "NotoSansSC[wght].ttf"
+    if not font.exists():
+        font = settings.home / "cache" / "fonts" / "NotoSansSC[wght].ttf"
+    stats = settings.style_library_root / "_统计.json"
+    return {
+        "executorVersion": EXECUTOR_VERSION,
+        "os": f"{platform.system()} {platform.release()} ({platform.machine()})",
+        "python": platform.python_version(),
+        "chrome": _version([chrome, "--version"]) if chrome else "",
+        "ffmpeg": _version(["ffmpeg", "-version"]),
+        "fontSha256": _sha(font),
+        "styleLibrary": str(settings.style_library_root),
+        "styleLibraryStatsSha256": _sha(stats),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", required=True, choices=["5s", "15s", "40s"])
     ap.add_argument("--update", action="store_true", help="写 baseline（首次/有意更新）")
+    ap.add_argument("--reason", default="", help="--update 的理由（必填，写进基线台账）")
+    ap.add_argument("--keep", action="store_true", help="保留本次黄金项目（默认跑完自删）")
     ap.add_argument("--resolution", choices=["thumb", "original", "both"], default="thumb",
                     help="thumb=兼容旧基线；original=1920×1080 原帧 SSIM；both=两种都跑")
     ap.add_argument("--archive", action="store_true", default=True,
                     help="将 golden_report 同步到 docs/reports/golden（默认开启）")
     args = ap.parse_args()
+    if args.update and not args.reason.strip():
+        raise SystemExit("--update 必须给 --reason：改基线是有后果的决定，要留下台账（P0-4b）")
     resolutions = ["thumb", "original"] if args.resolution == "both" else [args.resolution]
     spec = json.loads((FIXTURES / args.project / "spec.json").read_text(encoding="utf-8"))
     profile = spec["profile"]
@@ -247,18 +290,29 @@ def main() -> int:
         })
         if args.update:
             baseline_json.parent.mkdir(parents=True, exist_ok=True)
+            history = list(old.get("updateHistory") or [])
+            history.append({
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "reason": args.reason.strip(), "runId": rid,
+                "environment": _environment(root)})
             baseline_json.write_text(json.dumps({
-                "schema": "filmflow.golden-baseline/1", "project": args.project,
+                "schema": "filmflow.golden-baseline/2", "project": args.project,
                 "resolution": resolution, "primary": primary, "profile": profile,
                 "times": times, "phash": hashes, "sourceSha256": src_shas,
-                "sceneCount": len(task.get("scenes", []))}, ensure_ascii=False, indent=1), encoding="utf-8")
+                "sceneCount": len(task.get("scenes", [])),
+                "updateHistory": history[-20:]}, ensure_ascii=False, indent=1), encoding="utf-8")
 
-    report = {"schema": "filmflow.golden-report/2", "project": args.project,
+    env = _environment(root)
+    report = {"schema": "filmflow.golden-report/3", "project": args.project,
               "runId": rid, "primary": primary, "profile": profile,
               "frames": frames, "sceneCount": len(task.get("scenes", [])),
               "resolutions": resolution_reports, "update": args.update,
+              "updateReason": args.reason.strip(),
               "status": "updated" if args.update else "pass",
+              "environment": env,
               "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    print(f"env: EXECUTOR={env['executorVersion']} · {env['chrome'][:40]} · "
+          f"{env['ffmpeg'][:40]} · font={env['fontSha256'][:12]}", flush=True)
     (root / "out" / "golden_report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     if args.archive:
@@ -266,11 +320,17 @@ def main() -> int:
         for rr in resolution_reports:
             archived = REPORT_DIR / f"{args.project}-{rr['resolution']}-run{rid}.json"
             archived.write_text(json.dumps({**report, "resolution": rr["resolution"],
-                                                "summary": rr}, ensure_ascii=False, indent=1),
-                                    encoding="utf-8")
+                                            "summary": rr}, ensure_ascii=False, indent=1),
+                                encoding="utf-8")
             print(f"  archived report: {archived}", flush=True)
     print(f"{'UPDATED' if args.update else 'PASS'}: {args.project} "
           f"resolutions={','.join(resolutions)} report={root / 'out' / 'golden_report.json'}")
+    if not args.keep:
+        # 跑完自删：黄金项目 541MB 一个，留着就是残留（生产库里曾积了 6 个 golden-5s）
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from _acceptance import destroy
+        destroy(c, pid, root)
+        print(f"已自删黄金项目 {pid}（{root.name}）", flush=True)
     return 0
 
 

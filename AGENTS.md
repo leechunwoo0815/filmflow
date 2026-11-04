@@ -58,7 +58,7 @@ R3.0 v1（FR-32–38）+ R3.5 FR-39。下一批：FR-40/41；不提前做 R4。
 审阅验收：D03 逐场门禁、contact sheet、改 S03 diff 只标 S03（HANDOFF §3.1）。
 音频验收：waveform 49ms、手动对齐、许可、Stems 5s、LUFS -16/TP -10.5（HANDOFF §3.2）。
 交付验收：9 文件、QC 全绿、9:16 1080×1920、zip（HANDOFF §3.3）。
-黄金验收：**5s/15s/40s 原帧都已实跑**（15s run 334、40s run 336 各 6 帧 SSIM=1.000000、pHash 距离 0，`EXECUTOR_VERSION=2.12.0`；锚在 `fixtures/golden/*/baseline_original/`）；干净 rumor 46/46、master 39.5s（HANDOFF §2.6）。原帧锚是**同版本两次独立 Run**自洽，不是与外部母带比对。
+黄金验收：**5s/15s/40s 原帧都已实跑**（15s run 334、40s run 336 各 6 帧 SSIM=1.000000、pHash 距离 0，当时 `EXECUTOR_VERSION` 是 2.12.0（现 2.13.0，升版后原帧锚待复跑）；锚在 `fixtures/golden/*/baseline_original/`）；干净 rumor 46/46、master 39.5s（HANDOFF §2.6）。原帧锚是**同版本两次独立 Run**自洽，不是与外部母带比对。
 NTSC 验收：`verify_r2_5_delivery.py --fps 23.976 --duration 2` → run 333 两画幅同 48 帧/2.0s、`qc` 全绿（40s NTSC 长片未跑）。
 下一步：**判官 §六 未闭项（HANDOFF §0.0 清单）→ 才谈 FR-40/41**；不要开始 R4。详见 `HANDOFF.md` §0.0/§6.5。
 
@@ -68,7 +68,7 @@ NTSC 验收：`verify_r2_5_delivery.py --fps 23.976 --duration 2` → run 333 �
 
 ```bash
 ./dev.sh
-cd server && uv run pytest tests -q                       # 320 passed + 1 skipped（collected 321 = unit 282 + integration 32 + BDD 7；foreign_keys=ON）
+cd server && uv run pytest tests -q                       # 334 passed + 1 skipped + 1 xfailed（collected 336 = unit 296 + integration 33 + BDD 7，168.9s）；foreign_keys=ON
 uv run --project server python scripts/e2e_ui.py          # UI 8 场景 ~15s
 uv run --project server python scripts/e2e_onboarding.py  # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py        # API 冒烟：46 / 93
@@ -83,7 +83,7 @@ uv run --project server python scripts/verify_r3_assets.py # 资产库/图片/�
 uv run --project server python scripts/e2e_assets.py      # 资产库 UI 冒烟
 uv run --project server python scripts/verify_r3_templates.py # 模板/场景/系列
 uv run --project server python scripts/e2e_templates.py   # 模板 UI 冒烟
-uv run --project server python scripts/verify_p1_governance.py # ★ 一条命令复核本轮 15 项 P1 门禁
+uv run --project server python scripts/verify_p1_governance.py # ★ 一条命令复核本轮 16 项 P1 门禁
 uv run --project server python scripts/e2e_error_visibility.py  # 异步失败必须可见（真机）
 uv run --project server python scripts/e2e_timeline_100.py      # 100 场景有效重测（正向播放 + 真 ops/autosave）
 uv run --project server python scripts/check_docs_consistency.py # 文档与代码/库/脚本一致性（改完必跑）

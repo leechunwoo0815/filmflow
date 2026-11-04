@@ -3,13 +3,36 @@
 用法：uv run python scripts/smoke_m1.py   （服务已在 :7860 运行）
 """
 import json
+import os
 import sys
 import time
+from pathlib import Path
 
 import httpx
 
 BASE = "http://127.0.0.1:7860/api"
 c = httpx.Client(base_url=BASE, timeout=60)
+
+
+def rumor_root() -> str:
+    """rumor-39s 参考片在仓库外（约 897MB，不入 git）：从工作区白名单里找。
+
+    找不到就硬失败（不静默跳过）：这条冒烟的全部意义就是 46 节点参考片跑通，
+    少了它剩下的断言都是空转。可用 FILMFLOW_RUMOR_ROOT 显式指路。
+    """
+    override = os.environ.get("FILMFLOW_RUMOR_ROOT", "").strip()
+    if override:
+        return override
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
+    from app.config import settings
+    for root in settings.workspace_roots:
+        cand = Path(root) / "rumor-39s"
+        if cand.is_dir():
+            return str(cand)
+    raise SystemExit(
+        "E_ENV_MISSING: 工作区白名单里没有 rumor-39s（"
+        + ", ".join(str(r) for r in settings.workspace_roots)
+        + "）；设 FILMFLOW_RUMOR_ROOT 指过去，或先跑 verify_rumor_regression.py 的前置说明")
 
 
 def wait_status(run_id: int, want: set[str], timeout: float = 600) -> dict:
@@ -57,7 +80,7 @@ def main() -> int:
     print("推荐:", [r["style_id"] for r in rec["items"]][:12])
 
     print("== 4. 导入 rumor-39s ==", flush=True)
-    created = c.post("/projects/import", json={"root": "/Users/litianyu/cc-projects/ai-v/rumor-39s"}).json()
+    created = c.post("/projects/import", json={"root": rumor_root()}).json()
     run_id, project_id = created["run_id"], created["project"]["id"]
     g = c.get(f"/runs/{run_id}/graph").json()
     if any(n["status"] != "idle" for n in g["nodes"]):
@@ -65,7 +88,7 @@ def main() -> int:
         run_id = c.post("/runs", json={"workflowId": created["workflow_id"]}).json()["id"]
         g = c.get(f"/runs/{run_id}/graph").json()
     print("project:", project_id, "run:", run_id)
-    assert len(g["nodes"]) == 46 and len(g["edges"]) >= 80
+    assert len(g["nodes"]) == 46 and len(g["edges"]) == 93, (len(g["nodes"]), len(g["edges"]))
     print(f"画布：{len(g['nodes'])} 节点 / {len(g['edges'])} 边 ✓")
 
     print("== 5. Run 全链（到 D05）==", flush=True)

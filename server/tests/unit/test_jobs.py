@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from app.db import engine, init_db
-from app.models import NodeRun, Project, Run, SchemaMigration, Workflow
+from app.models import Job, NodeRun, Project, Run, SchemaMigration, Workflow
 from app.services import jobs as jobs_svc
 
 
@@ -118,3 +118,35 @@ def test_queue_summary_priority_order():
         active_ids = [j["id"] for j in summary["active"]]
         assert active_ids.index(high.id) < active_ids.index(low.id)
         assert summary["priorities"]["preview"] == 100
+
+
+def test_expire_parked_collects_by_heartbeat_age(tmp_path):
+    """parked 作业（retry_wait = 等人工门）按心跳年龄回收；收掉不影响恢复。
+
+    生产库曾积到 11 条（全属 rumor/演示项目，没人敢动）——没有回收策略就只会一直堆。
+    """
+    rid = _run(tmp_path, status="blocked")
+    with Session(engine) as s:
+        job = jobs_svc.ensure_run_job(s, rid)
+        jobs_svc.park_job(s, job.id, "retry_wait", "E_RUN_BLOCKED", "blocked")
+        row = s.get(Job, job.id)
+        row.heartbeat_at = datetime.now(UTC) - timedelta(hours=jobs_svc.PARKED_EXPIRY_HOURS + 1)
+        s.add(row); s.commit()
+        assert job.id in jobs_svc.expire_parked(s)
+        s.refresh(row)
+        assert row.status == "canceled" and row.error_code == "E_JOB_EXPIRED"
+        # 签门后 start_run 走 ensure_run_job：作业会重建，恢复路径不受影响
+        assert jobs_svc.ensure_run_job(s, rid).status == "queued"
+
+
+def test_expire_parked_leaves_fresh_jobs_alone(tmp_path):
+    rid = _run(tmp_path, status="blocked")
+    with Session(engine) as s:
+        job = jobs_svc.ensure_run_job(s, rid)
+        jobs_svc.park_job(s, job.id, "retry_wait", "E_RUN_BLOCKED", "blocked")
+        row = s.get(Job, job.id)
+        row.heartbeat_at = datetime.now(UTC) - timedelta(minutes=5)
+        s.add(row); s.commit()
+        assert jobs_svc.expire_parked(s) == []
+        s.refresh(row)
+        assert row.status == "retry_wait"

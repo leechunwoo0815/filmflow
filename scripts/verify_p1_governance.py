@@ -416,6 +416,19 @@ def check_typed_write_bodies(c: httpx.Client) -> None:
        f"音频 base64 入口上限与服务层 {audio_svc.MAX_BYTES // 1024 // 1024}MB 同源")
 
 
+def check_script_teardown() -> None:
+    """16 建项目的验收脚本必须自删（棘轮：存量 9 个只许减少）。"""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from _acceptance import TEARDOWN_PENDING, audit_script_teardown
+
+    offenders = set(audit_script_teardown(ROOT / "scripts"))
+    new = sorted(offenders - TEARDOWN_PENDING)
+    if new:
+        raise AssertionError(f"新增建项目却不自删的脚本：{new}（用 _acceptance.Cleanup 包住）")
+    ok("16 验收脚本自删棘轮", f"存量待改 {len(offenders)}/{len(TEARDOWN_PENDING)} 个、无新增；"
+                              "golden_run/e2e_timeline_100/verify_r3_qa 已自删")
+
+
 def check_no_demo_writes(c: httpx.Client) -> None:
     """判官 §六 #9：验收脚本既不写演示项目，也不留半截自建项目。
 
@@ -468,6 +481,7 @@ def main() -> int:
         check_delete_surface(c)
         check_atomic_writes()
         check_typed_write_bodies(c)
+        check_script_teardown()
         check_no_demo_writes(c)      # 放在最后：.acceptance 残留检查要求前面的自建项目都已回收
     print("PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）")
     return 0

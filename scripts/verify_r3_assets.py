@@ -135,9 +135,12 @@ def main(pid: int) -> int:
     print("✓ 5. 缺资产预览 409 E_ASSET_MISSING（给重新链接提示）", flush=True)
 
     # 6. 字体缺字检查
-    font = Path("/Users/litianyu/cc-projects/ai-v/filmflow/web/node_modules/.pnpm/"
-                "next@15.5.28_@types+node@22.20.5_react-dom@19.3.1_react@19.3.1__react@19.3.1/"
-                "node_modules/next/dist/compiled/@vercel/og/noto-sans-v27-latin-regular.ttf")
+    # 缺字样本用 Next.js 自带的拉丁子集 Noto：仓库相对路径 + glob，
+    # 别再写死某台机器的主目录和 .pnpm 哈希目录（P1-19 的另半句）
+    repo = Path(__file__).resolve().parents[1]
+    font = next(iter(sorted((repo / "web" / "node_modules" / ".pnpm").glob(
+        "next@*/node_modules/next/dist/compiled/@vercel/og/noto-sans-v*-latin-regular.ttf"))),
+        Path("__missing__"))
     if font.exists():
         data = "data:font/ttf;base64," + base64.b64encode(font.read_bytes()).decode()
         fr = req("POST", "/assets", {"scope": "project", "projectId": pid,
