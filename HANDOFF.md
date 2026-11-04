@@ -3,7 +3,7 @@
 > 更新时间：**2026-11-04 深夜（本地，darwin）· 第六次刷新＝B9 中途交接（换模型继续）**· R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；2026-11-03 专家审查的 **P0 Gate 全部关闭**；判官复核（`docs/process/judge-review-2026-11-04.md`）判"未完成"，其后 **B1–B8 共 11 个代码批次已交付并推送，§六 的 #1–#11 与 §三-10（P1-23）已全部闭合**。
 > **⚠️ B9 已本地提交、未推送**：`b9fe124`（产品侧）+ `9804192`（测试/脚本/文档）。推不推由老板决定；接手第一步是按 `docs/process/handoff-prompt-b9.md` §7 第 2 项把 B9 的「仅静态」改动补成实测。
 > 复核基线：最后一个**已提交代码** = `36411bf`（其后只有 docs 刷新提交，哈希会变，别拿它当基线）；B9 的工作树改动逐条见 §0.0 的 B9 行与 `docs/process/handoff-prompt-b9.md` §5。判官之后的批次依次是 `7d5b6e4`（B1 删除面）→ `9dfdff9`（B2 fps 端到端）→ `dbc208a`（B3 422 信封）→ `fb15d58`（B4 交付归属/QA 链序号）→ `5c4c727`（docs 刷新）→ `a324415`（**B5** 安全面/原子写/版本链/错误可见性）→ `63d37c0`（**B6** 快照封印/撤销前置态/404）→ `8ca3e01`（**15s+40s 原帧 golden**）→ `74f85da`（docs 刷新）→ `7b06432`（**判官 #6** 100 场景有效重测）→ `77c1ab5`（**判官 #10** 文档一致性守卫）→ `e896a78`（判官 #9 污染面 fail-closed 闸门）→ `a8818b9`（B7 自建前置态 builder + 第 14 项守卫）→ **`36411bf`（B8 P1-23 收尾 + 逐端点 happy-path + 第 15 项守卫）= 最后的代码提交**。
-> **实测（2026-11-05，B9 收口批次同一次采集）**：`cd server && uv run pytest tests -q` → **334 passed + 1 skipped + 1 xfailed（collected 336 = unit 296 + integration 33 + BDD 7；B9 交接当晚 168.9s，2026-11-05 dev 服务同跑时 396.5s——渲染级测试与 dev 抢 Chrome 的环境差，不是代码变化）**；`verify_p1_governance.py` → **16 项全 ✓**（新增第 16 项＝验收脚本自删棘轮）；`check_docs_consistency.py` → **PASS**；`EXECUTOR_VERSION=2.14.0`（2.13.0 因 C02 字体 sha 钉；2.14.0 因帧服务端口可配置 + P0-5 E2E 转正）（[server/app/engine/cachekey.py:11](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/cachekey.py#L11)）、preview `1.9.0`（P2-35 字体 CSS 对齐）、迁移登记 **[1,2,3,4,5]**（5=P2-09 三个索引转真 UNIQUE）、`foreign_keys=ON`；tsc 干净；ruff **352**（`cd server && uv run ruff check .` 口径；仓库根同一命令是 **421**，差异来自 `scripts/` 不继承 `line-length=110`，报数字必须写清 cwd）；`routes.py` 里 **0 个 `payload: dict`**；`--select F821` **0 处**（B9 收口删掉了 `artifacts.py` 的 0 调用者死函数 `node_output_hashes`，它引用了未导入的 `select`）。
+> **实测（2026-11-05，B9 收口整夜终验同一次采集）**：`cd server && uv run pytest tests -q` → **346 passed ×2（collected 346 = unit 306 + integration 33 + BDD 7；两轮 342.8s / 366.9s，dev 停跑无环境 skip，0 skipped 0 xfailed）**（B9 交接口径 334+1+1 的 xfail 是 P0-5 E2E，2026-11-05 转正后并入 passed；两轮后生产库计数 11 不变）；`verify_p1_governance.py` → **16 项全 ✓**（新增第 16 项＝验收脚本自删棘轮）；`check_docs_consistency.py` → **PASS**；`EXECUTOR_VERSION=2.14.0`（2.13.0 因 C02 字体 sha 钉；2.14.0 因帧服务端口可配置 + P0-5 E2E 转正）（[server/app/engine/cachekey.py:11](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/cachekey.py#L11)）、preview `1.9.0`（P2-35 字体 CSS 对齐）、迁移登记 **[1,2,3,4,5]**（5=P2-09 三个索引转真 UNIQUE）、`foreign_keys=ON`；tsc 干净；ruff **352**（`cd server && uv run ruff check .` 口径；仓库根同一命令是 **421**，差异来自 `scripts/` 不继承 `line-length=110`，报数字必须写清 cwd）；`routes.py` 里 **0 个 `payload: dict`**；`--select F821` **0 处**（B9 收口删掉了 `artifacts.py` 的 0 调用者死函数 `node_output_hashes`，它引用了未导入的 `select`）。
 > 数据现状（**2026-11-05 §7-3 残留清理执行后的实测**）：**DB 11 个项目、全部 root 目录都存在 / 10 个目录 1.5GB**（`.acceptance` 空）；draft **46** 条（37 条未填 + 9 条活，**105 条僵尸已按「root 已不存在」判据回收**）；`retry_wait` 作业 **12 条**——B9 查清的 **8 条 rumor-39s + 3 条演示 188** 性质不变（「等人工门」的正常态，不是垃圾），另 1 条（job#147/run335）是 2026-11-05 凌晨 `smoke_m1` 在 rumor-39s 上留下的同性质条目，也**不动**（72h 心跳策略会在启动时自然收，见 `jobs.expire_parked`）；`params_snapshot` 非空 **0 行**；演示项目 docrevision 跑前跑后一致：174=3 / 188=28 / 211=37 / 227=58（清理后复核相等）。
 > **残留清理已执行（2026-11-05，老板已点头「按顺序」+ 当晚指令"必须全部做完"）**：删 **14 个验收残留项目**（207/216/223/243/244/245 `golden-5s`、240/246/247/248 `r2-profiles`、241/242 `r2-verify-5s`、250 `r3-audio-v2`、231 审计遗留）——全部走 `DELETE /projects/{id}?confirm=true[&confirm_name=<项目名>]`，其中 207/216/223/243/244/245 回显 `golden-5s`、250 回显 `r3-audio-v2`（与演示同名，保护名单按名匹配，回显机制照 §7.3 口径）；僵尸 draft **105 条**（91 条已知 + 14 条指向刚删项目 root 的同判据条目）。**删前备份** `~/filmflow-backup-20261105-pre-b9-cleanup.db`（33.4MB）、删前 0 在飞作业、删后计数对照 project 25→11 / draft 151→46 / 磁盘 2.3GB→1.5GB；演示项目 docrevision 计数删除前后逐一相等。
 > **换模型接手时先读 [`docs/process/handoff-prompt-b9.md`](docs/process/handoff-prompt-b9.md)（B9 中途交接的完整 prompt：角色/硬约束/当前状态/已改逐条/没做完的三件/队列/12 个坑/汇报格式/停止条件）**，再读本文 §0.0（压缩后接续：已交付表 + 未闭清单 + 停在哪儿）、§0.5、§0.6、§0.6.1A/B（破坏性语义：A = B1–B6 批次，B = 2026-11-03 累积批次）、§0.7（运维坑）、§5、§6.5；再读 `docs/process/judge-review-2026-11-04.md`、`AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
@@ -44,6 +44,15 @@
 - **P1-08/P1-18 UI 实测通过**（新脚本 `scripts/e2e_b9_ui.py`，真键盘输入）：双上下文改同一项目时间轴，后保存方吃到 409 且横幅渲染**3 条字段级 diff**（`$.scenes[0].text 服务端 初始文案。甲的改动。→本地 初始文案。乙的冲突改动。` 等，`data-testid="timeline-conflict-diff"`）；`/audio` 页「已授权」默认未勾选。**脚本踩坑入账**：派生 timeline 场景只有 ~2s，追加一个字就 `E_SCENE_READ_OVERFLOW` 409，headless 下 `window.confirm` 被自动 dismiss → 永不重试、版本推不动——脚本播种 6s 场景后再测。
 - `cleanup_projects.py --stale-drafts` 报告模式：僵尸 draft **92 条**（root 已不存在；比交接口径 91 多 1，删除前逐条核对）；`--stale-jobs --hours 72` 报告模式：**0 条**（11 条 `retry_wait` 心跳都在 72h 内，72h 策略不会动到"等人工门"的正常作业）。
 - 一次性事件入账：e2e 首跑期间 dev API 曾整体无响应约 1–2 分钟（FrameServer `POST /done` 到达后自行恢复，`/api/health` 超时 → 200；重启后未能复现，保留观察）。
+
+**B9 收口整夜（2026-11-05，队列 §7 第 1–4 项全部完成，8 个提交 `1982bfc → cc1f450`，详见 `docs/process/b9-close-report.md`）**：
+- **§7-1/§7-2**：F821 清零；golden 5s 原帧完整闭环（环境指纹入报告 + 自删修复）；smoke_m1 93 边；r3_qa 6 步；**P1-08/P1-18 UI 实测**（`scripts/e2e_b9_ui.py`：409 横幅渲染 3 条字段级 diff、/audio 默认未勾选）。
+- **§7-3**：9 个验收脚本全接 Cleanup（棘轮 0/0，camera 实跑 PASS）；**残留清理执行**——14 项目（全部走删除端点回显机制）+ 105 僵尸 draft，25→11 项目 / 2.3GB→1.5GB，演示 docrevision 零变化，备份 `~/filmflow-backup-20261105-pre-b9-cleanup.db`。
+- **B9 收口第三件**：`FILMFLOW_FRAME_PORT` 可配置（默认仍 8787）+ 锁名归一化 + **P0-5 渲染级 E2E 转正**（`1 passed in 241.12s`，dev 同跑隔离环境真渲染 96→108 帧）；`EXECUTOR_VERSION=2.14.0`。
+- **P1-13 闭合**：final 档位全字段比对（crf/preset）、caps 只许长大（快照 caps ⊄ 当前即 409）、params 非空才比对；快照补 caps/params 字段（不进 doc_snapshot_sha，历史快照缺省即不比对）。
+- **P2 ×7**：audit limit 下推、恒真断言×2（揭开 **F03 失败不落 frame_report.json 的证据灭失缺陷**，已修）、同 Run 交付防重入、门继承限同 workflow（P2-01 真越权面）、三个索引转真 UNIQUE（**迁移 5**，生产库 0 重复已验）、字体 CSS 对齐（`preview-1.9.0`）。
+- **P1-20/21**：CI 首版（unit+BDD+ruff+tsc；渲染级刻意留本机，理由在 workflow 注释）+ `scripts/bootstrap_fresh_clone.sh`（本机 READY exit=0）。
+- **终验**：pytest **346 passed ×2**（342.8s/366.9s，0 skip 0 xfail）；治理 **16 项全 ✓**（迁移登记 [1,2,3,4,5]）；文档守卫 PASS；tsc 干净；ruff **349**（`cd server` 口径）/ **417**（仓库根 `ruff check .`＝server+scripts+根级 py）；生产库 11 项目恒定。**新发现真缺陷 7 个全部已修**（清单见 b9-close-report §四）；FR-40/41 按交接 §9 停止条件等老板点头，未开工。
 > 注：同一条 `pytest tests -q` 在 B5 之前是 273 项通过 + 1 跳过 + 1 失败——那个 skip 是 [server/tests/unit/test_p1_foundations.py:174](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L174)「8787 已被 dev 服务占用则跳过」，取决于当时有没有 F01 在跑，不是代码变化。申报计数时先看这类环境门控。
 
 **还没做（别当成已完成，按此顺序继续）**
@@ -89,7 +98,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 > 含收敛判据、先证伪再建设的顺序、每轮循环协议、反作弊条款与收尾产物要求。
 
 ```bash
-cd server && uv run pytest tests -q                       # 334 passed + 1 skipped + 1 xfailed（collected 336 = unit 296 + integration 33 + BDD 7，168.9s）
+cd server && uv run pytest tests -q                       # 346 passed（collected 346 = unit 306 + integration 33 + BDD 7；2026-11-05 两轮 342.8s / 366.9s，dev 停跑无环境 skip，0 skipped 0 xfailed）
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -303,7 +312,7 @@ uv run --project server python scripts/verify_p1_governance.py
 12. 版本链：`/docs/{kind}/versions` 输出 `truncated`/`keptFirst`，裁上限后 v1 仍可恢复（P1-11/B5）。
 14. **验收零演示污染**（P1-19/§六 #9，B7）：静态扫 `scripts/*.py`——出现演示 id 即红、会写状态却没有自建入口即红（判据在 `_acceptance.audit_script_pollution()`，与 `test_acceptance_pollution.py` 共用，避免守卫和测试两头漂移）；运行时用真演示 id 探针证明 `require_scratch_project()` 真拒绝；最后要求 `~/…/filmflow-projects/.acceptance/` **没有残留目录**（自建项目必须用完即删）。
 
-实测输出（**2026-11-04，B8 之后**）：**15 项全 ✓** + `PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）`；（2026-11-04 那次是 15 项、EXECUTOR=2.12.0、迁移登记 [1, 2, 3, 4]；现值见 §0.0 实测行）跑前先按 §0.7 重启服务（不是 `--reload`）。
+实测输出（**2026-11-04，B8 之后**）：**15 项全 ✓** + `PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）`（2026-11-04 那次是 15 项、EXECUTOR=2.12.0、当时登记到 4 号迁移；现值见 §0.0 实测行：16 项、EXECUTOR=2.14.0、迁移登记 [1, 2, 3, 4, 5]）跑前先按 §0.7 重启服务（不是 `--reload`）。
 **仍然没覆盖的（判官 §五-1 的同类风险）**：文档数字漂移由 `check_docs_consistency.py` 守，但**叙述性文字**（把已完成项再写成未做）机检管不了；`render.profile.json`/`caps_json`/`_alignment` 仍未进交付门禁比对。时间轴性能与异步失败可见性已各有专属脚本（`e2e_timeline_100.py`、`e2e_error_visibility.py`）。新加的 `scripts/e2e_error_visibility.py` 补的正是第三条，并已经抓到 `GET /runs/{id}/report` 未知 Run 返 500 的真缺陷（已修成 404）。
 
 ### 0.7 运维、复现与本轮踩过的坑
@@ -388,7 +397,7 @@ uv run --project server python scripts/verify_p1_governance.py
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **334 passed + 1 skipped + 1 xfailed（collected 336 = unit 296 + integration 33 + BDD 7，168.9s）**；integration 已隔离（独立临时 uvicorn/HOME/workspace）。注意 [test_p1_foundations.py:174](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L174) 在有 F01 占用 `:8787` 时会 skip，计数会随之变化 |
+| 测试 | **346 passed（collected 346 = unit 306 + integration 33 + BDD 7；2026-11-05 两轮 342.8s / 366.9s，dev 停跑无环境 skip，0 skipped 0 xfailed）**；integration 已隔离（独立临时 uvicorn/HOME/workspace）。注意 [test_p1_foundations.py:174](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L174) 在有 F01 占用 `:8787` 时会 skip，计数会随之变化 |
 | 本轮 P1 治理 | master `68627d1..9bc0f95`（9 提交）；**未打新 tag** |
 | 判官复核 + B1–B8 | `07f9487` 判官报告 → `7d5b6e4` B1 → `9dfdff9` B2 → `dbc208a` B3 → `fb15d58` B4 → `5c4c727` docs → `a324415` B5 → `63d37c0` B6 → `8ca3e01` golden → `74f85da` docs → `7b06432` #6 → `77c1ab5` #10 → `e896a78` #9 污染面 → `a8818b9` B7 → **`36411bf` B8（P1-23 收尾）**；全部已推 public；`044ff59..280cd7f` 是专家整夜 11 提交（结论被推翻） |
 | 公开仓库 | `git@github.com:leechunwoo0815/filmflow`（master 已同步；公钥已配） |
@@ -897,7 +906,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
 - [x] FR-28 16:9+9:16+SRT+封面+QC+zip；R2.5 5s 26.2s / 40s 190.0s（2.8.0 5s 24.1s）
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
-- [x] 102 tests（R2.5 收口时；**当前 collected 336 = unit 296 + integration 33 + BDD 7，实跑 334 passed + 1 skipped + 1 xfailed（collected 336 = unit 296 + integration 33 + BDD 7，168.9s）**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
+- [x] 102 tests（R2.5 收口时；**现值 346 passed（collected 346 = unit 306 + integration 33 + BDD 7；2026-11-05 两轮 342.8s / 366.9s，dev 停跑无环境 skip，0 skipped 0 xfailed）**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
