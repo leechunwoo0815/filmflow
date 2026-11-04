@@ -1,5 +1,9 @@
-"""R2.5 FR-28 验收：16:9+9:16、SRT、双封面、QC、manifest/rights、zip。"""
+"""R2.5 FR-28 验收：16:9+9:16、SRT、双封面、QC、manifest/rights、zip。
+
+    --fps 23.976 --duration 2   # 判官 P0-2：NTSC 真实出片端到端（两画幅必须同帧网格）
+"""
 from __future__ import annotations
+import argparse
 import base64
 import json
 import subprocess
@@ -54,6 +58,15 @@ def probe(path: Path) -> dict:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fps", default="24", help='交付帧率：24/25/30 或 NTSC "23.976"/"24000/1001"')
+    ap.add_argument("--duration", type=float, default=5.0)
+    args = ap.parse_args()
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
+    from app.engine.fpscalc import frames_for, norm_fps
+    fps = norm_fps(args.fps)
+    duration = args.duration
     if httpx.get(f"{BASE}/health", timeout=3, trust_env=False).status_code != 200:
         raise SystemExit("API 未就绪")
     voice, music = Path("/tmp/voice.wav"), Path("/tmp/music.wav")
@@ -63,12 +76,13 @@ def main() -> int:
                             f"sine=frequency={freq}:duration={dur}", "-ac", "1",
                             "-ar", "48000", str(p)], check=True)
     styles = req("GET", "/styles?chips=可生产&family=print&limit=5").json()["items"]
-    d = req("POST", "/drafts", {"name": "r2_5-delivery", "step": 1}).json()
+    # 项目名带唯一后缀：与演示项目同名会让删除保护无法区分（保护名单按精确名匹配）
+    d = req("POST", "/drafts", {"name": f"delivery-verify-{int(time.time())}", "step": 1}).json()
     root = ROOT / f"r2_5-delivery-{d['id']}"
     root.mkdir(parents=True, exist_ok=True)
     req("PATCH", f"/drafts/{d['id']}", {"step": 5, "payload": {
         "root": str(root), "copy": "风从纸上起。纸不动，风先动。",
-        "profile": {"width": 1920, "height": 1080, "fps": 24, "duration": 5.0},
+        "profile": {"width": 1920, "height": 1080, "fps": fps, "duration": duration},
         "pick": {"primary": styles[0]["id"], "alternates": [], "reason": "delivery"}}})
     m = req("POST", f"/drafts/{d['id']}/materialize", {}).json()
     rid, pid = m["run_id"], m["project"]["id"]
@@ -130,9 +144,17 @@ def main() -> int:
     m16 = probe(root / "out/deliveries" / str(rid) / "master_16x9.mp4")
     m9 = probe(root / "out/deliveries" / str(rid) / "master_9x16.mp4")
     print("masters", m16, m9, flush=True)
-    assert (m16["width"], m16["height"], m16["fps"], m16["audio"]) == (1920, 1080, 24, True)
-    assert (m9["width"], m9["height"], m9["fps"], m9["audio"]) == (1080, 1920, 24, True)
-    assert abs(m16["duration"] - 5.0) <= 0.05 and abs(m9["duration"] - 5.0) <= 0.05
+    assert (m16["width"], m16["height"], m16["audio"]) == (1920, 1080, True)
+    assert (m9["width"], m9["height"], m9["audio"]) == (1080, 1920, True)
+    # 判官 P0-2：两个画幅必须来自同一帧网格——曾经 9:16 用 int(fps) 截断，23.976 下两部片子
+    assert abs(m16["fps"] - fps) <= 0.01, (m16, fps)
+    assert abs(m9["fps"] - fps) <= 0.01, (m9, fps)
+    tol = max(0.05, 1.0 / fps + 0.01)
+    assert abs(m16["duration"] - duration) <= tol, (m16, duration)
+    assert abs(m9["duration"] - duration) <= tol, (m9, duration)
+    assert abs(m16["duration"] - m9["duration"]) <= 0.5 / fps + 1e-6, (m16, m9)
+    print(f"两画幅同帧网格：fps={fps} 期望帧数={frames_for(duration, fps)} "
+          f"16:9={m16['duration']}s@{m16['fps']} 9:16={m9['duration']}s@{m9['fps']}", flush=True)
     srt = (root / "out/deliveries" / str(rid) / "captions.zh.srt").read_text(encoding="utf-8")
     assert "风从纸上起。" in srt and "纸不动，风先动。" in srt
     assert all(len(line) <= 16 for line in srt.splitlines() if not line.isdigit() and "-->" not in line)
@@ -149,7 +171,7 @@ def main() -> int:
         assert {"master_16x9.mp4", "master_9x16.mp4", "captions.zh.srt", "cover_16x9.jpg",
                 "cover_9x16.jpg", "manifest.json", "qc.json", "rights.json", "README.txt"} <= inner
         assert (Path(td) / "master_9x16.mp4").exists()
-    print("PASS: R2.5 FR-28 交付 v1 验收通过")
+    print(f"PASS: R2.5 FR-28 交付 v1 验收通过（fps={args.fps}→{fps}，duration={duration}）")
     return 0
 
 

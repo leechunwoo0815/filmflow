@@ -77,10 +77,10 @@ def _read_json(path: Path) -> dict:
 
 
 def _normalize_profile(profile: dict) -> dict:
-    from ..engine.fpscalc import frames_for, norm_fps  # P1-12
+    from ..engine.fpscalc import norm_fps, profile_frames  # P1-12
     fps = norm_fps(profile.get("fps") or 24)
     duration = float(profile.get("duration") or 0)
-    frames = int(profile.get("frames") or frames_for(duration, fps))
+    frames = profile_frames(profile)
     return {"width": int(profile.get("width") or 1920), "height": int(profile.get("height") or 1080),
             "fps": fps, "duration": duration, "frames": frames}
 

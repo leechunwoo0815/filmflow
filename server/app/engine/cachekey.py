@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.10.0"  # P1-12：非整数 fps 帧网格口径统一（fpscalc），旧缓存自动失效
+EXECUTOR_VERSION = "2.11.0"  # P1-12：非整数 fps 帧网格口径统一（fpscalc），旧缓存自动失效
 
 
 def canonical(obj) -> str:

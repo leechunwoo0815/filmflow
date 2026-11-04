@@ -14,7 +14,7 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from ..config import detect_chrome
-from ..engine.fpscalc import fps_rational, norm_fps
+from ..engine.fpscalc import fps_rational, norm_fps, profile_frames, time_at
 from ..engine.scene.compiler import compile_scene
 from ..models import Approval, Artifact, Asset, Job, NodeRun, Project, Run
 from . import assets as assets_svc
@@ -206,9 +206,8 @@ def _variant_programs(ctx: pv.PreviewContext, variant: Variant) -> tuple[list[di
 async def _render_variant_frames(job_id: int, ctx: pv.PreviewContext, variant: Variant,
                                  frames_dir: Path) -> dict:
     programs, profile = _variant_programs(ctx, variant)
-    fps = int(ctx.profile.get("fps") or 24)
-    duration = float(ctx.profile.get("duration") or 0)
-    frames = round(duration * fps)
+    fps = norm_fps(ctx.profile.get("fps") or 24)
+    frames = profile_frames(ctx.profile)
     payload = {"programs": programs, "transitions": ctx.transitions,
                "width": variant.width, "height": variant.height, "scale": 1,
                "fontCss": ctx.font_css}
@@ -216,7 +215,7 @@ async def _render_variant_frames(job_id: int, ctx: pv.PreviewContext, variant: V
     async with pv.PreviewRenderer() as renderer:
         await renderer.init(payload)
         for i in range(frames):
-            png = await renderer.frame(i / fps)
+            png = await renderer.frame(time_at(i, fps))
             (frames_dir / f"{i:06d}.png").write_bytes(png)
             if i % 20 == 0:
                 from ..db import engine as db_engine

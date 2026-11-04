@@ -1108,8 +1108,9 @@ async def f05(ctx):
     expect_frames = profile["frames"] or frames_for(profile["duration"], profile["fps"])
     if abs(ff["frames"] - expect_frames) > 1:
         raise RuntimeError(f"成片帧数 {ff['frames']} ≠ {expect_frames}")
-    if abs(ff["duration"] - profile["duration"]) > 0.02:
-        raise RuntimeError(f"时长 {ff['duration']}s 偏差 > 0.02s")
+    half_frame = 0.5 / _norm_fps(profile.get("fps") or 24)
+    if abs(ff["duration"] - profile["duration"]) > max(0.02, half_frame + 1e-6):
+        raise RuntimeError(f"时长 {ff['duration']}s 偏差超过半帧 {half_frame:.4f}s")
     if (ff["width"], ff["height"]) != (profile["width"], profile["height"]):
         raise RuntimeError(f"分辨率 {ff['width']}x{ff['height']} 不符")
     # Y 平面 SSIM（ffmpeg ssim 滤镜，抽 9 帧）

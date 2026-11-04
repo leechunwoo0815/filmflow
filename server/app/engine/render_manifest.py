@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-from .fpscalc import FPS_TOL, frames_for, norm_fps
+from .fpscalc import FPS_TOL, frames_for, norm_fps, profile_frames
 from .scene.canonical import content_hash
 
 MANIFEST_SCHEMA = "filmflow.render/1"
@@ -53,7 +53,7 @@ def scene_hash(program: dict, tokens_sha: str, engine_sha: str, font_sha: str,
 def build_plan(scenes: list[dict], programs: dict[str, dict], transitions: list[dict],
                profile: dict, tokens_sha: str, engine_sha: str, font_sha: str) -> list[dict]:
     fps = norm_fps(profile.get("fps") or 24)
-    frames = int(profile.get("frames") or frames_for(profile.get("duration") or 0, fps))
+    frames = profile_frames(profile)
     plan = []
     for r in scene_ranges(scenes, fps, frames):
         prog = programs.get(r["id"])
@@ -127,7 +127,7 @@ def dirty_ranges(plan: list[dict], frames: int) -> list[tuple[int, int]]:
 
 def build_manifest(run_id: int, profile_name: str, profile: dict, plan: list[dict],
                    ranges: list[tuple[int, int]], profile_spec: dict | None = None) -> dict:
-    frames = int(profile.get("frames") or 0)
+    frames = profile_frames(profile)
     # ranges 可能是 (start,end) 或 (start,end,ms)
     rendered = sum(int(r[1]) - int(r[0]) for r in ranges)
     return {

@@ -65,8 +65,9 @@ def _group_sentences(count: int, scenes: int) -> list[list[int]]:
 
 def build_timeline_doc(script: dict, profile: dict) -> dict:
     """由 script.doc + profile 生成确定性场景骨架；场景只带 source_span，不生成文案。"""
+    from ..engine.fpscalc import frames_for, norm_fps
     sentences = script.get("sentences") or []
-    fps = int(profile.get("fps") or 24)
+    fps = norm_fps(profile.get("fps") or 24)
     duration = float(profile.get("duration") or 0)
     if duration <= 0:
         chars = sum(len(s.get("text", "")) for s in sentences)
@@ -97,7 +98,7 @@ def build_timeline_doc(script: dict, profile: dict) -> dict:
         t = end
     return {
         "schema": SCHEMAS["timeline"], "fps": fps, "duration": round(t, 3),
-        "frames": round(t * fps), "scenes": scenes, "events": events,
+        "frames": frames_for(t, fps), "scenes": scenes, "events": events,
         "tracks": [{"id": "V1", "type": "video", "clips": clips}],
         "layout": {"safeArea": {"w": 0.05, "h": 0.08}, "grid": {"cols": 12}},
     }

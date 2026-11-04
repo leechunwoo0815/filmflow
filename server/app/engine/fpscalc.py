@@ -27,6 +27,22 @@ _RATIONAL_ALIASES: dict[str, Fraction] = {
 }
 
 
+# NTSC 十进制写法 → 精确有理数：用户写 23.976 就是要 24000/1001，
+# 否则帧网格按 23.976、ffmpeg 按 24000/1001，两者每帧差 2.4e-5·i，长片累积可见。
+_NTSC_SNAP: dict[float, Fraction] = {
+    23.976: Fraction(24000, 1001), 29.97: Fraction(30000, 1001),
+    47.952: Fraction(48000, 1001), 59.94: Fraction(60000, 1001),
+    119.88: Fraction(120000, 1001),
+}
+
+
+def _snap(f: float) -> float:
+    for dec, frac in _NTSC_SNAP.items():
+        if abs(f - dec) <= 1e-4:
+            return float(frac)
+    return f
+
+
 def norm_fps(value) -> float:
     """fps 归一：数字、十进制字符串、'24000/1001' 有理数字符串都接受。"""
     if isinstance(value, str):
@@ -55,13 +71,26 @@ def norm_fps(value) -> float:
             raise ValueError(f"fps 不是数字：{value}") from e
     if not fps > 0 or fps != fps or fps == float("inf"):
         raise ValueError(f"fps 必须大于 0：{value}")
-    return fps
+    return _snap(fps)
 
 
 def frames_for(duration: float, fps) -> int:
     """时长 → 帧数：round(duration * fps)。全项目唯一入口。"""
     f = norm_fps(fps)
     return max(0, int(round(float(duration or 0) * f)))
+
+
+def profile_frames(profile: dict) -> int:
+    """档位的帧数：有 duration 就按 round(duration*fps) 现算，不信任历史持久化的 frames。
+
+    旧数据里 frames 可能是 int(fps) 截断后算出来的（23.976→23），沿用会让 16:9 与 9:16
+    帧数不同、增量 manifest 与实渲帧数不同；只在没有 duration 的旧档案上退回持久值。
+    """
+    fps = norm_fps(profile.get("fps") or 24)
+    duration = profile.get("duration")
+    if duration in (None, "", 0):
+        return int(profile.get("frames") or 0)
+    return frames_for(float(duration), fps)
 
 
 def frame_at(t: float, fps) -> int:
@@ -76,10 +105,22 @@ def time_at(index: int, fps) -> float:
     return (int(index) if index == index else 0) / f
 
 
+# 交付标准帧率：整数 24/25/30/50/60 + 1001 系 NTSC 率（含 23.976/29.97/59.94/119.88/47.952）
+def is_delivery_fps(fps, tol: float = FPS_TOL) -> bool:
+    """final 档位允许的帧率：整数标准率或 1001 系有理数率，容差内匹配。"""
+    f = norm_fps(fps)
+    if any(abs(f - i) <= tol for i in (24, 25, 30, 50, 60)):
+        return True
+    for num, den in ((24000, 1001), (30000, 1001), (48000, 1001), (60000, 1001), (120000, 1001)):
+        if abs(f - num / den) <= tol:
+            return True
+    return False
+
+
 def fps_rational(fps) -> str:
     """ffmpeg -framerate/-r 的精确字符串：NTSC 率出有理数，其余出十进制。"""
     f = norm_fps(fps)
-    frac = _RATIONAL_ALIASES.get(repr(f))
+    frac = next((exact for dec, exact in _NTSC_SNAP.items() if abs(f - dec) <= 1e-4), None)
     if frac is None:
         frac = Fraction(f).limit_denominator(1001)
     if frac.denominator == 1:

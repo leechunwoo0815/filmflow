@@ -21,8 +21,9 @@ class TimelineOpError(Exception):
         self.details = details or {}
 
 
-def _fps(doc: dict) -> int:
-    return int(doc.get("fps") or 24)
+def _fps(doc: dict) -> float:
+    from ..engine.fpscalc import norm_fps
+    return norm_fps(doc.get("fps") or 24)
 
 
 def _required(text: str) -> float:

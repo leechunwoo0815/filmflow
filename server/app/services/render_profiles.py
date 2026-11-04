@@ -9,7 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from ..engine.fpscalc import FPS_TOL, frames_for, norm_fps
+from ..engine.fpscalc import FPS_TOL, frames_for, is_delivery_fps, norm_fps, profile_frames
 from ..errors import ApiError, ErrorCode
 
 SCHEMA = "filmflow.render-profile/1"
@@ -68,7 +68,7 @@ def _tier(name: str, value: dict | None, default: dict) -> dict:
     except ValueError as e:
         raise ApiError(ErrorCode.E_VALIDATION, f"{name} 档位 fps 无效：{e}")
     out["preset"] = str(out.get("preset") or default["preset"])
-    if out["width"] <= 0 or out["height"] <= 0 or out["fps"] <= 0:
+    if out["width"] <= 0 or out["height"] <= 0 or not 0 < out["fps"] <= 240:
         raise ApiError(ErrorCode.E_VALIDATION, f"{name} 档位尺寸/fps 必须大于 0")
     if out["width"] % 2 or out["height"] % 2:
         raise ApiError(ErrorCode.E_VALIDATION, f"{name} 档位宽高必须是偶数（H.264）")
@@ -113,10 +113,12 @@ def resolve(project_root: str | Path, project_profile: dict | None = None,
                         f"render.profile.json 不能改成 {desired}")
     out["final"] = _tier("final", out["final"], DEFAULT_PROFILES["final"])
     fw, fh, ffps = out["final"]["width"], out["final"]["height"], out["final"]["fps"]
-    # 23.976/29.97 是广播标准交付帧率；低于 23.9 的才视为未达 final 门槛
-    if not allow_low_final and (fw * fh < 1920 * 1080 or ffps < 23.9):
+    # final 帧率必须落在交付标准率上（整数 24/25/30/50/60 与 1001 系 NTSC 率），
+    # 不用"低于 23.9 就放行"这种把 23.9/23.95 也当合法的宽松口径
+    if not allow_low_final and (fw * fh < 1920 * 1080 or not is_delivery_fps(ffps)):
         raise ApiError(ErrorCode.E_VALIDATION,
-                       f"final 不得低于 1080p/23.976（当前 {fw}×{fh}/{ffps}）")
+                       f"final 需 1080p 且帧率为交付标准率（24/25/30/50/60 或 "
+                       f"23.976/29.97/59.94）当前 {fw}×{fh}/{ffps}")
     out["source"] = source
     return out
 
@@ -136,7 +138,7 @@ def ensure_final_ready(session, run, project_root: str | Path, imported: bool,
                        status=409)
     # P1-12：fps 用容差比较（manifest 可能存 23.976，profile 存 24000/1001 归一后的浮点）
     if abs(float(manifest.get("fps") or 0) - float(profile.get("fps") or 0)) > 0.01 or \
-            int(manifest.get("frames") or 0) != int(profile.get("frames") or 0):
+            int(manifest.get("frames") or 0) != profile_frames(profile):
         raise ApiError(ErrorCode.E_FINAL_REQUIRED,
                        "final manifest 的 fps/frames 与当前项目 profile 不一致", status=409)
     if int(manifest.get("run_id") or 0) != run.id:

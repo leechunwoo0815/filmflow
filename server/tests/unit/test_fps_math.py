@@ -25,9 +25,9 @@ from app.services import render_profiles as rp
 
 def test_norm_fps_accepts_float_and_rational_and_rejects_bad():
     assert norm_fps(24) == 24.0
-    assert norm_fps("23.976") == pytest.approx(23.976)
+    assert norm_fps("23.976") == pytest.approx(24000 / 1001, abs=1e-9)  # 十进制写法吸附到精确有理数
     assert norm_fps("24000/1001") == pytest.approx(23.976023976, abs=1e-6)
-    assert norm_fps(29.97) == pytest.approx(29.97)
+    assert norm_fps(29.97) == pytest.approx(30000 / 1001, abs=1e-9)
     for bad in (0, -5, "abc", None, ""):
         with pytest.raises(Exception):
             norm_fps(bad)
@@ -67,14 +67,14 @@ def test_fps_rational_outputs_exact_strings():
 def test_tier_keeps_fractional_fps():
     out = rp._tier("final", {"width": 1920, "height": 1080, "fps": 23.976,
                              "crf": 17}, rp.DEFAULT_PROFILES["final"])
-    assert out["fps"] == pytest.approx(23.976)
+    assert out["fps"] == pytest.approx(23.976, abs=1e-4)
 
 
 def test_resolve_keeps_fractional_project_fps():
     resolved = rp.resolve(_TMPROOT, {"width": 1920, "height": 1080,
                                      "fps": 23.976, "duration": 5.0},
                           allow_low_final=False)
-    assert resolved["final"]["fps"] == pytest.approx(23.976)
+    assert resolved["final"]["fps"] == pytest.approx(23.976, abs=1e-4)
     assert resolved["draft"]["fps"] == 12
     assert resolved["review"]["fps"] == 24
 
@@ -92,7 +92,7 @@ def test_final_gate_admits_ntsc_but_blocks_low_fps():
 def test_normalize_project_profile_frames_uses_frames_for():
     prof = rp.normalize_project_profile(
         {"width": 1920, "height": 1080, "fps": "23.976", "duration": 40.0})
-    assert prof["fps"] == pytest.approx(23.976)
+    assert prof["fps"] == pytest.approx(23.976, abs=1e-4)
     assert prof["frames"] == 959
     prof2 = rp.normalize_project_profile({"width": 1920, "height": 1080,
                                           "fps": 24, "duration": 5.0})
@@ -145,3 +145,55 @@ def test_qc_fps_tolerance_matches_probe_rounding():
     # profile 配 23.976 → 必须在 0.01 容差内相等
     assert abs(23.976 - norm_fps("24000/1001")) <= 0.01
     assert math.isclose(round(24000 / 1001, 3), 23.976, abs_tol=0.0001)
+
+
+def test_profile_frames_ignores_truncated_persisted_value():
+    """23.976 项目里被 int() 截断写进文档的 frames 不得再生效。"""
+    from app.engine.fpscalc import profile_frames
+    stale = {"fps": 23.976, "duration": 40.0, "frames": 920}     # 23fps 截断产物
+    assert profile_frames(stale) == 959
+    assert profile_frames({"fps": 24, "duration": 5.0, "frames": 120}) == 120
+    assert profile_frames({"fps": 24, "frames": 48}) == 48        # 无 duration 时退回持久值
+
+
+def test_delivery_grid_is_single_valued_across_aspect_ratios():
+    """16:9 与 9:16 共用同一帧网格：帧数与末帧时间由 duration+fps 现算，不再被 int(fps) 分叉。"""
+    from app.engine.fpscalc import profile_frames, time_at
+    prof = {"fps": 23.976, "duration": 40.0}
+    frames = profile_frames(prof)
+    assert frames == 959, frames                       # 旧 int(23.976)=23 口径会算成 920
+    assert abs(time_at(0, prof["fps"])) < 1e-9
+    last = time_at(frames - 1, prof["fps"])
+    from fractions import Fraction as _F
+    assert abs(last - (frames - 1) * float(_F(1001, 24000))) < 1e-9, \
+        "帧网格必须与 ffmpeg 的 24000/1001 一致，不能一半按 23.976"
+    assert 39.9 < last < 40.0, last
+    assert profile_frames({"fps": 24, "duration": 5.0}) == profile_frames({"fps": "24/1", "duration": 5.0})
+
+
+def test_final_fps_whitelist_accepts_ntsc_and_rejects_offgrid():
+    """final 帧率门槛放行 NTSC 标准率，拒 23.9/23.95 这类贴阈值值；_tier 另有正数/上界校验。"""
+    import pytest as _pt
+
+    from app.engine.fpscalc import is_delivery_fps
+    from app.errors import ApiError
+    from app.services import render_profiles as rp
+    assert all(is_delivery_fps(v) for v in (24, 25, 30, 50, 60, 23.976, 29.97, 59.94, "24000/1001"))
+    assert not any(is_delivery_fps(v) for v in (23.9, 23.95, 48, 120, 1000, 0.5))
+    base = {"width": 1920, "height": 1080, "crf": 17, "preset": "medium"}
+    for fps in (24, 23.976, "24000/1001"):
+        assert rp._tier("final", {**base, "fps": fps}, rp.DEFAULT_PROFILES["final"])["fps"] > 0
+    for bad in (0, -1, 1000, "abc"):
+        with _pt.raises(ApiError):
+            rp._tier("final", {**base, "fps": bad}, rp.DEFAULT_PROFILES["final"])
+
+
+def test_f05_duration_tolerance_follows_half_frame():
+    """23.976 下半帧 0.02085s > 旧硬编码 0.02s：容差必须按帧率推导，否则合法 NTSC 成片会被 F05 拒。"""
+    from app.engine.fpscalc import FPS_TOL, frames_for
+    fps = 23.976
+    quantization = 0.5 / fps
+    assert quantization > 0.02, "旧固定容差确实小于半帧（这是 F05 的假失败来源）"
+    expected = frames_for(39.5, fps)
+    assert abs(expected / fps - 39.5) <= quantization      # 落在帧网格上的时长可被接受
+    assert FPS_TOL < quantization

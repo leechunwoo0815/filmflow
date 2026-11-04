@@ -87,7 +87,7 @@ def main() -> int:
     if httpx.get(f"{BASE}/health", timeout=3, trust_env=False).status_code != 200:
         raise SystemExit("API 未就绪")
 
-    run_a, pid, root = build_golden_project(args.project, "r2_5-review")
+    run_a, pid, root, _primary = build_golden_project(args.project, "r2_5-review")
     tl = req("GET", f"/projects/{pid}/docs/timeline").json()["content"]
     scenes = [str(s["id"]) for s in tl["scenes"]]
     long_scenes = [s for s in tl["scenes"] if float(s["end"]) - float(s["start"]) >= 8.0]  # _still_times: ≥8s 才 6 帧

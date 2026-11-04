@@ -325,7 +325,8 @@ def analyze(session: Session, project: Project, run_id: int | None = None) -> di
                        suggestions=_node_suggestions(cat, st.node_id),
                        path=f"/canvas?project={project.id}&run={run.id}"))
         motion = _json_artifact(session, run.id or 0, "E06")
-        fps = int(timeline.get("fps") or 24)
+        from ..engine.fpscalc import norm_fps
+        fps = norm_fps(timeline.get("fps") or 24)
         for sr in motion.get("staticRuns") or []:
             f0 = int(sr.get("from") or 0)
             add(_issue("static_too_long", scene_id=_scene_at_frame(scenes, fps, f0),

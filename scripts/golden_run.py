@@ -23,6 +23,9 @@ from PIL import Image, ImageChops
 
 BASE = "http://127.0.0.1:7860/api"
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "server"))
+
+from app.engine.fpscalc import frames_for, norm_fps  # noqa: E402
 FIXTURES = ROOT / "fixtures" / "golden"
 REPORT_DIR = ROOT / "docs" / "reports" / "golden"
 c = httpx.Client(base_url=BASE, timeout=240)
@@ -135,8 +138,8 @@ def _thumb(src: Path, dst: Path) -> None:
     img.save(dst)
 
 
-def build_golden_project(name: str, label: str = "") -> tuple[int, int, Path]:
-    """按 fixtures/golden/<name>/spec.json 建项目并 materialize；返回 (run_id, project_id, root)。
+def build_golden_project(name: str, label: str = "") -> tuple[int, int, Path, str]:
+    """按 fixtures/golden/<name>/spec.json 建项目并 materialize；返回 (run_id, project_id, root, primary)。
 
     P1-19：供 verify_r2_5_review 等验收脚本复用，替代硬编码演示项目 ID。
     """
@@ -150,7 +153,7 @@ def build_golden_project(name: str, label: str = "") -> tuple[int, int, Path]:
         "pick": {"primary": primary, "alternates": [], "reason": "golden"},
         "brief": {"title": spec.get("name", "")}}})
     r = _req("POST", f"/drafts/{d['id']}/materialize", {})
-    return r["run_id"], r["project"]["id"], root
+    return r["run_id"], r["project"]["id"], root, primary
 
 
 def main() -> int:
@@ -166,11 +169,11 @@ def main() -> int:
     spec = json.loads((FIXTURES / args.project / "spec.json").read_text(encoding="utf-8"))
     profile = spec["profile"]
     duration = float(profile["duration"])
-    fps = int(profile["fps"])
-    frames = round(duration * fps)
+    fps = norm_fps(profile["fps"])          # P1-12：验收脚本自己也不能再 int(fps)
+    frames = frames_for(duration, fps)
     if httpx.get(f"{BASE}/health", timeout=3, trust_env=False).status_code != 200:
         raise SystemExit("API 未就绪：先 ./dev.sh")
-    rid, pid, root = build_golden_project(args.project)
+    rid, pid, root, primary = build_golden_project(args.project)
     print(f"golden={args.project} run={rid} project={pid} root={root}", flush=True)
     c.post(f"/runs/{rid}/start")
     _drive(rid, pid)
