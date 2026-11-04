@@ -1,4 +1,6 @@
-"""FR-36 UI 冒烟：资产上传/列表/字体缺字/时间轴插入/引用计数/删除保护。"""
+"""FR-36 UI 冒烟：资产上传/列表/字体缺字/时间轴插入/引用计数/删除保护。
+
+只跑自建 scratch 项目：`--project <id>`（判官 P1-9：原先写死演示 211）。"""
 from __future__ import annotations
 
 import hashlib
@@ -12,12 +14,17 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
 
-from playwright.sync_api import sync_playwright  # noqa: E402
+from playwright.sync_api import sync_playwright
 
 WEB = "http://localhost:3000"
 API = "http://127.0.0.1:7860/api"
-PID = 211
 http = httpx.Client(base_url=API, timeout=120, trust_env=False)
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _acceptance import require_scratch_project
+
+# 判官 P1-9：会插图层/替换资产，绝不能再打在演示项目 211 上
+PID = require_scratch_project(http, Path(__file__).name, sys.argv)
 stamp = str(int(time.time()))
 
 

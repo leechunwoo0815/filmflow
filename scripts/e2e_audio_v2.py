@@ -1,4 +1,7 @@
-"""FR-35 UI 冒烟：Take/A-B/处理/拍点/拼接/响度设置（project 211 / run 266）。"""
+"""FR-35 UI 冒烟：Take/A-B/处理/拍点/拼接/响度设置。
+
+只跑自建 scratch 项目：`--project <id>`（先 `python scripts/_acceptance.py --create audio-e2e` 并上传两条 Take）；
+指向演示项目 211 会被直接拒绝（判官 P1-9）。"""
 from __future__ import annotations
 
 import sys
@@ -8,12 +11,17 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
 
-from playwright.sync_api import expect, sync_playwright  # noqa: E402
+from playwright.sync_api import sync_playwright
 
 WEB = "http://localhost:3000"
 API = "http://127.0.0.1:7860/api"
 http = httpx.Client(base_url=API, timeout=60, trust_env=False)
-PID = 211
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _acceptance import require_scratch_project
+
+# 判官 P1-9：会写 timeline/mix/license，绝不能再打在演示项目 211 上
+PID = require_scratch_project(http, Path(__file__).name, sys.argv)
 
 
 def main() -> int:

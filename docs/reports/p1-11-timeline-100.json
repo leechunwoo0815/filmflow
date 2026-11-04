@@ -9,10 +9,10 @@
  "ops": {
   "count": 30,
   "p50ms": 9.7,
-  "p95ms": 13.3,
-  "maxMs": 33.3
+  "p95ms": 19.3,
+  "maxMs": 46.3
  },
- "loadMs": 951,
+ "loadMs": 1640,
  "renderedSceneNodes": 100,
  "playback": {
   "tcBefore": "00:01:00",
@@ -21,13 +21,13 @@
  },
  "clockRatioPageToWall": 1.0,
  "longTaskCount": 10,
- "longTaskTotalMs": 972,
- "longTaskMaxMs": 101,
+ "longTaskTotalMs": 966,
+ "longTaskMaxMs": 102,
  "rafCallbacksPerWallSecond": 50.6,
  "fpsIsUserFacing": true,
- "clickSelectMs": 10,
+ "clickSelectMs": 13,
  "clickSelectShowsText": true,
- "autosaveEndToEndMs": 775.0,
+ "autosaveEndToEndMs": 758.3,
  "autosaveVersionBumped": true,
  "verdictNeedsVirtualization": false,
  "verdictReasons": [

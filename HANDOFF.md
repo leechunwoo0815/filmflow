@@ -33,7 +33,7 @@
 > **已闭**：#1 删除面（B1）、#2 fps（B2）、#3 422 信封（B3，happy-path 覆盖仍缺）、#4 前半 runId 归属 + 档位漂移 + **后半快照封印**（B4/B6）、#5 QA 真 LIFO + 残缺前置态（B4/B6）、#7 存储型脚本面（B5）、#8 原子写 + 升版 + golden 复跑（B5）、#11 版本链保 v1（B5）、§三-6 异步失败可见（B5，含 `error.tsx` 抓不到的那一整类）。
 1. **判官 §六 只剩 #9 未动，另有 3 条尾巴（按此顺序）**：
    - ~~**#6 / P1-5 「100 场景 60fps」无效测量**~~ ✅ **已重测并出结论**（`scripts/e2e_timeline_100.py` 全量重写：按 `l` 正向播放 + 断言播放头真的前进、ops/autosave 真路径、去恒真断言、页内 `performance.now()` 量选中延迟、加「页内/墙上时钟比」诊断）。两次独立重跑（同一脚本、每次自建自删项目）：100 场景 × 4.0s 全渲染 100 块、首屏 951 / 1640ms（dev 模式首编译抖动）、ops p50 9.7ms / p95 13.3–19.3ms / max 46.3ms、点选响应 10–13ms、autosave 端到端 758–775ms（含页面 700ms 防抖）、播放头 00:01:00→00:06:00（1× 真速、页内/墙上时钟比 1.0）、rAF 两次都是 50.6 次/秒、5s 窗口内 10 个长任务共 966–972ms（最长 101–102ms）。**两次判定一致：暂不虚拟化**（阈值都没踩）。两条保留意见照写：长任务占窗口 ~19%（忙碌但没到阻断线）；rAF 次数是 headless 合成节奏，**不等于用户 vsync 下的成片帧率**，要下「用户体验一定顺」的结论还得 headed 复跑一次。
-   - **#9 / P1-19（唯一还没动的判官项）**：`e2e_takes.py:15 PID=188`、`e2e_audio_v2.py:16 PID=211` 仍写演示项目（判官实测写脏：188 timeline v16–18、211 timeline v31–35，`select count(*) from docrevision where doc_id in (…188,211…)` 现 65 行），`verify_r3_assets/templates/camera/takes/audio_v2` 同；要把"跑完不新增演示 docrevision"做成一键复核的新步骤并迁 `_acceptance`。**已消失的残留**：越权 `template` id 3 已按老板点头经 `DELETE /templates/saved:3` 清除。
+   - **#9 / P1-19（污染面已封死，自建自跑还差 builder）**：`e2e_takes.py:15 PID=188`、`e2e_audio_v2.py:16 PID=211` 仍写演示项目（判官实测写脏：188 timeline v16–18、211 timeline v31–35，`select count(*) from docrevision where doc_id in (…188,211…)` 现 65 行），`verify_r3_assets/templates/camera/takes/audio_v2` 同；**本轮已做**：`scripts/_acceptance.py` 加 `require_scratch_project()`（**fail-closed**：不给 `--project` 就拒绝启动；给了但命中演示 id 或 `is_protected(name)` 也拒绝）与 `--create` 入口；`e2e_takes`/`e2e_audio_v2`/`e2e_assets` 全部接上，`e2e_takes` 还要 `--run`（并校验这些 Run 真属于该项目，见 `_require_own_runs`）。实测：`--project 211/202/216` 分别被拒。**剩下的半件**：这三个脚本现在需要一个「已有 Take/音频/资产状态」的 scratch 项目，而生成那种状态的 builder 还没写，所以它们目前是「安全但要人工喂项目」——把 builder 补上才算 P1-19 收尾。越权 `template` id 3 已按老板点头删除（`DELETE /templates/saved:3`，有审计）。
    - **#10 / P1-23 覆盖面**：`routes.py` 仍有 **31 个 `payload: dict`**（含 `/projects/import`、`/projects/{id}/audio/upload` 落盘无大小/类型校验）；20 个已模型化端点里只有 3 个有 happy-path（`POST /projects`、`gate_decide`、`/runs/{id}/report` 404），判官 #3 要的"两头都测"没补齐。
    - **#4 剩余的小半**：`render.profile.json`/`caps_json`/`params_snapshot` 仍未参与比对。其中 `params_snapshot` 现网**所有 Run 都是空**（`select … where params_snapshot not in ('','{}')` → 0 行），我没写成"已覆盖"；`_alignment` 也仍会回退读当前 `card/alignment.manual.json`（F-DEL-4，判官明写"记录不改"）。
    - ~~**#10 文档清扫**~~ ✅ **已有机检守卫** `scripts/check_docs_consistency.py`：核对 `EXECUTOR_VERSION`、迁移登记 `[1,2,3,4]`、`pytest --collect-only` 用例数、生产库项目数、一键复核步数，并封禁一批**已经反了**的说法（`foreign_keys 仍关闭`、`没有 DELETE /projects 端点`、旧测试数）。它第一次跑就抓出我文档里 9 处漂移。约定：`N passed` 只写当前实测，历史跑分写中文。**机检管不了叙述性文字**（把已完成项再写成未做），那仍靠人读。
@@ -251,7 +251,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 ### 0.6.2 明确没做/没跑（不要当成已完成）
 
 - ~~40s 增量渲染实跑~~ ✅（run 311，9.69%）；~~15s/40s 原帧 golden baseline~~ ✅（**2026-11-04 各自生锚 + 二次独立复核**：15s run 333→334、40s run 335→336，6/6 帧 SSIM=1.000000、pHash 距离 0；锚已入 `fixtures/golden/*/baseline_original/`）。
-- **判官 §六 仍未闭**：#6 **有效重测 100 场景帧率**（现有 60fps 结论作废，是唯一还没动的"结论级"项）、#9 P1-19 剩余脚本（`e2e_takes` 188 / `e2e_audio_v2` 211 仍写脏演示）、#10 文档一致性的自动化守卫（本轮重写过一遍，但仍无脚本防漂移）。
+- **判官 §六 只剩 #9 的一半**：#6（100 场景）与 #10（文档守卫）本轮已完成；#9 的**演示污染面已封死**（`require_scratch_project` + `--project/--run` 校验），剩下的是给 `e2e_takes`/`e2e_audio_v2`/`e2e_assets` 补一个能自建状态的 builder，让它们不必人工喂项目就能跑（详见 §0.0/§6.5）。
 - **已闭（本轮之前列为"没做"的）**：#7 存储型脚本面（Content-Type 白名单 + `:8787` CSP/nosniff + 存 HTML 回归测试）、#8 原子写（`server/app` 内裸写归零 + 升到 2.12.0 + golden 复跑）、#11/§三-11 版本链保 v1、§三-6 异步失败可见、§三-4 残余（残缺前置态可撤销）、#4 后半（快照 run_id/sha/库内封印三道锁）。
 - **判官 §三 残余（小半）**：`render.profile.json`/`caps_json`/`params_snapshot` 仍未参与比对——其中 `params_snapshot` **现网所有 Run 都是空**（`select … where params_snapshot not in ('','{}')` → 0 行），所以我没把它写成"已覆盖"；`_alignment` 仍回退读当前 `card/alignment.manual.json`（F-DEL-4，判官明写"记录不改"）。
 - **P1 治理 23 项里仍未完成**：P1-11（时间轴虚拟化 + 实测）、P1-20（CI/归档）、P1-21（干净机器 fresh-clone bootstrap；原帧锚已入 git，缺的是风格库/rumor/Chrome/ffmpeg）；P1-19/P1-23 部分（**31 个 `payload: dict`**，20 个模型化端点只有 3 个有 happy-path）。
@@ -863,7 +863,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
-### 6.5 下一批（判官 §六 只剩 3 件；FR-40/41 老板已点头，但仍按此顺序做）
+### 6.5 下一批（判官 §六 只剩 #9 的一半；FR-40/41 老板已点头，但仍按此顺序做）
 
 1. **两轮审查的相对位置**：2026-11-03 专家 P0 Gate 已关；2026-11-04 判官复核判整夜循环"未完成"，其 §六 #1/#2/#3/#4/#5/#7/#8/#11 与 §三-6/§三-11 已由 **B1–B6 关闭**（§0.0 证据表）。**还没动的是 #6（有效重测 100 场景）、#9（P1-19 剩余脚本）、#10（文档一致性守卫）。**
 2. **已完成（按判官条目）**：
@@ -872,9 +872,9 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
    - **§三-11 版本链** ✅：保 v1 + 最新 99 条，`truncated`/`keptFirst` 进接口。
    - **§三-6 异步失败可见** ✅：`api()` 广播 → 全局 `ApiFailureBanner`；`monitor` 本地 catch、`canvas` SSE `onerror`；`scripts/e2e_error_visibility.py` 真机验收（顺带抓出并修了 `runs/{id}/report` 的 500→404）。
    - **#4 后半 / §三-4 残余** ✅ `63d37c0`：快照三道锁 + 迁移 4 封印；`restore_license`/`restore_mix` 让残缺前置态退得回去。
-3. **还剩 3 件（判官 §六）+ 2 件工程债**：
-   1. **#6 / P1-11 有效重测 100 场景**：修 `scripts/e2e_timeline_100.py` 的按键（`k` 正向，不是 `j` 反向）、走 ops/autosave 真路径、去掉恒真断言与硬编码 `wait_for_timeout(200)`；要么给有效数据，要么把"不需要虚拟化"改回待办。**这是唯一还没动的"结论级"项，别的都只是收尾。**
-   2. **#9 / P1-19**：`e2e_takes.py`（PID 188）、`e2e_audio_v2.py`（PID 211）、`e2e_assets.py`、`verify_r3_*` 迁 `scripts/_acceptance.py` 自建自删；把"跑完 docrevision 不新增演示行"做成一键复核的新步骤。
+3. **还剩 #9 的一半 + 3 件工程债**：
+   1. ~~#6 / P1-11 有效重测 100 场景~~ ✅ 两次独立重跑（首屏 951/1640ms、ops p95 13.3–19.3ms、autosave 758–775ms、rAF 50.6 次/秒、页内/墙上时钟比 1.0）→ **判定暂不虚拟化**；报告 `docs/reports/p1-11-timeline-100.json`，口径与保留意见见 §9-16。
+   2. **#9 / P1-19（污染面已封死，builder 还没写）**：`_acceptance.require_scratch_project()` 让 `e2e_takes`/`e2e_audio_v2`/`e2e_assets` **不给 `--project` 就拒绝启动**，命中演示 id 或 `is_protected(name)` 也拒绝，`e2e_takes` 另需属于该项目的 `--run`；实测 `--project 211/202/216` 全被拒。剩下的是给它们补一个能自建 Take/音频/资产状态的 builder，并把「跑完演示 docrevision 不新增」做成一键复核的一步。
    3. ~~#10 / 文档一致性守卫~~ ✅ [scripts/check_docs_consistency.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/scripts/check_docs_consistency.py)：机检 `EXECUTOR_VERSION`、迁移登记、pytest collected 用例数、生产库项目数、一键复核步数，外加一批「已经反了」的作废说法黑名单（`foreign_keys 仍关闭`、`没有 DELETE /projects 端点`、旧测试数）。**它已经抓出我自己文档里的 9 处漂移**（含 2 处 2.11.0 残留、2 处历史跑分写成 `N passed`）。约定随之确立：`N passed` 只指当前实测，历史值写中文。
    4. **P1-23**：剩余 **31** 个 `payload: dict`（`grep -c "payload: dict" server/app/api/routes.py`）+ 给已模型化的 20 个端点各补 happy-path（现在 3 个）。
    5. **运维/工程债**：`retry_wait` 僵尸作业（现 **11 条**）过期回收；**P1-20** CI（pytest + ruff + 一键复核）；**P1-21** fresh-clone bootstrap（原帧锚已入 git，缺风格库/rumor-39s/Chrome/ffmpeg 的接线脚本）。
