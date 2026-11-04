@@ -51,6 +51,11 @@ _JOB_COLUMNS = {
     "lease_owner": "TEXT DEFAULT ''",
 }
 
+_RUN_COLUMNS = {
+    # 落盘快照文件的 sha256；交付门禁据此判断 runs/<id>/docs/snapshot.json 有没有被替换
+    "snapshot_sha": "TEXT DEFAULT ''",
+}
+
 
 def _add_columns_on(conn, table: str, columns: dict[str, str]) -> None:
     rows = conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
@@ -70,12 +75,17 @@ def _noop(conn) -> None:
     """已由 create_all 建表的历史版本，仅登记占位。"""
 
 
+def _migrate_run_columns(conn) -> None:
+    _add_columns_on(conn, "run", _RUN_COLUMNS)
+
+
 # 迁移登记处：version 单调递增，函数必须幂等（重跑安全）。
 # 新加列/改表请在此追加一条，并在 server/tests/unit/test_migrations.py 补断言。
 MIGRATIONS: list[tuple[int, str, Callable]] = [
     (1, "基线：project/workflow/run/noderun", _noop),
     (2, "文档与快照：projectdoc/docrevision/approval", _noop),
     (3, "job 持久队列列补齐", _migrate_job_columns),
+    (4, "run.snapshot_sha：落盘快照与库内封印绑定", _migrate_run_columns),
 ]
 
 

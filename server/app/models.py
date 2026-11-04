@@ -96,6 +96,7 @@ class Run(SQLModel, table=True):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     parent_run_id: int | None = None
+    snapshot_sha: str = ""      # runs/<id>/docs/snapshot.json 的 sha256（交付门禁的库内封印）
 
 
 class NodeRun(SQLModel, table=True):

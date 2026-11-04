@@ -223,3 +223,14 @@ def test_project_create_happy_path_via_route():
             assert dele.json()["deleted"] == body["project"]["id"]
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_run_report_of_unknown_run_is_404_not_500():
+    """e2e_error_visibility 抓到过的真缺陷：不存在的 Run 走 table_dict(None) → 500。
+
+    失败可见性要求状态码本身可解释：404 + ApiError 信封，而不是把 NoneType 异常抛给用户。
+    """
+    r = client().get("/api/runs/9999999/report")
+    assert r.status_code == 404, (r.status_code, r.text[:200])
+    detail = r.json()["detail"]
+    assert detail["code"] == "E_NOT_FOUND", detail

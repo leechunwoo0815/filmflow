@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from ..atomicwrite import write_atomic
+from .cachekey import file_sha256
 from ..models import ProjectDoc, Run, Workflow
 from ..services.project_docs import build_script_doc, build_timeline_doc, content_hash
 from ..services.render_profiles import resolve as resolve_render_profiles
@@ -91,4 +92,8 @@ def ensure_run_snapshot(session: Session, run: Run, project_root: str) -> dict:
         "imported": imported,
     })
     write_atomic(snap_path, json.dumps(snapshot, ensure_ascii=False, indent=1))
+    # 库内封印：交付时按文件 sha 校验，复制/替换旧快照文件不再能骗过门禁（判官 #4 后半）
+    run.snapshot_sha = file_sha256(str(snap_path))
+    session.add(run)
+    session.commit()
     return snapshot

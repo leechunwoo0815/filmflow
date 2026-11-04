@@ -338,3 +338,73 @@ def test_undo_guard_still_blocks_post_fix_manual_edit():
         qa._require_undo_head({"items": [entry]}, entry, "hand-edited-hash", "hash-a",
                              None, None, "混音配置")
     assert "又被改动" in str(e.value), str(e.value)
+
+
+def test_license_undo_restores_illegal_previous_state(tmp_path: Path):
+    """判官 P1-4 残余：修复前的许可本身残缺时，撤销也必须退得回去。
+
+    旧实现走 `save_license(prev)`，而它是"校验用户此刻提交"的写入口——残缺历史过不了
+    `license_ok`，于是抛 409，记录永久卡 `applied`，用户只能手改文件。
+    """
+    from app.errors import ApiError
+    from app.services import audio as audio_svc
+
+    session, proj = _project(tmp_path)
+    try:
+        stale = {"schema": "filmflow.music-license/1", "source": "旧来源",
+                 "license": "", "authorized": False}
+        audio_svc._write(audio_svc.license_path(proj.root), stale)
+        before = audio_svc.load_license(proj.root)
+        assert audio_svc.license_ok(before)[0] is False       # 确实是非法前置态
+
+        result = qa._apply(session, proj, {"location": {}}, "fill_license",
+                           {"source": "自制", "license": "CC0", "authorized": True}, None, None)
+        after_state = result[0]
+        entry = {"id": "fix_restore_stale", "issueId": "x", "category": "license_missing",
+                 "action": "fill_license", "result": "applied", "undoKind": "license", "seq": 1,
+                 "before": {"kind": "license", "content": before},
+                 "after": after_state, "afterHash": after_state.get("hash")}
+        data = qa._read_fixes(proj.root)
+        data["items"].append(entry)
+        qa._write_fixes(proj.root, data)
+
+        with pytest.raises(ApiError):                          # 证明旧路径为什么走不通
+            audio_svc.save_license(proj.root, before)
+
+        undone = qa.undo_fix(session, proj, "fix_restore_stale")
+        assert undone["undone"] is True
+        restored = audio_svc.load_license(proj.root)
+        assert restored["source"] == "旧来源" and restored["authorized"] is False
+        assert audio_svc.license_ok(restored)[0] is False      # 如实退回，QA 会再报一次
+    finally:
+        _cleanup(session, proj)
+
+
+def test_mix_undo_restores_out_of_range_previous_state(tmp_path: Path):
+    """同一类问题在 mix 面上：修复前的 targetLufs 越界也要能撤销回去。"""
+    from app.errors import ApiError
+    from app.services import audio as audio_svc
+
+    session, proj = _project(tmp_path)
+    try:
+        stale = {"schema": "filmflow.audio-mix/1", "preset": "-16",
+                 "targetLufs": -99.0, "stems": {"voice": 0.0, "music": -8.0, "sfx": 0.0}}
+        audio_svc._write(audio_svc.mix_path(proj.root), stale)
+        before = audio_svc.load_mix(proj.root)
+        result = qa._apply(session, proj, {"location": {}}, "set_lufs", {"target": -14}, None, None)
+        after_state = result[0]
+        entry = {"id": "fix_mix_stale", "issueId": "x", "category": "lufs_out",
+                 "action": "set_lufs", "result": "applied", "undoKind": "mix", "seq": 1,
+                 "before": {"kind": "mix", "content": before},
+                 "after": after_state, "afterHash": after_state.get("hash")}
+        data = qa._read_fixes(proj.root)
+        data["items"].append(entry)
+        qa._write_fixes(proj.root, data)
+
+        with pytest.raises(ApiError):
+            audio_svc.save_mix(proj.root, stale)               # 校验路径确实挡死
+        undone = qa.undo_fix(session, proj, "fix_mix_stale")
+        assert undone["undone"] is True
+        assert audio_svc.load_mix(proj.root)["targetLufs"] == -99.0
+    finally:
+        _cleanup(session, proj)

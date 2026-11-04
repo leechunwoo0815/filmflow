@@ -45,12 +45,18 @@ def test_a05_auto_approve_requires_import_or_style_decision():
 SNAP_SCHEMA = "filmflow.snapshot/1"
 
 
-def _write_snapshot(tmp_path: Path, docs: dict) -> None:
-    d = tmp_path / "runs" / "1" / "docs"
+def _write_snapshot(tmp_path: Path, doc_map: dict, *, run_id: int = 1,
+                   profile: dict | None = None) -> dict:
+    """写一份**生产形态**的快照：run_id + doc_snapshot_sha 必须自洽，否则门禁会先拦 sha。"""
+    d = tmp_path / "runs" / str(run_id) / "docs"
     d.mkdir(parents=True, exist_ok=True)
-    (d / "snapshot.json").write_text(
-        json.dumps({"schema": SNAP_SCHEMA, "docs": docs}, ensure_ascii=False),
-        encoding="utf-8")
+    body = {"schema": SNAP_SCHEMA, "run_id": run_id, "imported": False,
+            "profile": profile or {}, "render_profiles": {}, "docs": doc_map}
+    body["doc_snapshot_sha"] = docs.content_hash({
+        "docs": doc_map, "profile": body["profile"],
+        "render_profiles": body["render_profiles"], "imported": False})
+    (d / "snapshot.json").write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+    return body
 
 
 def _doc(content: dict) -> dict:
@@ -303,3 +309,77 @@ def test_dir_policy_failure_does_not_delete_rows(tmp_path: Path):
             if row:
                 session.delete(row)
                 session.commit()
+
+
+# ---------- 判官 #4 后半：快照与库内封印绑定 ----------
+
+def _seed(tmp_path: Path, monkeypatch, script: dict, timeline: dict, *, run_id: int = 1) -> dict:
+    body = _write_snapshot(tmp_path, {"script": _doc(script), "timeline": _doc(timeline)},
+                           run_id=run_id)
+    _seed_current(monkeypatch, {"script": script, "timeline": timeline})
+    return body
+
+
+def test_snapshot_from_other_run_is_rejected(tmp_path: Path, monkeypatch):
+    script, timeline = {"title": "t", "sentences": [{"text": "a"}]}, {"duration": 5.0}
+    _seed(tmp_path, monkeypatch, script, timeline)
+    import shutil
+    shutil.copytree(tmp_path / "runs" / "1", tmp_path / "runs" / "2")  # 整目录拷走，内容仍写着 run 1
+    run = SimpleNamespace(id=2, snapshot_sha="")
+    with pytest.raises(RuntimeError, match="E_DELIVERY_GATE.*属于 run 1"):
+        delivery._load_run_snapshot_file(tmp_path, 2, run=run, session=None)
+
+
+def test_snapshot_with_edited_docs_fails_sha_self_check(tmp_path: Path, monkeypatch):
+    """把快照里的 timeline 段落改掉、不重算 doc_snapshot_sha —— 这正是"复制旧快照绕过门禁"的形状。"""
+    script, timeline = {"title": "t", "sentences": [{"text": "a"}]}, {"duration": 5.0}
+    _seed(tmp_path, monkeypatch, script, timeline)
+    snap_p = tmp_path / "runs" / "1" / "docs" / "snapshot.json"
+    body = json.loads(snap_p.read_text(encoding="utf-8"))
+    body["docs"]["timeline"]["content"] = {"duration": 9.9}
+    snap_p.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="E_DELIVERY_GATE.*doc_snapshot_sha"):
+        delivery._load_run_snapshot_file(tmp_path, 1, run=SimpleNamespace(id=1, snapshot_sha=""),
+                                        session=None)
+
+
+def test_snapshot_file_swapped_out_breaks_seal(tmp_path: Path, monkeypatch):
+    script, timeline = {"title": "t", "sentences": [{"text": "a"}]}, {"duration": 5.0}
+    _seed(tmp_path, monkeypatch, script, timeline)
+    run = SimpleNamespace(id=1, snapshot_sha="0" * 64)   # 库内封印来自另一个字节序列
+    with pytest.raises(RuntimeError, match="E_DELIVERY_GATE.*封印"):
+        delivery._load_run_snapshot_file(tmp_path, 1, run=run, session=None)
+
+
+def test_legacy_run_gets_sealed_on_first_passing_delivery_check(tmp_path: Path, monkeypatch):
+    """历史 Run（sha 未记）首次通过内容校验时补封印，之后替换文件即被拦。"""
+    script, timeline = {"title": "t", "sentences": [{"text": "a"}]}, {"duration": 5.0}
+    from app.models import Project, Run, Workflow
+    from app.services.project_cleanup import delete_project
+
+    with Session(engine) as session:
+        p = Project(name=f"seal-{tmp_path.name}", root=str(tmp_path))
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        wf = Workflow(project_id=p.id)
+        session.add(wf)
+        session.commit()
+        session.refresh(wf)
+        run = Run(workflow_id=wf.id)
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        _seed(tmp_path, monkeypatch, script, timeline, run_id=run.id)   # 快照目录必须就是本 Run
+        try:
+            assert run.snapshot_sha == ""
+            delivery._load_run_snapshot_file(tmp_path, run.id, run=run, session=session)
+            session.refresh(run)
+            assert run.snapshot_sha == delivery._file_sha(tmp_path / "runs" / str(run.id) / "docs" / "snapshot.json")
+            snap_p = tmp_path / "runs" / str(run.id) / "docs" / "snapshot.json"
+            # 整份替换：JSON 语义不变（sha 自洽那道过得去），但字节序列变了 —— 只有库内封印拦得住
+            snap_p.write_text(snap_p.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+            with pytest.raises(RuntimeError, match="封印不一致"):
+                delivery._load_run_snapshot_file(tmp_path, run.id, run=run, session=session)
+        finally:
+            delete_project(session, p.id, remove_dir=False, force=True)

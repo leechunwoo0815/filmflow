@@ -2667,6 +2667,8 @@ async def run_promote(run_id: int, payload: RunPromoteIn,
 async def run_report(run_id: int, session: Session = Depends(get_session)):
     """Run 报告（含指标、审批、哈希；规格 §7.9）。"""
     run = session.get(Run, run_id)
+    if run is None:
+        raise not_found("run")
     arts = session.exec(select(Artifact).where(Artifact.run_id == run_id)).all()  # type: ignore[arg-type]
     apps = session.exec(select(Approval).where(Approval.run_id == run_id)).all()  # type: ignore[arg-type]
     metrics = session.exec(select(Metric).where(Metric.run_id == run_id)).all()  # type: ignore[arg-type]

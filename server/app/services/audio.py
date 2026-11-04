@@ -203,6 +203,19 @@ def load_license(root: str | Path) -> dict:
     return _read(license_path(root))
 
 
+def restore_license(root: str | Path, prev: dict) -> None:
+    """撤销用：原样落回修复前的许可，不跑 `license_ok`。
+
+    `save_license` 校验的是"用户此刻提交的许可是否合法"，而撤销是把状态退回修复前——
+    那时可能就是一份残缺/已过期的历史许可。用 save_license 撤销会被 409 挡死，
+    修复记录永久卡在 applied（判官 P1-4 残余）。不合法的状态由 QA 门禁如实再报一次。
+    """
+    if not prev:
+        license_path(root).unlink(missing_ok=True)
+        return
+    write_atomic(license_path(root), json.dumps(prev, ensure_ascii=False, indent=1))
+
+
 def license_ok(lic: dict) -> tuple[bool, str]:
     if not lic:
         return False, "缺少 card/music_license.json"
@@ -415,6 +428,14 @@ def save_mix(root: str | Path, payload: dict) -> dict:
             "targetLufs": round(target, 1), "stems": stems}
     _write(mix_path(root), data)
     return data
+
+
+def restore_mix(root: str | Path, prev: dict) -> None:
+    """撤销用：原样落回修复前的混音，不跑 save_mix 的取值校验（同 restore_license 的理由）。"""
+    if not prev:
+        mix_path(root).unlink(missing_ok=True)
+        return
+    _write(mix_path(root), prev)
 
 
 def markers_path(root: str | Path) -> Path:

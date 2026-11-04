@@ -273,8 +273,14 @@ def _file_sha(path: Path) -> str:
     return h.hexdigest()
 
 
-def _load_run_snapshot_file(root: Path, run_id: int) -> dict:
-    """只信磁盘上的真实快照；缺失/损坏一律拦（F-DEL-1：重建快照会让门禁变 no-op）。"""
+def _load_run_snapshot_file(root: Path, run_id: int, *, run=None, session=None) -> dict:
+    """只信磁盘上的真实快照；缺失/损坏一律拦（F-DEL-1：重建快照会让门禁变 no-op）。
+
+    判官 #4 后半补的三道锁：
+    - 快照里的 `run_id` 必须就是本次交付的 Run（把别 Run 的目录拷过来不算一致）；
+    - `doc_snapshot_sha` 必须能由快照自身重算出来（手改 docs/profile 段落会立刻露馅）；
+    - 文件 sha 与 `run.snapshot_sha` 库内封印比对；老 Run 首次通过前两道时补封印。
+    """
     snap_path = Path(root) / "runs" / str(run_id) / "docs" / "snapshot.json"
     if not snap_path.exists():
         raise RuntimeError("E_DELIVERY_GATE: 该 Run 没有落盘快照（runs/<id>/docs/snapshot.json 缺失），"
@@ -286,6 +292,24 @@ def _load_run_snapshot_file(root: Path, run_id: int) -> dict:
     from ..engine.snapshot import SNAPSHOT_SCHEMA
     if snap.get("schema") != SNAPSHOT_SCHEMA:
         raise RuntimeError("E_DELIVERY_GATE: Run 快照 schema 不符，请基于当前文档新建 Run 后再交付")
+    if str(snap.get("run_id")) != str(run_id):
+        raise RuntimeError(f"E_DELIVERY_GATE: 快照属于 run {snap.get('run_id')}，不是所选 run {run_id}；"
+                           "拷贝其它 Run 的快照目录不能证明一致性，请新建 Run")
+    stored = snap.get("doc_snapshot_sha") or ""
+    recomputed = docs_svc.content_hash({"docs": snap.get("docs") or {}, "profile": snap.get("profile"),
+                                        "render_profiles": snap.get("render_profiles"),
+                                        "imported": snap.get("imported")})
+    if stored != recomputed:
+        raise RuntimeError("E_DELIVERY_GATE: Run 快照的 doc_snapshot_sha 与内容不符（快照被改过或残缺），"
+                           "请基于当前文档新建 Run 后再交付")
+    file_sha = _file_sha(snap_path)
+    sealed = getattr(run, "snapshot_sha", "") if run is not None else ""
+    if sealed and sealed != file_sha:
+        raise RuntimeError("E_DELIVERY_GATE: 落盘快照与库内封印不一致（文件被整体替换过），请新建 Run")
+    if run is not None and session is not None and not sealed:
+        run.snapshot_sha = file_sha          # 历史 Run 首次通过内容校验时补封印
+        session.add(run)
+        session.commit()
     return snap
 
 
@@ -295,7 +319,7 @@ def _ensure_run_documents_match(session: Session, run: Run, root: Path, project_
     F-DEL-1/2：此前只比 timeline、快照缺失时静默放行。现在 script/timeline 必须在快照里
     且与当前一致；profile 双方都存在时也要一致（9:16 变体按当前 profile 重渲）。
     """
-    snapshot = _load_run_snapshot_file(root, run.id)
+    snapshot = _load_run_snapshot_file(root, run.id, run=run, session=session)
     docs = snapshot.get("docs") or {}
 
     def current_content(kind: str) -> dict:
@@ -398,8 +422,11 @@ async def run_delivery(job_id: int) -> None:
                         "E_DELIVERY_GATE: G07 未通过（需先完成交付打包/审批与 master QC），"
                         "再生成交付包")
             if ctx.imported:
-                snap_p = root / "runs" / str(run_id) / "docs" / "snapshot.json"
-                snap = json.loads(snap_p.read_text(encoding="utf-8")) if snap_p.exists() else None
+                # 导入项目不比文档相等（docs 来自 task.json，没有 ProjectDoc 行），
+                # 但快照必须存在、属于本 Run、sha 自洽且与库内封印一致——否则 rights 就是空比对 no-op
+                snap = _load_run_snapshot_file(root, run_id, run=run, session=session)
+                if not (snap.get("docs") or {}):
+                    raise RuntimeError("E_DELIVERY_GATE: 导入项目快照没有 docs 段落，无法生成可信 rights")
             rights_assets, rights_gaps = _asset_rights(session, snap)
             task_p = root / "runs" / str(run_id) / "docs" / "task.json"
             task = json.loads(task_p.read_text(encoding="utf-8")) if task_p.exists() else {}

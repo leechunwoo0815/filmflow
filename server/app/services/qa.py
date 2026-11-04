@@ -590,16 +590,13 @@ def undo_fix(session: Session, project: Project, fix_id: str) -> dict:
         current_mix = audio_svc.load_mix(project.root)
         _require_undo_head(data, entry, docs_svc.content_hash(current_mix),
                            entry.get("afterHash"), None, None, "混音配置")
-        audio_svc.save_mix(project.root, before.get("content") or {})
+        audio_svc.restore_mix(project.root, before.get("content") or {})
     elif kind == "license":
         current_lic = audio_svc.load_license(project.root)
         _require_undo_head(data, entry, docs_svc.content_hash(current_lic),
                            entry.get("afterHash"), None, None, "音乐许可")
-        prev = before.get("content") or {}
-        if prev:
-            audio_svc.save_license(project.root, prev)
-        else:
-            audio_svc.license_path(project.root).unlink(missing_ok=True)
+        # 撤销走 restore_*：残缺的历史许可也得退得回去（见 audio.restore_license）
+        audio_svc.restore_license(project.root, before.get("content") or {})
     else:
         raise ValueError("该修复不支持撤销")
     entry["undone"] = True
