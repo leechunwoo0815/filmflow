@@ -496,37 +496,60 @@ def apply_fix(session: Session, project: Project, issue_id: str, action: str,
                                 i["location"]["sceneId"] == issue["location"]["sceneId"])
                                for i in after_issues)
         verified = bool(doc_verified)
+    data = _read_fixes(project.root)
+    undo_kind = (before_state or {}).get("kind") or "none"
     entry = {"id": "fix_" + uuid.uuid4().hex[:12], "at": _now(),
              "issueId": issue_id, "category": issue["category"], "action": action,
              "projectId": project.id, "runId": run_id, "result": "applied",
              "verified": verified, "documentVerified": doc_verified,
              "requiresRerun": requires_rerun, "nextAction": next_action,
-             "before": before_state,
+             "before": before_state, "undoKind": undo_kind,
+             # 链序号：同一撤销面（timeline/mix/license）内的第几步，撤销必须按它倒序
+             "seq": _next_seq(data["items"], undo_kind),
              "after": after_state, "afterVersion": after_state.get("version"),
              "afterHash": after_state.get("hash"),
              "afterProfileVersion": after_state.get("profileVersion"),
              "afterProfileHash": after_state.get("profileHash"), "extra": extra}
-    data = _read_fixes(project.root)
     data["items"].append(entry)
     _write_fixes(project.root, data)
     return entry
 
 
+def _next_seq(items: list[dict], undo_kind: str) -> int:
+    """同一撤销面内的链序号：只看尚未被撤销的历史条目。"""
+    live = [int(x.get("seq") or 0) for x in items
+            if (x.get("undoKind") or (x.get("before") or {}).get("kind")) == undo_kind
+            and not x.get("undone")]
+    return (max(live) if live else 0) + 1
+
+
 def _require_undo_head(data: dict, entry: dict, current_value, expected_hash,
                        legacy_version, current_version, label: str) -> None:
-    """撤销按 LIFO：内容仍等于该次修复结果（链顶）才允许自动回退。"""
+    """撤销按 LIFO：同面更新的一条必须先撤，且内容仍要等于本次修复结果。
+
+    只靠"内容 == 我的 afterHash"会漏两种情况：两次改成同一个值（哈希相同，撤销旧的那条
+    会抹掉新的），以及本轮改造之前的历史记录（既无 seq 也无哈希）——后者一律拒绝自动撤销。
+    """
+    kind = entry.get("undoKind") or (entry.get("before") or {}).get("kind") or "none"
+    seq = entry.get("seq")
+    if seq is None and expected_hash is None:
+        raise ValueError(f"{label}的这条修复记录没有链序号也没有结果哈希（本轮改造前的历史），"
+                         "不能自动撤销；请手工恢复")
+    if seq is not None:
+        newer = [x for x in data["items"]
+                 if x.get("result") == "applied" and not x.get("undone")
+                 and (x.get("undoKind") or (x.get("before") or {}).get("kind")) == kind
+                 and int(x.get("seq") or 0) > int(seq)]
+        if newer:
+            top = max(newer, key=lambda x: int(x.get("seq") or 0))
+            raise ValueError(f"{label}只能按倒序撤销：该面更新的一步是 "
+                             f"{top['id']}（{top.get('action')}）")
     if expected_hash is not None:
         if current_value == expected_hash:
             return
     elif legacy_version is None or current_version == legacy_version:
         return
-    head = next((x for x in reversed(data["items"])
-                 if x.get("result") == "applied" and not x.get("undone")
-                 and (x.get("before") or {}).get("kind") == "timeline"
-                 and x.get("afterHash")), None)
-    hint = (f"；请先撤销 {head['id']}（{head.get('action')}）"
-            if head and head["id"] != entry.get("id") else "")
-    raise ValueError(f"{label}在该修复之后又被改动，只能按倒序撤销最新一次{hint}")
+    raise ValueError(f"{label}在该修复之后又被改动，不能自动撤销；请手工恢复或新建 Run 后重来")
 
 
 def undo_fix(session: Session, project: Project, fix_id: str) -> dict:

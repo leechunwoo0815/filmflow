@@ -303,3 +303,38 @@ def test_license_undo_guard_rejects_manual_edit_after_fix(tmp_path: Path):
         assert not audio_svc.license_path(proj.root).exists()
     finally:
         _cleanup(session, proj)
+
+
+def test_undo_guard_is_lifo_by_sequence_even_for_identical_values():
+    """两次改成同一个值时内容哈希相同，只有链序号能挡住"撤销旧的抹掉新的"。"""
+    older = {"id": "fix_old", "result": "applied", "action": "set_lufs",
+             "undoKind": "mix", "seq": 1, "before": {"kind": "mix"},
+             "afterHash": "same-hash"}
+    newer = {"id": "fix_new", "result": "applied", "action": "set_lufs",
+             "undoKind": "mix", "seq": 2, "before": {"kind": "mix"},
+             "afterHash": "same-hash"}
+    data = {"items": [older, newer]}
+    with pytest.raises(ValueError) as e:
+        qa._require_undo_head(data, older, "same-hash", "same-hash", None, None, "混音配置")
+    assert "fix_new" in str(e.value), str(e.value)
+    # 链顶那条即使内容一致也放行
+    qa._require_undo_head(data, newer, "same-hash", "same-hash", None, None, "混音配置")
+
+
+def test_undo_guard_refuses_legacy_record_without_evidence():
+    """本轮改造前的历史记录（既无 seq 又无 afterHash）不再被当作"无需守卫"。"""
+    legacy = {"id": "fix_legacy", "result": "applied", "action": "fill_license",
+              "before": {"kind": "license"}}
+    with pytest.raises(ValueError) as e:
+        qa._require_undo_head({"items": [legacy]}, legacy, "whatever", None, None, None, "音乐许可")
+    assert "历史" in str(e.value), str(e.value)
+
+
+def test_undo_guard_still_blocks_post_fix_manual_edit():
+    """有依据时内容守卫不松：手工改过 mix 之后，撤销必须被拒。"""
+    entry = {"id": "fix_a", "result": "applied", "action": "set_lufs",
+             "undoKind": "mix", "seq": 1, "before": {"kind": "mix"}, "afterHash": "hash-a"}
+    with pytest.raises(ValueError) as e:
+        qa._require_undo_head({"items": [entry]}, entry, "hand-edited-hash", "hash-a",
+                             None, None, "混音配置")
+    assert "又被改动" in str(e.value), str(e.value)

@@ -163,6 +163,26 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 
 **判官复核后的修复批次（2026-11-04 上午，见 `docs/process/judge-review-2026-11-04.md`）**
 
+10. **非整数 fps 的单一口径（B2 已补完，`EXECUTOR_VERSION=2.11.0`）**：
+    - `norm_fps` 把 `23.976/29.97/59.94/47.952/119.88` **吸附到精确有理数**（24000/1001…），
+      帧网格与 ffmpeg `-framerate` 不再一半按十进制一半按有理数（每帧差 2.4e-5·i，长片可测）。
+    - 新增 `profile_frames(profile)`：**有 duration 就现算 frames**，不信任历史持久化值
+      （旧数据里 frames 是 `int(fps)` 截断后算的，沿用会让 16:9 与 9:16 帧数不同）。
+      `preview._normalize_profile`、`render_manifest.build_plan/build_manifest`、
+      `render_profiles.ensure_final_ready` 都改用它。
+    - 补完三处仍在截断的源头：`delivery._render_variant_frames`（9:16 变体，原来 `int(fps)` → 23.976 下 920 帧 vs 16:9 959 帧）、
+      `timeline_ops._fps`、`project_docs.build_timeline_doc`；QA 抽帧 `qa.py` 也改 `norm_fps`。
+    - F05 时长容差按帧算：`max(0.02, 0.5/fps)`（23.976 下半帧 0.02085s > 旧硬编码 0.02 → 合法成片会被拒）。
+    - final 档位门槛从"低于 23.9 才拦"改成**交付标准率白名单** `is_delivery_fps()`
+      （24/25/30/50/60 + 1001 系），`_tier` 另加 `0<fps<=240` 上界；23.9/23.95/1000 一律拒。
+    - 实测（真实出片，非单测）：`scripts/verify_r2_5_delivery.py --fps 23.976 --duration 2`
+      → run 333 全链 G07 成功、delivery job 12.1s 成功、`qc` 全 true，
+      两画幅都是 `23.976/2.0s`、期望帧数 48、`|d16-d9| ≤ 半帧`；该验证项目随后经
+      `DELETE /projects/249?confirm=true&confirm_name=…` 级联清除（dirRemoved=true，projects 回 35）。
+    - 该验收脚本现在支持 `--fps/--duration`，项目名带唯一后缀以免与演示项目同名撞删除保护。
+
+8b. **交付归属与撤销链（B4）**：`delivery.create_job` 现在校验 `runId` 必须属于该项目（409 `E_DELIVERY_GATE`，此前可把别的 Run 的 master 与本项目混音打进同一个包）；final 档位（width/height/fps）与 Run 快照 `render_profiles` 漂移也入门禁。QA 修复记录带 `undoKind`+`seq`，撤销按**链序号**倒序（两次改成同一个 LUFS 目标值时哈希相同、只靠内容哈希会放行，现在正确拒绝），mix/license 也纳入守卫；既无 `seq` 又无 `afterHash` 的历史记录不再"默认无守卫"，而是一律拒绝自动撤销并提示手工恢复。`scripts/verify_p1_governance.py` 扩到 10 步（新增帧网格 + 删除面探针，`EXECUTOR_VERSION` 改成下限断言）。
+
 9. **项目删除面（B1 已硬化）**：`server/app/services/project_cleanup.py`
    - `dir_policy()`：项目根必须是白名单条目的**真子目录**（等于白名单根一律拒），且**不能是含 `.git` 的目录**；`POST /projects` 与 `/projects/import` 登记时就拒（`_require_creatable_project_root`），所以"把仓库根注册成项目再删"这条路被掐死。
    - `plan_delete()` 先出完整计划（目录可否删、是否保护名单、有无在飞作业），**全部校验通过后才动数据**；库行删除走单事务，失败回滚，不再出现"库没了目录还在"。

@@ -44,9 +44,10 @@ def _job_is_live(job, now: datetime) -> bool:
 
 
 def is_protected(name: str) -> bool:
+    """保护判定：验收项目也叫 r2_5-delivery-277 这类名字，所以演示名只按**精确匹配**，
+    只有 rumor 前缀（rumor-39s / rumor-clean-20261102）按前缀匹配。"""
     n = (name or "").strip()
-    return any(n == p or n.startswith(p) for p in _PROTECTED_NAMES) or \
-        any(n.lower().startswith(p) for p in _PROTECTED_PREFIXES)
+    return n in _PROTECTED_NAMES or any(n.lower().startswith(p) for p in _PROTECTED_PREFIXES)
 
 
 def dir_policy(root: str | Path) -> tuple[bool, str]:

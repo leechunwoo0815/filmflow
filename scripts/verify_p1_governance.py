@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import io
 import sys
+import uuid
 from pathlib import Path
 
 import httpx
@@ -22,6 +23,7 @@ sys.path.insert(0, str(HERE.parents[0] / "server"))
 from _acceptance import throwaway  # noqa: E402
 
 BASE = "http://127.0.0.1:7860/api"
+ROOT = Path(__file__).resolve().parents[1]
 HEADERS = {"Origin": "http://127.0.0.1:3000"}
 COPY = "第一句话要读完其实不容易。第二句话同样需要更多时间才能读完。"
 
@@ -63,7 +65,9 @@ def check_transitions() -> None:
 def check_cache_inputs() -> None:
     from app.engine import runengine as re_mod
     from app.engine.cachekey import EXECUTOR_VERSION
-    assert EXECUTOR_VERSION == "2.10.0", EXECUTOR_VERSION  # P1-12 fps 口径统一
+    # 版本只设下限：升版是常规动作，钉死精确值会让一键复核在每次升版后自己变红
+    parts = [int(x) for x in EXECUTOR_VERSION.split(".") if x.isdigit()]
+    assert parts >= [2, 11, 0], f"EXECUTOR_VERSION 必须 ≥ 2.11.0（P1-12 fps 口径统一），当前 {EXECUTOR_VERSION}"  # P1-12 fps 口径统一
     assert {"A01", "A03", "F01", "G01"} <= set(re_mod._EXTERNAL_FILES), sorted(re_mod._EXTERNAL_FILES)
     probe = re_mod._external_input_hashes("/nonexistent-ff-root", "A01")
     assert list(probe) == ["_external:A01"] and probe["_external:A01"], probe
@@ -197,6 +201,58 @@ def check_qa_undo_chain(c: httpx.Client, pid: int) -> None:
     ok("7 QA 多步撤销", "抢跑被拒且点名先撤项；倒序两级撤回到原状")
 
 
+def check_delete_surface(c: httpx.Client) -> None:
+    """判官 B1：删除面绝不能删到白名单根/git 仓库；confirm 之前不动数据；rumor 需回显名字。"""
+    from app.config import settings
+    from app.services.project_cleanup import dir_policy, is_protected
+    ws = Path(settings.workspace_roots[0]).resolve()
+    assert dir_policy(ws)[0] is False, "白名单根不得作为可删项目根"
+    assert dir_policy(ws / "filmflow-projects" / "x-proj")[0] is True
+    assert is_protected("rumor-39s") and is_protected("rumor-clean-20261102")
+    assert not is_protected("delivery-verify-1793772596")
+
+    refused = c.post("/projects", json={"name": "root-probe", "root": str(ws)})
+    assert refused.status_code == 400 and "不能作为项目根" in refused.text, refused.text
+
+    root = ws / "filmflow-projects" / f"surface-{uuid.uuid4().hex[:6]}"
+    root.mkdir(parents=True)
+    created = c.post("/projects", json={"name": "surface-probe", "root": str(root)})
+    assert created.status_code == 200, created.text
+    pid = created.json()["project"]["id"]
+    plan = c.delete(f"/projects/{pid}")
+    assert plan.status_code == 200 and plan.json()["dirDeletable"] is True
+    assert c.get(f"/projects/{pid}/docs").status_code == 200, "confirm 之前不得动数据"
+    done = c.delete(f"/projects/{pid}", params={"confirm": "true"})
+    assert done.status_code == 200 and done.json()["dirRemoved"] is True, done.text
+    assert c.get(f"/projects/{pid}/docs").status_code == 404 and not root.exists()
+
+    rumor_root = ws / "filmflow-projects" / f"rumorprobe-{uuid.uuid4().hex[:6]}"
+    rumor_root.mkdir(parents=True)
+    rumor = c.post("/projects", json={"name": "rumor-probe", "root": str(rumor_root)})
+    assert rumor.status_code == 200, rumor.text
+    rpid = rumor.json()["project"]["id"]
+    denied = c.delete(f"/projects/{rpid}", params={"confirm": "true"})
+    assert denied.status_code == 409 and "confirm_name" in denied.text, denied.text
+    assert c.get(f"/projects/{rpid}/docs").status_code == 200
+    echo = c.delete(f"/projects/{rpid}", params={"confirm": "true", "confirm_name": "rumor-probe"})
+    assert echo.status_code == 200 and echo.json()["dirRemoved"] is True, echo.text
+    ok("9 删除面", "白名单根/仓库拒登记；rumor 前缀需回显项目名；confirm 前不动数据；级联删库+清目录")
+
+
+def check_fps_grid(c: httpx.Client) -> None:
+    """判官 B2：NTSC 十进制必须吸附精确有理数，帧数由现算而非持久化值决定。"""
+    from fractions import Fraction
+
+    from app.engine.fpscalc import (frames_for, is_delivery_fps, norm_fps,
+                                    profile_frames, time_at)
+    assert norm_fps("23.976") == float(Fraction(24000, 1001))
+    assert profile_frames({"fps": 23.976, "duration": 40.0, "frames": 920}) == 959
+    assert frames_for(2.0, 23.976) == 48
+    assert abs(time_at(47, 23.976) - 47 * 1001 / 24000) < 1e-9
+    assert is_delivery_fps(23.976) and not is_delivery_fps(23.9) and not is_delivery_fps(1000)
+    ok("3b 帧网格", "23.976→24000/1001；stale frames 被忽略；final 只放行交付标准率")
+
+
 def check_migrations_and_validation(c: httpx.Client) -> None:
     from sqlmodel import Session, select
 
@@ -227,10 +283,12 @@ def main() -> int:
                 template_id = check_license_and_usage(c, pid)
                 check_rights_and_delivery_gate(c, pid)
                 check_qa_undo_chain(c, pid)
+                check_fps_grid(c)
         finally:
             if template_id:
                 c.delete(f"/templates/saved:{template_id}")
         check_migrations_and_validation(c)
+        check_delete_surface(c)
     print("PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）")
     return 0
 

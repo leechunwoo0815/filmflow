@@ -170,6 +170,7 @@ QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
 - **P1-08 时间轴冲突保稿**：409 `E_DOC_CONFLICT` 保留本地草稿并弹出「只看服务端 / 保留本地并重试」，冲突期间暂停自动保存。
 - **P1-15 资产引用面**：`scan_usages` 通用递归扫全部项目文档 + `Template.content_json` + Run 快照；`delete_asset` 含历史快照；`/assets` 标注来源；真实 HTTP 验证「仅剩模板引用时删除被 409 拦」。
 - **P1-17 补充**：`_timeline_before` 记录 `profileExisted`；撤销时若修复前没有 profile 文档行则删掉新生成的那行，不把残缺默认值固化。
+- **判官 B1/B2（2026-11-04）**：删除面硬化（白名单真子目录 + 不含 .git + rumor/演示保护需回显 confirm_name + 心跳判活 + 先校验后动数据 + 库删单事务 + force 留审计；5 项路由级 + 4 项服务级测试）；fps 端到端补齐（NTSC 十进制吸附精确有理数、profile_frames 现算不信任持久化 frames、delivery/timeline_ops/project_docs 三处 int(fps) 清零、F05 容差按半帧、final 帧率白名单），`EXECUTOR_VERSION=2.11.0`，真实 `--fps 23.976` 出片两画幅同帧网格 PASS。
 - **P1-14 已完成并实跑**：`verify_r2_profiles.py` 排序崩溃已修，SSIM 改为分窗口断言（稳定段 ≥0.98 / 切点与入场 0.5s 窗口 ≥0.90）；run 309 / project 248 全绿：稳定段最差 0.998663、窗口最差 0.952097。旧「0.9987」口径只取稳定段，已在 HANDOFF §2.4 作证据修正。
 - **P1-23（第一批）**：`api/schemas.py` + 9 个高风险写端点模型化（项目/文档/时间轴/资产/QA），非法输入统一 422；修掉两处内部传 dict 调用 `projects_create` 的回归；7 项单测。
 - **P1-07 迁移登记处**：`db.MIGRATIONS` + `apply_migrations`（版本升序、幂等、已登记跳过），替换一次性 `_migrate_job_table`/`_record_schema_versions`；3 项单测。

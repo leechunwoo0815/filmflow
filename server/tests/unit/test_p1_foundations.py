@@ -232,6 +232,9 @@ def test_dir_policy_blocks_workspace_root_and_git():
     assert ok is True
     assert is_protected("rumor-39s") and is_protected("rumor-clean-20261102")
     assert is_protected("FR37 模板演示") and not is_protected("一次性验证项目")
+    # 验收项目与演示项目同名前缀时不能被误锁（精确匹配演示名，只有 rumor 按前缀）
+    assert not is_protected("r2_5-delivery-277") and not is_protected("golden-5s-246")
+    assert is_protected("r2_5-delivery") and is_protected("rumor-clean-20261102")
 
 
 def test_delete_refuses_while_job_running_and_keeps_rows(tmp_path: Path):

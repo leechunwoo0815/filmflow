@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 from ..config import detect_chrome
 from ..engine.fpscalc import fps_rational, norm_fps, profile_frames, time_at
 from ..engine.scene.compiler import compile_scene
+from ..errors import ApiError, ErrorCode
 from ..models import Approval, Artifact, Asset, Job, NodeRun, Project, Run
 from . import assets as assets_svc
 from . import audio as audio_svc
@@ -314,6 +315,24 @@ def _ensure_run_documents_match(session: Session, run: Run, root: Path, project_
         if docs_svc.content_hash(snap_content) != docs_svc.content_hash(current_content(kind)):
             raise RuntimeError(f"E_DELIVERY_GATE: 当前 {kind} 与所选 Run 快照不一致；"
                                "请用该 Run 重跑 F02/G07，或基于当前文档新建 Run 后再交付")
+    # 渲染档位漂移（render.profile.json 不是 ProjectDoc，快照里有 render_profiles）
+    snap_profiles = snapshot.get("render_profiles") or {}
+    if snap_profiles:
+        try:
+            from . import render_profiles as profiles_svc
+            current_profiles = profiles_svc.resolve(str(root), snapshot.get("profile") or {})
+        except Exception:      # 档位解析失败交给后续 final 门禁报错，不在这里伪装成一致
+            current_profiles = {}
+        if current_profiles:
+            for tier in ("final",):
+                want, have = snap_profiles.get(tier) or {}, current_profiles.get(tier) or {}
+                if want and have and {k: want.get(k) for k in ("width", "height", "fps")} \
+                        != {k: have.get(k) for k in ("width", "height", "fps")}:
+                    raise RuntimeError(
+                        f"E_DELIVERY_GATE: {tier} 档位与所选 Run 快照不一致（"
+                        f"{want.get('width')}x{want.get('height')}@{want.get('fps')} → "
+                        f"{have.get('width')}x{have.get('height')}@{have.get('fps')}）；"
+                        "改档后请新建 Run 再交付")
     if (docs.get("profile") or {}).get("content"):
         current_profile = docs_svc.get_doc(session, project_id, "profile")
         if current_profile is not None and docs_svc.content_hash(
@@ -570,8 +589,15 @@ async def _heartbeat(job_id: int) -> None:
 
 def create_job(session: Session, project: Project, run_id: int | None = None,
                profile: str = "final") -> Job:
-    if not run_id:
-        from ..models import Workflow
+    from ..models import Workflow
+    if run_id:
+        # 判官 P1：交付必须属于本项目，否则会把别的 Run 的 master 与本项目混音打进同一个包
+        chosen = session.get(Run, int(run_id))
+        chosen_wf = session.get(Workflow, chosen.workflow_id) if chosen else None
+        if not chosen or chosen_wf is None or chosen_wf.project_id != project.id:
+            raise ApiError(ErrorCode.E_DELIVERY_GATE,
+                           f"Run {run_id} 不属于项目 {project.id or 0}，不能交付", status=409)
+    else:
         wf = session.exec(select(Workflow).where(Workflow.project_id == project.id)).first()  # type: ignore[arg-type,union-attr]
         current = takes_svc.current_run(project.root)
         run = session.get(Run, current) if current else None
