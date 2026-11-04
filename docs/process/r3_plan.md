@@ -165,7 +165,7 @@ QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
   连续 pytest 生产 DB 不变。
 - **P0-5**：`extend_scene` 同步 timeline + profile（失败补偿回滚）；QA `verified=null/documentVerified=true/requiresRerun=true`；`retry_run` fork 新 Run；撤销同步恢复 profile；报告增加 `pendingRerun`。
 - **P0-4a**：新增 `test_render_smoke.py`，真实 Chrome + ffmpeg + SSIM，断言 1s draft 输出 960×540/12fps/12 帧且帧一致性 ≥0.95。
-- **测试**：完整 `pytest server/tests -q` **275 passed**（collected 275 = unit 250 + integration 18 + BDD 7；2026-11-04 B5/B6 之后实测），连跑生产 DB 不变。有 F01 占 `:8787` 时 `test_p1_foundations.py:174` 会 skip，计数随之变动。
+- **测试**：完整 `pytest server/tests -q` **288 passed + 1 skipped**（collected **289** = unit 264 + integration 18 + BDD 7；2026-11-04 B7 之后实测，56.8s），连跑生产 DB 不变。有 F01 占 `:8787` 时 `test_p1_foundations.py:174` 会 skip，计数随之变动。
 - **P0-4b 已补齐**：`verify_r2_incremental.py --project 5s|15s|40s`、`golden_run.py --resolution original`、`docs/reports/` JSON 归档；已实跑 5s 增量和 5s 原帧 golden。15s/40s 原帧 baseline 按需生成，本次未跑 40s。
 - **P1-13 交付门禁**：`run_delivery` 先比对当前 timeline 哈希与所选 Run 快照哈希，漂移即 `E_DELIVERY_GATE` 拒绝出片（2 项单测）。
 - **P1-08 时间轴冲突保稿**：409 `E_DOC_CONFLICT` 保留本地草稿并弹出「只看服务端 / 保留本地并重试」，冲突期间暂停自动保存。
