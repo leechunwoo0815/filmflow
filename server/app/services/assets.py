@@ -18,6 +18,8 @@ from ..config import settings
 from ..errors import ApiError, ErrorCode
 from ..models import Asset, Project, ProjectDoc, Run, Template, Workflow
 
+from ..atomicwrite import write_atomic
+
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
 AUDIO_EXT = {".wav", ".mp3", ".m4a"}
 FONT_EXT = {".ttf", ".otf", ".woff2"}
@@ -246,9 +248,8 @@ def import_asset(session: Session, scope: str, project_root: str | Path | None,
     root = asset_root(scope, project_root)
     rel = _rel_path(sha, ext)
     path = root / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
-        path.write_bytes(raw)
+        write_atomic(path, raw)
     meta = {"name": (name or Path(filename).stem)[:120], "original": Path(filename).name,
             "ext": ext, "mime": mimetypes.guess_type(str(path))[0] or "application/octet-stream",
             "sha256": sha}

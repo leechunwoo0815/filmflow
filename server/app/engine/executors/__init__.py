@@ -11,6 +11,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from ...atomicwrite import write_atomic
 from ..fpscalc import frames_for
 from ..fpscalc import norm_fps as _norm_fps
 
@@ -77,8 +78,7 @@ async def a01(ctx):
                 src = card_md
             elif fallback:
                 src = _project_file(ctx, "card/copy.txt")
-                src.parent.mkdir(parents=True, exist_ok=True)
-                src.write_text(fallback, encoding="utf-8")
+                write_atomic(src, fallback)
             else:
                 raise ValueError("card/copy.txt 不存在且 task.json 无 source.copy、无 任务卡.md")
         raw = src.read_text(encoding="utf-8-sig")
@@ -89,9 +89,7 @@ async def a01(ctx):
                "sha256": __import__("hashlib").sha256(raw.encode()).hexdigest()}
     _artifact_json(ctx, "copy.json", payload)
     # 同时写入项目 card/copy.txt（导入即复制 / 新项目导出）
-    dst = _project_file(ctx, "card/copy.txt")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(raw, encoding="utf-8")
+    write_atomic(_project_file(ctx, "card/copy.txt"), raw)
 
 
 @executor("brief-form")
@@ -285,8 +283,7 @@ async def b02(ctx):
                 p = _project_file(ctx, "project.profile.json")
                 profile = _read_json(p) if p.exists() else {}
             timeline = build_timeline_doc(script, profile)
-            timeline_p.parent.mkdir(parents=True, exist_ok=True)
-            timeline_p.write_text(json.dumps(timeline, ensure_ascii=False, indent=1), encoding="utf-8")
+            write_atomic(timeline_p, json.dumps(timeline, ensure_ascii=False, indent=1))
             scenes = timeline["scenes"]
     _artifact_json(ctx, "scenes.json", {"scenes": scenes})
 
@@ -346,8 +343,7 @@ async def b06(ctx):
     if src_task.exists() and ctx.get("run_imported"):
         task = _read_json(src_task)
         run_task = _run_doc_file(ctx, "task.json")
-        run_task.parent.mkdir(parents=True, exist_ok=True)
-        run_task.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_atomic(run_task, json.dumps(task, ensure_ascii=False, indent=1))
         _artifact_json(ctx, "task.json", task)
         return
     u = _upstream_json(ctx, ["A01", "A02", "A06", "B01", "B02", "B03", "B04", "B05"])
@@ -388,12 +384,10 @@ async def b06(ctx):
         "evidence": [],
     }
     run_task = _run_doc_file(ctx, "task.json")
-    run_task.parent.mkdir(parents=True, exist_ok=True)
-    run_task.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(run_task, json.dumps(task, ensure_ascii=False, indent=1))
     # card/task.json 是只读导出（validator/UI 兼容），运行时不再读取
     card_task = _project_file(ctx, "card/task.json")
-    card_task.parent.mkdir(parents=True, exist_ok=True)
-    card_task.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(card_task, json.dumps(task, ensure_ascii=False, indent=1))
     _artifact_json(ctx, "task.json", task)
 
 
@@ -573,8 +567,7 @@ async def c04(ctx):
     if len(css) > max_kb * 1024:
         raise RuntimeError(f"embed.css 超 {max_kb}KB（{len(css)//1024}KB）；可在 profile.embed_max_kb 调整")
     dst = _project_file(ctx, "fonts/embed.css")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(css, encoding="utf-8")
+    write_atomic(dst, css)
     from ...services import artifacts as art
     ap, sha = art.store_file(ctx["project_root"], dst, "CSS")
     art.register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "CSS", str(ap), sha)
@@ -587,8 +580,7 @@ async def c05(ctx):
             "type_spec": u.get("B05") or {}, "locked_at": ctx.get("now", "")}
     _artifact_json(ctx, "tokens.lock.json", lock)
     dst = _project_file(ctx, "card/tokens.lock.json")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(json.dumps(lock, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(dst, json.dumps(lock, ensure_ascii=False, indent=1))
 
 
 # 注册 D–G 阶段执行器（必须在 helpers 定义之后导入，避免循环引用）

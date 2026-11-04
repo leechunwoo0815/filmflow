@@ -1,0 +1,204 @@
+{
+ "schema": "filmflow.golden-report/2",
+ "project": "15s",
+ "runId": 334,
+ "primary": "H2",
+ "profile": {
+  "width": 1920,
+  "height": 1080,
+  "fps": 24,
+  "duration": 15.0
+ },
+ "frames": 360,
+ "sceneCount": 4,
+ "resolutions": [
+  {
+   "resolution": "original",
+   "baselineDir": "fixtures/golden/15s/baseline_original",
+   "times": [
+    1.25,
+    3.75,
+    6.25,
+    8.75,
+    11.25,
+    13.75
+   ],
+   "phash": [
+    "9f1dc6c2e0e03d1d",
+    "bf33c4ccc8c03e33",
+    "bf33c4ccc8c03e33",
+    "bf3dc0c6c0c03f39",
+    "bf36d0c0c0c12f3f",
+    "bf36d0c0c0c12f3f"
+   ],
+   "ssim": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sourceSha256": [
+    "ff669cf43c5c83b46133e5f060f63468df8e751c6035dbdc0d95a2b9013051f2",
+    "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a",
+    "391e8e018125fff5198e3da0e70f54933c43ec81e3fddca22a57bdd9ad044c04",
+    "18acd867f22ad24b5c0bdf16ad578257bc72661696457ed99f97af8bb3ba4be8",
+    "c17092aacaffc1ae925e17b86ee78f2d54af66eec35306ee70b50b3e7ec8f720",
+    "c17092aacaffc1ae925e17b86ee78f2d54af66eec35306ee70b50b3e7ec8f720"
+   ],
+   "details": [
+    {
+     "frame": 0,
+     "time": 1.25,
+     "index": 30,
+     "ssim": 1.0,
+     "phash": "9f1dc6c2e0e03d1d",
+     "phashDistance": 0,
+     "sourceSha256": "ff669cf43c5c83b46133e5f060f63468df8e751c6035dbdc0d95a2b9013051f2"
+    },
+    {
+     "frame": 1,
+     "time": 3.75,
+     "index": 90,
+     "ssim": 1.0,
+     "phash": "bf33c4ccc8c03e33",
+     "phashDistance": 0,
+     "sourceSha256": "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a"
+    },
+    {
+     "frame": 2,
+     "time": 6.25,
+     "index": 150,
+     "ssim": 1.0,
+     "phash": "bf33c4ccc8c03e33",
+     "phashDistance": 0,
+     "sourceSha256": "391e8e018125fff5198e3da0e70f54933c43ec81e3fddca22a57bdd9ad044c04"
+    },
+    {
+     "frame": 3,
+     "time": 8.75,
+     "index": 210,
+     "ssim": 1.0,
+     "phash": "bf3dc0c6c0c03f39",
+     "phashDistance": 0,
+     "sourceSha256": "18acd867f22ad24b5c0bdf16ad578257bc72661696457ed99f97af8bb3ba4be8"
+    },
+    {
+     "frame": 4,
+     "time": 11.25,
+     "index": 270,
+     "ssim": 1.0,
+     "phash": "bf36d0c0c0c12f3f",
+     "phashDistance": 0,
+     "sourceSha256": "c17092aacaffc1ae925e17b86ee78f2d54af66eec35306ee70b50b3e7ec8f720"
+    },
+    {
+     "frame": 5,
+     "time": 13.75,
+     "index": 330,
+     "ssim": 1.0,
+     "phash": "bf36d0c0c0c12f3f",
+     "phashDistance": 0,
+     "sourceSha256": "c17092aacaffc1ae925e17b86ee78f2d54af66eec35306ee70b50b3e7ec8f720"
+    }
+   ]
+  }
+ ],
+ "update": false,
+ "status": "pass",
+ "generatedAt": "2026-11-04T07:47:01Z",
+ "resolution": "original",
+ "summary": {
+  "resolution": "original",
+  "baselineDir": "fixtures/golden/15s/baseline_original",
+  "times": [
+   1.25,
+   3.75,
+   6.25,
+   8.75,
+   11.25,
+   13.75
+  ],
+  "phash": [
+   "9f1dc6c2e0e03d1d",
+   "bf33c4ccc8c03e33",
+   "bf33c4ccc8c03e33",
+   "bf3dc0c6c0c03f39",
+   "bf36d0c0c0c12f3f",
+   "bf36d0c0c0c12f3f"
+  ],
+  "ssim": [
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "sourceSha256": [
+   "ff669cf43c5c83b46133e5f060f63468df8e751c6035dbdc0d95a2b9013051f2",
+   "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a",
+   "391e8e018125fff5198e3da0e70f54933c43ec81e3fddca22a57bdd9ad044c04",
+   "18acd867f22ad24b5c0bdf16ad578257bc72661696457ed99f97af8bb3ba4be8",
+   "c17092aacaffc1ae925e17b86ee78f2d54af66eec35306ee70b50b3e7ec8f720",
+   "c17092aacaffc1ae925e17b86ee78f2d54af66eec35306ee70b50b3e7ec8f720"
+  ],
+  "details": [
+   {
+    "frame": 0,
+    "time": 1.25,
+    "index": 30,
+    "ssim": 1.0,
+    "phash": "9f1dc6c2e0e03d1d",
+    "phashDistance": 0,
+    "sourceSha256": "ff669cf43c5c83b46133e5f060f63468df8e751c6035dbdc0d95a2b9013051f2"
+   },
+   {
+    "frame": 1,
+    "time": 3.75,
+    "index": 90,
+    "ssim": 1.0,
+    "phash": "bf33c4ccc8c03e33",
+    "phashDistance": 0,
+    "sourceSha256": "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a"
+   },
+   {
+    "frame": 2,
+    "time": 6.25,
+    "index": 150,
+    "ssim": 1.0,
+    "phash": "bf33c4ccc8c03e33",
+    "phashDistance": 0,
+    "sourceSha256": "391e8e018125fff5198e3da0e70f54933c43ec81e3fddca22a57bdd9ad044c04"
+   },
+   {
+    "frame": 3,
+    "time": 8.75,
+    "index": 210,
+    "ssim": 1.0,
+    "phash": "bf3dc0c6c0c03f39",
+    "phashDistance": 0,
+    "sourceSha256": "18acd867f22ad24b5c0bdf16ad578257bc72661696457ed99f97af8bb3ba4be8"
+   },
+   {
+    "frame": 4,
+    "time": 11.25,
+    "index": 270,
+    "ssim": 1.0,
+    "phash": "bf36d0c0c0c12f3f",
+    "phashDistance": 0,
+    "sourceSha256": "c17092aacaffc1ae925e17b86ee78f2d54af66eec35306ee70b50b3e7ec8f720"
+   },
+   {
+    "frame": 5,
+    "time": 13.75,
+    "index": 330,
+    "ssim": 1.0,
+    "phash": "bf36d0c0c0c12f3f",
+    "phashDistance": 0,
+    "sourceSha256": "c17092aacaffc1ae925e17b86ee78f2d54af66eec35306ee70b50b3e7ec8f720"
+   }
+  ]
+ }
+}

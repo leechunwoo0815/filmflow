@@ -123,3 +123,46 @@ def test_run_snapshot_imported_copies_task(tmp_path: Path):
         assert snap["imported"] is True
         assert snap["profile"]["duration"] == 39.5
         assert (root / "runs" / str(run_id) / "docs" / "task.json").exists()
+
+
+def test_revision_cap_keeps_v1_and_marks_truncation(tmp_path: Path, monkeypatch):
+    """P1-11（判官 §三-11）：上限裁剪不许吃掉原始文案，也不许假装链完整。"""
+    monkeypatch.setattr(docs, "MAX_REVISIONS_PER_DOC", 5)
+    project_id, _, _ = _project(tmp_path, "rev-cap")
+    first = docs.build_script_doc("最初的文案。")
+    with Session(engine) as s:
+        doc, _ = docs.save_doc(s, project_id, "script", first, 0, "tester")
+        for i in range(12):
+            text = first["text"] + f"第 {i} 轮追加。"
+            content = docs.build_script_doc(text)
+            doc, _ = docs.save_doc(s, project_id, "script", content, doc.version, "autosave")
+        items = docs.list_versions(s, doc)
+        assert doc.version == 13
+        assert len(items) == 5                      # v1 + 最新 4 条
+        assert min(v["version"] for v in items) == 1  # v1 还在
+        assert max(v["version"] for v in items) == 13
+        restored, _ = docs.restore_doc(s, project_id, "script", 1, "tester")
+        assert restored.content_json["text"] == first["text"]
+
+
+def test_versions_endpoint_reports_truncation(tmp_path: Path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    monkeypatch.setattr(docs, "MAX_REVISIONS_PER_DOC", 4)
+    project_id, _, _ = _project(tmp_path, "rev-api")
+    with Session(engine) as s:
+        doc, _ = docs.save_doc(s, project_id, "script", docs.build_script_doc("原始。"), 0, "tester")
+        for i in range(9):
+            doc, _ = docs.save_doc(s, project_id, "script",
+                                   docs.build_script_doc(f"原始。第 {i} 次改。"), doc.version, "autosave")
+        pid = project_id
+    with TestClient(app, base_url="http://127.0.0.1") as c:
+        r = c.get(f"/api/projects/{pid}/docs/script/versions")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["truncated"] is True
+        assert body["keptFirst"] == 1
+        assert [v["version"] for v in body["items"]][0] == body["current_version"]
+        assert 1 in [v["version"] for v in body["items"]]

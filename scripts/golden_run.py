@@ -54,19 +54,21 @@ def _drive(run_id: int, project_id: int) -> None:
         st = _status(run_id)
         pending = _pending(run_id)
         if "B08" in pending:
-            c.post("/gates/B08/decide", json={"run_id": run_id, "decision": "approved", "author": "golden"})
+            _req("POST", "/gates/B08/decide", {"run_id": run_id, "decision": "approved", "author": "golden"})
         if "D03" in pending and st.get("D02") in ("succeeded", "cached"):
             if not viewed:
-                for i in range(3):
-                    c.post(f"/projects/{project_id}/stills/viewed", json={"scene": f"S0{i + 1}", "t": 0})
+                # 逐场门禁要求**每个场景**都看过；写死 3 场会把 4/5 场的项目永远卡在 D03
+                scenes = _req("GET", f"/projects/{project_id}/docs/timeline")["content"].get("scenes", [])
+                for s in scenes:
+                    _req("POST", f"/projects/{project_id}/stills/viewed", {"scene": s["id"], "t": 0})
                 viewed = True
-            c.post("/gates/D03/decide", json={"run_id": run_id, "decision": "approved", "author": "golden"})
+            _req("POST", "/gates/D03/decide", {"run_id": run_id, "decision": "approved", "author": "golden"})
         if "D05" in pending and st.get("D04") in ("succeeded", "cached"):
-            c.post("/gates/D05/decide", json={"run_id": run_id, "decision": "approved", "author": "golden"})
+            _req("POST", "/gates/D05/decide", {"run_id": run_id, "decision": "approved", "author": "golden"})
         if "E07" in pending:
-            c.post("/gates/E07/decide", json={"run_id": run_id, "decision": "approved", "author": "golden"})
+            _req("POST", "/gates/E07/decide", {"run_id": run_id, "decision": "approved", "author": "golden"})
         if "F06" in pending:
-            c.post("/gates/F06/decide", json={"run_id": run_id, "decision": "approved", "author": "golden"})
+            _req("POST", "/gates/F06/decide", {"run_id": run_id, "decision": "approved", "author": "golden"})
         failures = [(n["id"], (n.get("message") or "")[:200]) for n in
                     _req("GET", f"/runs/{run_id}/graph")["nodes"]
                     if n["status"] == "failed" and n["id"][0] in "DEF"]

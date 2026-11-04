@@ -12,6 +12,8 @@ from pathlib import Path
 from ..engine.fpscalc import FPS_TOL, frames_for, is_delivery_fps, norm_fps, profile_frames
 from ..errors import ApiError, ErrorCode
 
+from ..atomicwrite import write_atomic
+
 SCHEMA = "filmflow.render-profile/1"
 PROFILE_NAMES = ("draft", "review", "final")
 DEFAULT_PROFILES = {
@@ -189,11 +191,11 @@ def save(project_root: str | Path, payload: dict, project_profile: dict | None =
     path = Path(project_root) / "render.profile.json"
     old = _read_json(path)
     try:
-        path.write_text(json.dumps(tmp_probe, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_atomic(path, json.dumps(tmp_probe, ensure_ascii=False, indent=1))
         resolved = resolve(project_root, project_profile, allow_low_final)
     except Exception:
         if old:
-            path.write_text(json.dumps(old, ensure_ascii=False, indent=1), encoding="utf-8")
+            write_atomic(path, json.dumps(old, ensure_ascii=False, indent=1))
         else:
             path.unlink(missing_ok=True)
         raise

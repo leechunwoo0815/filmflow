@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 from urllib.parse import quote
 
+from ...atomicwrite import write_atomic
 from ..fpscalc import fps_rational, frames_for
 from ..fpscalc import norm_fps as _norm_fps
 from ..scene.transitions import transition_type as _transition_type
@@ -52,8 +53,18 @@ class FrameServer:
                     return
                 super().log_message(fmt, *args)
 
+            def end_headers(self):
+                from ...security import frameserver_headers
+                for k, v in frameserver_headers(self.path).items():
+                    self.send_header(k, v)
+                super().end_headers()
+
             def translate_path(self, path):
+                from ...security import frameserver_denied
                 u = unquote(urlparse(path).path)
+                if frameserver_denied(u):
+                    # 上传资产/项目文件里的 HTML/JS 不许作为文档在同源执行
+                    return str(root_resolved / "__forbidden__")
                 if u.startswith("/engine/"):
                     target = _safe_join(engines_dir, u[len("/engine/"):])
                     return str(target) if target else str(engines_dir / "__forbidden__")
@@ -79,13 +90,11 @@ class FrameServer:
                     # P2-04：原子写——中途 kill 只会留下 .tmp，F03 永远看不到半张帧
                     out = root / "out" / sub
                     out.mkdir(parents=True, exist_ok=True)
-                    tmp = out / f".{i:04d}.png.tmp"
-                    tmp.write_bytes(data)
-                    tmp.replace(out / f"{i:04d}.png")
+                    write_atomic(out / f"{i:04d}.png", data)
                     self.send_response(204)
                     self.end_headers()
                 elif u.path == "/done":
-                    (root / "out" / "DONE").write_text("ok")
+                    write_atomic(root / "out" / "DONE", "ok")
                     self.send_response(204)
                     self.end_headers()
                 else:
@@ -318,8 +327,7 @@ async def d01(ctx):
                              asset_resolver=_asset_resolver(ctx))
         rel = f"scenes/{s['id']}.base.program.json"
         dst = _project_file(ctx, rel)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_text(json.dumps(prog, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_atomic(dst, json.dumps(prog, ensure_ascii=False, indent=1))
         start = float(s.get("start", 0))
         end = float(s.get("end", start + 1))
         # 长场景 ≥6 张关键静帧；短场景一张中段帧（FR-26）
@@ -330,8 +338,7 @@ async def d01(ctx):
             "scenes": entries}
     _artifact_json(ctx, "still_spec.json", spec)
     dst = _project_file(ctx, "card/still_spec.json")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(dst, json.dumps(spec, ensure_ascii=False, indent=1))
 
 
 @executor("chrome-still")
@@ -419,8 +426,7 @@ async def d02(ctx):
         "still_count": len(review_items)}
     _artifact_json(ctx, "stills_manifest.json", manifest)
     dst = _project_file(ctx, "card/stills_manifest.json")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(dst, json.dumps(manifest, ensure_ascii=False, indent=1))
 
 
 def _task_scene_ids(ctx) -> list[str]:
@@ -604,8 +610,7 @@ async def e03(ctx):
             motion_rel = f"scenes/{s['id']}.program.json"
             for rel, prog in ((base_rel, base), (motion_rel, motion)):
                 dst = _project_file(ctx, rel)
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                dst.write_text(json.dumps(prog, ensure_ascii=False, indent=1), encoding="utf-8")
+                write_atomic(dst, json.dumps(prog, ensure_ascii=False, indent=1))
             programs.append({
                 "id": s["id"], "start": s.get("start", 0), "end": s.get("end", 0),
                 "base_program": _project_url(ctx, base_rel),
@@ -617,12 +622,10 @@ async def e03(ctx):
         binding.update({"schema": "filmflow.timeline-binding/2", "programs": programs})
     _artifact_json(ctx, "timeline_binding.json", binding)
     dst = _project_file(ctx, "card/timeline_binding.json")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(json.dumps(binding, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(dst, json.dumps(binding, ensure_ascii=False, indent=1))
     if binding.get("programs"):
         dst2 = _project_file(ctx, "scenes/timeline_binding.json")
-        dst2.parent.mkdir(parents=True, exist_ok=True)
-        dst2.write_text(json.dumps(binding, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_atomic(dst2, json.dumps(binding, ensure_ascii=False, indent=1))
 
 
 @executor("transitions")
@@ -642,8 +645,7 @@ async def e04(ctx):
     payload = {"schema": "filmflow.transitions/1", "transitions": out}
     _artifact_json(ctx, "transitions.json", payload)
     dst = _project_file(ctx, "scenes/transitions.json")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(dst, json.dumps(payload, ensure_ascii=False, indent=1))
 
 
 def _film_spec_query(ctx, mode: str, profile: str, start: int, end: int, total: int,
@@ -844,9 +846,7 @@ async def _run_chrome_range(ctx, url: str, frames_dir: Path, start: int, end: in
 def _write_manifest(ctx, manifest: dict, artifact: bool = False) -> None:
     dst = _project_file(ctx, "renders/final/manifest.json")
     dst.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dst.with_suffix(".tmp")
-    tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(dst)
+    write_atomic(dst, json.dumps(manifest, ensure_ascii=False, indent=1))
     if artifact:
         _artifact_json(ctx, "render_manifest.json", manifest)
 
@@ -904,8 +904,7 @@ async def _f02_v2(ctx, build: dict, profile: dict, frames: int, frames_dir: Path
             programs[p["id"]] = _read_json(prog_p)
         elif p.get("program_inline"):
             programs[p["id"]] = p["program_inline"]
-            prog_p.parent.mkdir(parents=True, exist_ok=True)
-            prog_p.write_text(json.dumps(p["program_inline"], ensure_ascii=False, indent=1), encoding="utf-8")
+            write_atomic(prog_p, json.dumps(p["program_inline"], ensure_ascii=False, indent=1))
         else:
             raise RuntimeError(f"E_PROGRAM_INVALID: 缺 program {p['id']}")
     # font_sha 用 C02 源字体：C04 子集 CSS 随文案变化，会把所有场景误标脏

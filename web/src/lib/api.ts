@@ -1,4 +1,15 @@
-export async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
+export type ApiFailure = { path: string; status: number; code?: string; message: string };
+
+type FailureListener = (f: ApiFailure) => void;
+const listeners = new Set<FailureListener>();
+
+/** 订阅任意 API 失败。React 的 error.tsx 抓不到异步拒绝，所以失败可见性必须在这一层做。 */
+export function onApiFailure(fn: FailureListener): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+export async function api<T = any>(path: string, init?: RequestInit & { silent?: boolean }): Promise<T> {
   const res = await fetch(`/api${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
@@ -15,13 +26,25 @@ export async function api<T = any>(path: string, init?: RequestInit): Promise<T>
           details: { errors: detail } };
       }
     } catch {}
-    const err: any = new Error(detail.message || `${res.status}`);
+    const message = detail.message || `${res.status}`;
+    if (!(init as any)?.silent) {
+      listeners.forEach((fn) => {
+        try { fn({ path, status: res.status, code: detail.code, message }); } catch {}
+      });
+    }
+    const err: any = new Error(message);
     err.status = res.status;
     err.code = detail.code;
     err.details = detail.details;
     throw err;
   }
   return res.json();
+}
+
+export function describeApiError(err: any): string {
+  if (!err) return "";
+  const code = err.code ? `${err.code} · ` : "";
+  return `${code}${err.message || String(err)}`;
 }
 
 export type StyleDTO = {

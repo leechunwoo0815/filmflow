@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
+from ..atomicwrite import write_atomic
 from ..models import ProjectDoc, Run, Workflow
 from ..services.project_docs import build_script_doc, build_timeline_doc, content_hash
 from ..services.render_profiles import resolve as resolve_render_profiles
@@ -53,7 +54,7 @@ def ensure_run_snapshot(session: Session, run: Run, project_root: str) -> dict:
         task_path = Path(project_root) / "card" / "task.json"
         if task_path.exists():
             task = _read_json(task_path)
-            (run_dir / "task.json").write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
+            write_atomic(run_dir / "task.json", json.dumps(task, ensure_ascii=False, indent=1))
             docs["task"] = {"version": 0, "hash": content_hash(task), "content": task}
             if not profile:
                 profile = {"width": task.get("width", 1920), "height": task.get("height", 1080),
@@ -77,8 +78,8 @@ def ensure_run_snapshot(session: Session, run: Run, project_root: str) -> dict:
                 docs["timeline"] = {"version": 1, "hash": row.hash, "content": timeline}
         for kind in ("script", "timeline"):
             if kind in docs:
-                (run_dir / f"{kind}.doc.json").write_text(
-                    json.dumps(docs[kind]["content"], ensure_ascii=False, indent=1), encoding="utf-8")
+                write_atomic(run_dir / f"{kind}.doc.json",
+                             json.dumps(docs[kind]["content"], ensure_ascii=False, indent=1))
     render_profiles = resolve_render_profiles(project_root, profile, allow_low_final=imported)
     snapshot = {
         "schema": SNAPSHOT_SCHEMA, "run_id": run.id, "imported": imported,
@@ -89,7 +90,5 @@ def ensure_run_snapshot(session: Session, run: Run, project_root: str) -> dict:
         "docs": docs, "profile": profile, "render_profiles": render_profiles,
         "imported": imported,
     })
-    tmp = snap_path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(snap_path)
+    write_atomic(snap_path, json.dumps(snapshot, ensure_ascii=False, indent=1))
     return snapshot

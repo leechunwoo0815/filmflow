@@ -11,15 +11,20 @@ function MonitorInner() {
   const runId = Number(params.get("run"));
   const [report, setReport] = useState<any>(null);
   const [audit, setAudit] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (runId) api(`/runs/${runId}/report`).then(setReport);
-    api("/audit").then((r) => setAudit(r.items));
+    // 失败必须落进界面：全局条由 api() 广播，这里再补一份本页上下文
+    if (runId) api(`/runs/${runId}/report`).then(setReport).catch((e) => setError(e.message || String(e)));
+    api("/audit").then((r) => setAudit(r.items)).catch((e) => setError(e.message || String(e)));
   }, [runId]);
 
   return (
     <main className="max-w-6xl mx-auto p-6">
       <div className="flex items-center gap-2 mb-4"><h1 className="text-xl font-bold">{t("mo.title")}</h1><ThemeToggle /></div>
+      {error && <section className="card border border-red p-3 mb-4 text-xs text-red" data-testid="monitor-error">
+        本页数据加载失败：{error}
+      </section>}
       {report && (
         <section className="card p-3 mb-4">
           <h2 className="font-semibold mb-2">Run {runId} · {report.run.status}</h2>

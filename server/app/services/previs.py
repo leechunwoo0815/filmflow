@@ -13,6 +13,8 @@ from pathlib import Path
 from ..config import settings
 from ..engine.cachekey import bytes_sha256
 
+from ..atomicwrite import write_atomic
+
 RENDERER_VER = "1.0.0"
 
 _browser = None
@@ -83,8 +85,7 @@ async def render_previs(style_id: str, engine_id: str, engine_sha: str,
     url = f"file://{engines_root() / engine_id / base}?mode=previs&payload={payload}"
     png = await render_page_screenshot(url, size[0], size[1])
     out = settings.cache_dir / "previs" / style_id / f"{engine_sha[:12]}.{variant}.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(png)
+    write_atomic(out, png)
     return out
 
 

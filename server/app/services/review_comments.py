@@ -12,6 +12,8 @@ from pathlib import Path
 
 from ..errors import ApiError, ErrorCode
 
+from ..atomicwrite import write_atomic
+
 KINDS = {"rect", "arrow", "pen", "text"}
 CATEGORIES = {"must", "suggest", "question"}
 STATUSES = {"open", "resolved"}
@@ -49,9 +51,7 @@ def save(root: str | Path, data: dict) -> dict:
     data = {**data, "schema": "filmflow.review/1", "updatedAt": _now()}
     p = path(root)
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(p)
+    write_atomic(p, json.dumps(data, ensure_ascii=False, indent=1))
     return data
 
 

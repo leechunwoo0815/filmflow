@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sqlmodel import Session
 
+from ..atomicwrite import write_atomic
 from ..engine.cachekey import bytes_sha256, file_sha256
 from ..models import Artifact
 
@@ -25,7 +26,7 @@ def store_bytes(project_root: str, data: bytes, type_: str) -> tuple[Path, str]:
     dst = project_artifacts_dir(project_root) / sha[:2] / f"{sha}.{ext}"
     dst.parent.mkdir(parents=True, exist_ok=True)
     if not dst.exists():
-        dst.write_bytes(data)
+        write_atomic(dst, data)
     return dst, sha
 
 

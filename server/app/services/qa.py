@@ -16,6 +16,8 @@ from . import audio as audio_svc
 from . import project_docs as docs_svc
 from . import timeline_ops as tl_svc
 
+from ..atomicwrite import write_atomic
+
 FIX_SCHEMA = "filmflow.qa-fixes/1"
 CATEGORIES = (
     "text_overflow", "font_missing", "black_frame", "missing_frame", "motion_spike",
@@ -79,10 +81,7 @@ def _read_fixes(root: str | Path) -> dict:
 
 def _write_fixes(root: str | Path, data: dict) -> None:
     p = fixes_path(root)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(p)
+    write_atomic(p, json.dumps(data, ensure_ascii=False, indent=1))
     # P2-08：读-改-写期间由调用方持锁；这里补一个进程内串行化哨兵（见 _fixes_lock）
 
 

@@ -11,6 +11,8 @@ from ..engine.fpscalc import frames_for, norm_fps
 from ..models import Template
 from . import assets
 
+from ..atomicwrite import write_atomic
+
 PROJECT_SCHEMA = "filmflow.project-template/1"
 SCENE_SCHEMA = "filmflow.scene-template/1"
 VAR_RE = re.compile(r"{{\s*([A-Za-z0-9_-]+)\s*}}")
@@ -260,8 +262,7 @@ def write_lock(root: str | Path, template_id: int, version: int,
             "version": int(version), "variables": variables or [],
             "appliedAt": datetime.now(UTC).isoformat()}
     p = lock_path(root)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(p, json.dumps(data, ensure_ascii=False, indent=1))
     return data
 
 

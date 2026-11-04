@@ -61,6 +61,8 @@ function CanvasInner() {
         }
       } catch {}
     };
+    // SSE 断线不会走 api() 的失败通道，必须自己说一声，否则画布只是"停止刷新"
+    es.onerror = () => setMsg("实时通道断开：节点状态可能不是最新，刷新页面可重连");
     return () => { es.close(); };
   }, [runId, load]);
 

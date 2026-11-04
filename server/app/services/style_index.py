@@ -11,6 +11,7 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
+from ..atomicwrite import write_atomic
 from ..config import settings
 from ..db import engine
 from ..errors import ApiError, ErrorCode
@@ -147,12 +148,12 @@ def _write_index(root: Path, payload: dict) -> Path:
     target = root / "adapters" / "style-index.json"
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_atomic(target, json.dumps(payload, ensure_ascii=False, indent=1))
         return target
     except OSError:
         fallback = settings.index_path_fallback
         fallback.parent.mkdir(parents=True, exist_ok=True)
-        fallback.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_atomic(fallback, json.dumps(payload, ensure_ascii=False, indent=1))
         return fallback
 
 

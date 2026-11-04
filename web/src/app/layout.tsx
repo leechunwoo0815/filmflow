@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { LangProvider } from "@/lib/i18n";
+import { ApiFailureBanner } from "@/components/ApiFailureBanner";
 import Script from "next/script";
 
 export const metadata: Metadata = { title: "FilmFlow · 印厂控制台", description: "代码动画全生命周期工作台" };
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {`(function(){try{if(localStorage.getItem('ff.theme')==='dark')document.documentElement.classList.add('dark');}catch(e){}})();`}
         </Script>
         <LangProvider>{children}</LangProvider>
+        <ApiFailureBanner />
       </body>
     </html>
   );

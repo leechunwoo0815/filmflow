@@ -34,6 +34,8 @@ from . import engines as engines_svc
 from . import project_docs as docs_svc
 from . import render_profiles as render_profiles_svc
 
+from ..atomicwrite import write_atomic
+
 RENDERER_VER = "preview-1.8.0"  # P0-2 转场映射统一；text_scale + 资产图片/字体预加载
 PREVIEW_PROFILES = render_profiles_svc.DEFAULT_PROFILES
 CACHE_LIMIT_BYTES = 500 * 1024 * 1024
@@ -347,9 +349,7 @@ class PreviewCache:
     def put(self, group: str, key: str, data: bytes) -> Path:
         p = self.path(group, key)
         p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(".tmp")
-        tmp.write_bytes(data)
-        tmp.replace(p)
+        write_atomic(p, data)
         return p
 
     def evict(self) -> None:
@@ -895,7 +895,7 @@ async def _run_job(job: PreviewJob, watermark: bool) -> None:
             shutil.rmtree(tmpdir)
         tmpdir.mkdir(parents=True)
         for i, data in enumerate(pngs):
-            (tmpdir / f"{i:06d}.png").write_bytes(data)
+            write_atomic(tmpdir / f"{i:06d}.png", data)
         name = (f"segment_{job.scene_id}_{job.start}_{job.end}_{job.profile}.mp4"
                 if job.kind == "segment" else f"film_{job.profile}.mp4")
         out_path = ctx.root / "out" / "preview" / re.sub(r"[^0-9A-Za-z_.-]", "_", name)

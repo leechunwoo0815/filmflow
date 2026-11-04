@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import io
+import shutil
 import sys
 import uuid
 from pathlib import Path
@@ -269,6 +270,88 @@ def check_migrations_and_validation(c: httpx.Client) -> None:
     ok("8 迁移登记 + 422", f"登记 {after} 幂等；非法请求体 422 不进服务层")
 
 
+
+def check_response_policy(c: httpx.Client, pid: int) -> None:
+    """判官 #7：文件响应不能再"按后缀猜类型"；:8787 数据根不许直出 HTML/JS。"""
+    from app.security import file_response, frameserver_denied, frameserver_headers
+
+    tmp = Path("/tmp") / f"ff-policy-{uuid.uuid4().hex[:8]}"
+    tmp.mkdir(parents=True, exist_ok=True)
+    try:
+        for suffix in (".html", ".xml", ".js", ".unknown_bin"):
+            f = tmp / f"x{suffix}"
+            f.write_text("<script>alert(1)</script>")
+            r = file_response(f)
+            assert r.media_type == "application/octet-stream", (suffix, r.media_type)
+            assert r.headers["content-disposition"].startswith("attachment"), suffix
+            assert r.headers["x-content-type-options"] == "nosniff"
+            assert "sandbox" in r.headers["content-security-policy"]
+        png = tmp / "ok.png"
+        png.write_bytes(b"\x89PNG")
+        assert file_response(png).media_type == "image/png"
+        svg = tmp / "v.svg"
+        svg.write_text("<svg/>")
+        assert file_response(svg).media_type == "image/svg+xml"  # 时间轴要用，靠 CSP 不断供
+
+        assert frameserver_denied("/project/card/evil.html") is True
+        assert frameserver_denied("/global-assets/a/b.js") is True
+        assert frameserver_denied("/project/scenes/S01.base.program.json") is False
+        assert frameserver_denied("/engine/r1/index.html") is False  # 引擎页必须能跑自己的脚本
+        assert "sandbox" in frameserver_headers("/project/a.json")["Content-Security-Policy"]
+        assert "Content-Security-Policy" not in frameserver_headers("/engine/a.js")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # 活服务上再确认一次响应头真的下发了（用本轮临时项目已入库的资产，缺资产就报出来）
+    items = c.get("/assets", params={"scope": "project", "projectId": pid}).json()["items"]
+    assert items, "复核项目里没有资产，无法验证文件响应头真的下发"
+    r = c.get(f"/assets/{items[0]['id']}/file")
+    assert r.status_code == 200, r.text
+    assert r.headers.get("x-content-type-options") == "nosniff", dict(r.headers)
+    assert "sandbox" in r.headers.get("content-security-policy", ""), "资产响应缺 CSP"
+    ok("10 文件响应策略：HTML/XML/JS/未知后缀一律 attachment，数据根 CSP sandbox，引擎目录不受影响")
+
+
+def check_atomic_writes() -> None:
+    """判官 #8：`exists()` 判据遍地都是，半文件必须不可能被当成有效产物。"""
+    offenders = []
+    for py in sorted((ROOT / "server" / "app").rglob("*.py")):
+        if py.name == "atomicwrite.py":
+            continue
+        for n, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]
+            if ".write_text(" in code or ".write_bytes(" in code:
+                offenders.append(f"{py.relative_to(ROOT)}:{n}")
+    assert not offenders, f"非原子写站点：{offenders[:6]}"
+
+    src = (ROOT / "server" / "app" / "atomicwrite.py").read_text(encoding="utf-8")
+    for needle in ("os.replace", "os.fsync", "uuid.uuid4", "os.getpid"):
+        assert needle in src, f"原子写缺 {needle}"
+
+    from app.engine.cachekey import EXECUTOR_VERSION
+    parts = [int(x) for x in EXECUTOR_VERSION.split(".")]
+    assert parts >= [2, 12, 0], f"改了执行器写行为必须升版，当前 {EXECUTOR_VERSION}"
+    ok(f"11 原子写：server/app 内 0 处裸写、唯一临时名 + fsync + os.replace、EXECUTOR={EXECUTOR_VERSION}")
+
+
+def check_revision_chain(c: httpx.Client, pid: int) -> None:
+    """判官 §三-11：版本链上限不能吃掉 v1（原始文案是 FR-20 验收物）。"""
+    first = c.get(f"/projects/{pid}/docs/script").json()
+    body = first["content"]
+    for i in range(6):
+        nxt = {**body, "text": body.get("text", "") + f"追加 {i}。"}
+        r = c.put(f"/projects/{pid}/docs/script",
+                  json={"content": nxt, "base_version": first["version"], "author": "governance"})
+        assert r.status_code == 200, r.text
+        first = r.json()
+    v = c.get(f"/projects/{pid}/docs/script/versions").json()
+    assert "truncated" in v and "keptFirst" in v, f"版本接口缺截断标注：{list(v)}"
+    assert v["keptFirst"] == 1
+    assert [x["version"] for x in v["items"]][0] == v["current_version"]
+    ok(f"12 版本链：current=v{v['current_version']}、链上 {len(v['items'])} 条、"
+       f"truncated={v['truncated']}、v1 永久保留")
+
+
 def main() -> int:
     with httpx.Client(base_url=BASE, headers=HEADERS, timeout=120, trust_env=False) as c:
         if c.get("/health").status_code != 200:
@@ -284,11 +367,14 @@ def main() -> int:
                 check_rights_and_delivery_gate(c, pid)
                 check_qa_undo_chain(c, pid)
                 check_fps_grid(c)
+                check_revision_chain(c, pid)
+                check_response_policy(c, pid)
         finally:
             if template_id:
                 c.delete(f"/templates/saved:{template_id}")
         check_migrations_and_validation(c)
         check_delete_surface(c)
+        check_atomic_writes()
     print("PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）")
     return 0
 

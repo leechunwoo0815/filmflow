@@ -13,6 +13,8 @@ import numpy as np
 from ..engine.cachekey import file_sha256
 from ..errors import ApiError, ErrorCode
 
+from ..atomicwrite import write_atomic
+
 AUDIO_EXT = {".wav", ".mp3", ".m4a", ".webm", ".ogg", ".flac"}
 MAX_BYTES = 200 * 1024 * 1024
 
@@ -25,10 +27,7 @@ def _read(path: Path) -> dict:
 
 
 def _write(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(path)
+    write_atomic(path, json.dumps(data, ensure_ascii=False, indent=1))
 
 
 def manifest_path(root: str | Path) -> Path:
@@ -98,7 +97,7 @@ def import_take(root: str | Path, filename: str, data_b64: str, kind: str = "voi
     outdir.mkdir(parents=True, exist_ok=True)
     tid = uuid.uuid4().hex[:12]
     src = outdir / f"{tid}.src{ext}"
-    src.write_bytes(raw)
+    write_atomic(src, raw)
     wav = outdir / f"{tid}.wav"
     res = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(src), "-ac", "1", "-ar", "48000", str(wav)],
                          capture_output=True, text=True, timeout=300)

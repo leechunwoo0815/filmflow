@@ -13,6 +13,7 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
+from ..atomicwrite import write_atomic
 from ..config import detect_chrome
 from ..engine.fpscalc import fps_rational, norm_fps, profile_frames, time_at
 from ..engine.scene.compiler import compile_scene
@@ -217,7 +218,7 @@ async def _render_variant_frames(job_id: int, ctx: pv.PreviewContext, variant: V
         await renderer.init(payload)
         for i in range(frames):
             png = await renderer.frame(time_at(i, fps))
-            (frames_dir / f"{i:06d}.png").write_bytes(png)
+            write_atomic(frames_dir / f"{i:06d}.png", png)
             if i % 20 == 0:
                 from ..db import engine as db_engine
                 with Session(db_engine) as s:
@@ -454,7 +455,7 @@ async def run_delivery(job_id: int) -> None:
             segments, source = _alignment(session, root, run, task, project.id or 0)
         srt_text, srt_meta = _srt(segments)
         captions = outdir / "captions.zh.srt"
-        captions.write_text(srt_text, encoding="utf-8")
+        write_atomic(captions, srt_text)
         # 封面：16:9 取 D02 review；9:16 取变体中间帧
         title = ""
         with Session(db_engine) as session:
@@ -489,7 +490,7 @@ async def run_delivery(job_id: int) -> None:
                                     "role": "渲染器内置兜底，未作为资产入库"}
                                    if not fonts else None),
                   "generatedAt": _now()}
-        (outdir / "rights.json").write_text(json.dumps(rights, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_atomic(outdir / "rights.json", json.dumps(rights, ensure_ascii=False, indent=1))
         # manifest
         files = [master16, master9, captions, cover16, cover9,
                  outdir / "rights.json"]
@@ -520,7 +521,7 @@ async def run_delivery(job_id: int) -> None:
                             "fontSha": ctx.font_sha, "chrome": chrome_ver,
                             "ffmpeg": ff[0] if ff else ""},
                     "generatedAt": _now()}
-        (outdir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_atomic(outdir / "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=1))
         # QC
         p16, p9 = await asyncio.to_thread(_probe, master16), await asyncio.to_thread(_probe, master9)
         loud = await asyncio.to_thread(_loudness, master16)
@@ -544,7 +545,7 @@ async def run_delivery(job_id: int) -> None:
         qc = {"schema": "filmflow.qc/1", "ok": all(checks.values()), "checks": checks,
               "probing": {"master16": p16, "master9": p9, "loudness": loud},
               "captions": srt_meta, "generatedAt": _now()}
-        (outdir / "qc.json").write_text(json.dumps(qc, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_atomic(outdir / "qc.json", json.dumps(qc, ensure_ascii=False, indent=1))
         if not qc["ok"]:
             raise RuntimeError(f"E_DELIVERY_QC: {[k for k, v in checks.items() if not v]}")
         # zip（8 个交付文件 + README）

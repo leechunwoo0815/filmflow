@@ -5,6 +5,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..atomicwrite import write_atomic
 from ..errors import ApiError, ErrorCode
 
 
@@ -31,9 +32,7 @@ def save(root: str | Path, data: dict) -> dict:
     data = {**data, "schema": "filmflow.takes/1", "updatedAt": _now()}
     p = path(root)
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(p)
+    write_atomic(p, json.dumps(data, ensure_ascii=False, indent=1))
     return data
 
 
@@ -90,7 +89,7 @@ def promote(root: str | Path, run_id: int) -> dict:
     save(root, data)
     out = Path(root) / "out"
     out.mkdir(parents=True, exist_ok=True)
-    (out / "CURRENT.json").write_text(json.dumps({
+    write_atomic(out / "CURRENT.json", json.dumps({
         "schema": "filmflow.current/1", "runId": run_id, "promotedAt": _now(),
         "name": raw.get("name") or f"Take {run_id}",
     }, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -221,15 +221,23 @@ def _now():
 
 
 MAX_REVISIONS_PER_DOC = 100  # P2-07：版本链上限，防长编辑会话无限增长
+FIRST_REVISION_KEPT = 1      # v1（原始文案）永不被裁
 
 
 def _trim_revisions(session: Session, doc_id: int) -> int:
-    """只保留最近 MAX_REVISIONS_PER_DOC 条修订；返回删除数。"""
-    rows = session.exec(select(DocRevision.id).where(
+    """保留最新 `MAX-1` 条 **加 v1**；返回删除数。
+
+    时间轴是防抖自动保存，100 条只是几分钟打字量。无条件裁掉最旧的会把 FR-20 验收物
+    ——原始文案 v1——静默删掉，所以 v1 永久保留；中间被裁掉的历史由 `list_versions`
+    的长度对比 `doc.version` 暴露成 `truncated`，不再假装版本链完整。
+    """
+    rows = session.exec(select(DocRevision.id, DocRevision.version).where(
         DocRevision.doc_id == doc_id).order_by(DocRevision.version.desc())).all()
     if len(rows) <= MAX_REVISIONS_PER_DOC:
         return 0
-    stale = rows[MAX_REVISIONS_PER_DOC:]
+    keep = {r[0] for r in rows[:MAX_REVISIONS_PER_DOC - 1]}
+    keep |= {r[0] for r in rows if r[1] == 1}
+    stale = [r[0] for r in rows if r[0] not in keep]
     for rid in stale:
         row = session.get(DocRevision, rid)
         if row:

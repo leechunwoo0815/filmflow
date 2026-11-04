@@ -13,6 +13,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, select
 from sse_starlette.sse import EventSourceResponse
 
+from ..atomicwrite import write_atomic
 from ..config import settings
 from ..db import engine, get_session
 from ..engine import edges
@@ -41,6 +42,7 @@ from ..models import (
     WorkflowVersion,
     table_dict,
 )
+from ..security import file_response
 from ..services import assets as assets_svc
 from ..services import audio as audio_svc
 from ..services import delivery as delivery_svc
@@ -394,8 +396,7 @@ async def projects_import(payload: dict, session: Session = Depends(get_session)
     run = session.get(Run, created["run_id"])
     import hashlib
     ch = hashlib.sha256(task_p.read_bytes()).hexdigest()
-    (rp / "card").mkdir(parents=True, exist_ok=True)
-    (rp / "card" / "style_decision.json").write_text(json.dumps({
+    write_atomic(rp / "card" / "style_decision.json", json.dumps({
         "primary": "imported:" + rp.name, "alternates": [], "reason": "导入项目继承原风格",
         "author": "local", "decided_at": __import__("datetime").datetime.now(
             __import__("datetime").timezone.utc).isoformat(), "index_sha": ""},
@@ -525,16 +526,16 @@ async def drafts_materialize(draft_id: int, session: Session = Depends(get_sessi
                 "reason": pick.get("reason", ""), "author": "local",
                 "decided_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
                 "index_sha": idx_svc.library_status().get("index_sha", "")}
-    (proj_dir / "card" / "style_decision.json").write_text(
-        json.dumps(decision, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(proj_dir / "card" / "style_decision.json",
+                 json.dumps(decision, ensure_ascii=False, indent=1))
     # copy 落盘
     if payload.get("copy"):
-        (proj_dir / "card" / "copy.txt").write_text(payload["copy"], encoding="utf-8")
+        write_atomic(proj_dir / "card" / "copy.txt", payload["copy"])
     # profile 落盘（规格 §1：常数来自 profile）
     profile = payload.get("profile") or {"width": 1920, "height": 1080, "fps": 24,
                                          "duration": payload.get("duration", 39.5)}
     profile.setdefault("frames", round(profile.get("duration", 39.5) * profile.get("fps", 24)))
-    (proj_dir / "project.profile.json").write_text(json.dumps(profile, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(proj_dir / "project.profile.json", json.dumps(profile, ensure_ascii=False, indent=1))
     placeholder = payload.get("audioPlaceholder")
     if isinstance(placeholder, dict) and placeholder.get("kind"):
         audio_svc.save_placeholder(
@@ -1345,8 +1346,7 @@ async def project_delivery_file(project_id: int, run_id: int, name: str,
     p = (base / name).resolve()
     if not p.is_relative_to(base) or not p.is_file():
         raise not_found("交付文件")
-    media = "video/mp4" if p.suffix == ".mp4" else "application/zip" if p.suffix == ".zip" else         "image/jpeg" if p.suffix in (".jpg", ".jpeg") else "application/octet-stream"
-    return FileResponse(p, media_type=media, filename=p.name)
+    return file_response(p, download_name=name)
 
 
 # ---------- 渲染档位（FR-24） ----------
@@ -1384,8 +1384,7 @@ async def artifact_file(artifact_id: int, session: Session = Depends(get_session
         raise not_found("产物文件")
     # P3：产物路径来自 DB；仍强制落在工作区白名单内（防 DB 被改后任意读）
     _require_workspace_root(p.resolve())
-    from fastapi.responses import FileResponse
-    return FileResponse(p, headers={"X-Content-Type-Options": "nosniff"})
+    return file_response(p)
 
 
 # ---------- 门审批（T10/FR-8） ----------
@@ -1609,13 +1608,6 @@ async def project_qa_report(project_id: int, session: Session = Depends(get_sess
 
 # ---------- 资产库（FR-36） ----------
 
-_ASSET_MEDIA = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                ".webp": "image/webp", ".svg": "image/svg+xml",
-                ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
-                ".ttf": "font/ttf", ".otf": "font/otf", ".woff2": "font/woff2",
-                ".mp4": "video/mp4", ".mov": "video/quicktime"}
-
-
 def _asset_project(session: Session, project_id: int | None) -> Project | None:
     if not project_id:
         return None
@@ -1688,11 +1680,8 @@ async def assets_file(asset_id: int, session: Session = Depends(get_session)):
     p = Path(asset.path)
     if not p.exists():
         raise ApiError(ErrorCode.E_ASSET_MISSING, "资产文件缺失", status=404)
-    # P3：SVG 可携带 <script>，同源直开=存储型脚本执行；CSP sandbox + nosniff 关死
-    headers = {"X-Content-Type-Options": "nosniff",
-               "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"}
-    return FileResponse(p, filename=p.name, headers=headers,
-                        media_type=_ASSET_MEDIA.get((asset.meta_json or {}).get("ext", "")))
+    # P3：SVG 可携带 <script>，同源直开=存储型脚本执行；白名单 Content-Type + CSP sandbox + nosniff
+    return file_response(p, download_name=p.name)
 
 
 @router.get("/assets/{asset_id}/thumb")
@@ -1701,7 +1690,7 @@ async def assets_thumb(asset_id: int, session: Session = Depends(get_session)):
     p = assets_svc._thumb_path(asset)
     if not p:
         raise ApiError(ErrorCode.E_NOT_FOUND, "缩略图不存在", status=404)
-    return FileResponse(p, filename=p.name, media_type="image/jpeg")
+    return file_response(p)
 
 
 @router.get("/assets/{asset_id}/waveform")
@@ -1853,7 +1842,7 @@ async def audio_take_file(project_id: int, take_id: str, processed: bool = False
                           session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     p = audio_svc.take_path(proj.root, take_id, processed=processed)
-    return FileResponse(p, filename=p.name)
+    return file_response(p)
 
 
 @router.post("/projects/{project_id}/audio/concat")
@@ -1876,7 +1865,7 @@ async def audio_concat_file(project_id: int, session: Session = Depends(get_sess
     p = Path(proj.root) / "card" / "audio" / "preview_concat.wav"
     if not p.exists():
         raise ApiError(ErrorCode.E_NOT_FOUND, "拼接预览尚未生成", status=404)
-    return FileResponse(p, filename="concat-preview.wav")
+    return file_response(p, download_name="concat-preview.wav")
 
 
 @router.get("/projects/{project_id}/audio/onset")
@@ -2082,7 +2071,7 @@ async def review_package_file(project_id: int, session: Session = Depends(get_se
     p = Path(proj.root) / "review" / "review-package.zip"
     if not p.exists():
         raise ApiError(ErrorCode.E_NOT_FOUND, "审片包尚未生成", status=404)
-    return FileResponse(p, filename=f"{proj.name}-review-package.zip")
+    return file_response(p, download_name=f"{proj.name}-review-package.zip")
 
 
 # ---------- 静帧查看记录（D03 前置） ----------
@@ -2099,10 +2088,9 @@ async def stills_viewed(project_id: int, payload: dict, session: Session = Depen
     if "t" in entry and "time" not in entry:
         entry["time"] = entry.pop("t")
     vp = Path(proj.root) / "card" / "viewed.json"
-    vp.parent.mkdir(parents=True, exist_ok=True)
     data = json.loads(vp.read_text()) if vp.exists() else {"regions": []}
     data.setdefault("regions", []).append(entry)
-    vp.write_text(json.dumps(data, ensure_ascii=False))
+    write_atomic(vp, json.dumps(data, ensure_ascii=False))
     audit(session, "stills.viewed", proj.root, after=entry)
     run = session.exec(select(Run).where(Run.workflow_id.in_(
         select(Workflow.id).where(Workflow.project_id == project_id))).order_by(Run.id.desc())).first()  # type: ignore[arg-type,union-attr]
@@ -2179,8 +2167,7 @@ async def task_put(project_id: int, payload: TaskPutIn,
         raise ApiError(ErrorCode.E_PHASE_MISMATCH,
                        f"phase={phase} 的 actions {actions - allowed.get(phase, set())} 超出白名单")
     tp = Path(proj.root) / "card" / "task.json"
-    tp.parent.mkdir(parents=True, exist_ok=True)
-    tp.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_atomic(tp, json.dumps(task, ensure_ascii=False, indent=1))
     audit(session, "task.save", proj.root, after={"phase": phase, "scenes": len(task.get("scenes", []))})
     return {"ok": True, "path": str(tp)}
 
@@ -2280,8 +2267,11 @@ async def project_doc_versions(project_id: int, kind: str, session: Session = De
         raise ApiError(ErrorCode.E_VALIDATION, f"未知文档类型：{kind}")
     doc = docs_svc.get_doc(session, project_id, kind)
     if doc is None:
-        return {"kind": kind, "current_version": 0, "items": []}
-    return {"kind": kind, "current_version": doc.version, "items": docs_svc.list_versions(session, doc)}
+        return {"kind": kind, "current_version": 0, "items": [], "truncated": False}
+    items = docs_svc.list_versions(session, doc)
+    # 版本链有上限（保留 v1 + 最新 99 条）；被裁掉的中间历史必须可见，别假装链完整
+    return {"kind": kind, "current_version": doc.version, "items": items,
+            "truncated": len(items) < doc.version, "keptFirst": docs_svc.FIRST_REVISION_KEPT}
 
 
 @router.post("/projects/{project_id}/docs/{kind}/restore")
@@ -2667,9 +2657,8 @@ async def run_promote(run_id: int, payload: RunPromoteIn,
     wf = session.get(Workflow, run.workflow_id)
     proj = session.get(Project, wf.project_id)  # type: ignore[arg-type]
     marker = Path(proj.root) / "out" / "CURRENT"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(json.dumps({"run_id": run_id,
-                                  "take": payload.takeName or f"take-{run_id}"}))
+    write_atomic(marker, json.dumps({"run_id": run_id,
+                                     "take": payload.takeName or f"take-{run_id}"}))
     audit(session, "run.promote", f"run:{run_id}", after={"take": payload.takeName or ""})
     return {"ok": True}
 
