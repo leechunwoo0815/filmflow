@@ -143,6 +143,33 @@ def cancel_requested(session: Session, job_id: int) -> bool:
     return True
 
 
+# parked 作业（retry_wait = 等人工门）超过这个时长没有心跳就按过期回收。
+PARKED_EXPIRY_HOURS = 72
+
+
+def expire_parked(session: Session, hours: int = PARKED_EXPIRY_HOURS) -> list[int]:
+    """把停太久的 parked 作业收成 canceled（`E_JOB_EXPIRED`）。
+
+    `retry_wait` 是"Run 卡在人工门上"的正常态，不是垃圾，所以只按**心跳年龄**收；
+    收掉也不影响恢复——签门后 `start_run` 会走 `ensure_run_job` 重建作业。
+    不收的话这些行会无限堆积（生产库曾积到 11 条，全属 rumor/演示项目，没人敢动）。
+    """
+    cutoff = _now() - timedelta(hours=hours)
+    expired: list[int] = []
+    for job in session.exec(select(Job).where(Job.status == "retry_wait")).all():
+        stamp = job.heartbeat_at or job.started_at or job.updated_at or job.created_at
+        if stamp is None:
+            continue
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=UTC)
+        if stamp > cutoff:
+            continue
+        finish_job(session, job.id, "canceled", error_code="E_JOB_EXPIRED",
+                   error_msg=f"parked 超过 {hours}h 无心跳，按过期回收（签门后会重建作业）")
+        expired.append(int(job.id))
+    return expired
+
+
 def list_jobs(session: Session, status: str | None = None, kind: str | None = None,
               limit: int = 200) -> list[Job]:
     stmt = select(Job)

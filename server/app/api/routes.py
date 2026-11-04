@@ -21,6 +21,7 @@ from ..engine import runengine as re_mod
 from ..engine.cachekey import gate_content_hash
 from ..engine.fpscalc import frames_for, norm_fps
 from ..engine.invalidation import impact_preview
+from ..engine.snapshot import snapshot_doc_drift
 from ..errors import ApiError, ErrorCode, not_found
 from ..events import emit, subscribe, unsubscribe
 from ..models import (
@@ -1177,7 +1178,21 @@ async def run_cancel(run_id: int):
 
 @router.post("/runs/{run_id}/retry")
 async def run_retry(run_id: int, session: Session = Depends(get_session)):
-    """只重跑失败节点（规格 §7.4）。"""
+    """只重跑失败节点（规格 §7.4）。
+
+    P0-5：重试沿用本 Run 的文档快照，所以文档改过之后重试只会重渲**旧内容**
+    （QA 扩场景的 0.5s 就这么被吃掉过）。漂移即 409，让调用方去开新 Run。
+    """
+    run = session.get(Run, run_id)
+    if not run:
+        raise not_found("run")
+    wf = session.get(Workflow, run.workflow_id)
+    proj = session.get(Project, wf.project_id) if wf else None
+    drift = snapshot_doc_drift(session, run, proj.root) if proj else {}
+    if drift:
+        raise ApiError(ErrorCode.E_RUN_SNAPSHOT_STALE,
+                       "本 Run 的快照与当前文档不一致，重试只会重渲旧内容——请开新 Run",
+                       status=409, details={"runId": run_id, "drift": drift})
     rows = session.exec(select(NodeRun).where(NodeRun.run_id == run_id, NodeRun.status == "failed")).all()  # type: ignore[arg-type]
     for r in rows:
         r.status = "idle"

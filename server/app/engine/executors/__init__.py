@@ -17,6 +17,10 @@ from ..fpscalc import norm_fps as _norm_fps
 
 REGISTRY: dict[str, object] = {}
 
+# C02 下载的 Noto Sans SC 变量字体摘要（P2-31：字体无 sha 钉 → 视觉产出不可复现）。
+# 取值口径：生产库 53 条 C02 产物与本机字体缓存逐字节一致（17,772,300 bytes）。
+NOTO_SANS_SC_SHA256 = "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da"
+
 
 def executor(name: str):
     def deco(fn):
@@ -462,6 +466,7 @@ async def c02(ctx):
     import shutil
 
     from ...config import settings
+    from ..cachekey import file_sha256
     url = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf"
     d = _project_file(ctx, "fonts/src")
     d.mkdir(parents=True, exist_ok=True)
@@ -482,20 +487,35 @@ async def c02(ctx):
             if p.exists() and p.stat().st_size >= min_bytes:
                 shutil.copyfile(p, ttf)
                 break
+    from_network = False
     if not ttf.exists():
         res = await ctx["runner"].run(
             ["curl", "-L", "--fail", "--max-time", "120", "-o", str(ttf), url], timeout=180)
         if not res.ok or not ttf.exists() or ttf.stat().st_size < min_bytes:
             raise RuntimeError("变量字体下载失败：" + "\n".join(res.stderr_tail[-3:]))
+        from_network = True
+        # P2-31：网络来的字节必须对上钉住的摘要——字体一变，整条渲染链的视觉产出就不可复现
+        # （黄金基线也绑在它身上）。上游改版要先人工核对，再更新这个常量。
+        got = file_sha256(str(ttf))
+        if got != NOTO_SANS_SC_SHA256:
+            ttf.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"下载字体摘要不符：钉住 {NOTO_SANS_SC_SHA256[:16]}…，实得 {got[:16]}…。"
+                "上游改版了就先核对，再更新 executors/__init__.py 的 NOTO_SANS_SC_SHA256")
     if not cache.exists() or cache.stat().st_size < min_bytes:
         cache.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ttf, cache)
     from ...services.artifacts import register, store_file
     ap, sha = store_file(ctx["project_root"], ttf, "TXT")
     register(ctx["session"], ctx["run_id"], ctx["node_run_id"], ctx["node_id"], "TXT", str(ap), sha,
-             {"source": url, "bytes": ttf.stat().st_size})
+             {"source": url, "bytes": ttf.stat().st_size, "pinnedSha256": NOTO_SANS_SC_SHA256,
+              "pinMatches": sha == NOTO_SANS_SC_SHA256, "fromNetwork": from_network})
     _artifact_json(ctx, "font_fetch_report.json", {"source": url, "sha256": sha,
-                                                   "bytes": ttf.stat().st_size, "artifact_path": str(ap)})
+                                                   "pinnedSha256": NOTO_SANS_SC_SHA256,
+                                                   "pinMatches": sha == NOTO_SANS_SC_SHA256,
+                                                   "fromNetwork": from_network,
+                                                   "bytes": ttf.stat().st_size,
+                                                   "artifact_path": str(ap)})
 
 
 @executor("font-subset")

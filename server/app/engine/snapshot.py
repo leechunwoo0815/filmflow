@@ -27,6 +27,32 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
+def snapshot_doc_drift(session: Session, run: Run, project_root: str) -> dict[str, dict]:
+    """快照内文档哈希 vs 当前库内文档哈希；非空即"文档已改，本 Run 的快照是旧的"。
+
+    P0-5：`POST /runs/{id}/retry` 只重跑失败节点、沿用 `runs/<id>/docs/snapshot.json`，
+    所以 QA 扩场景这类时间轴修复对重试**不生效**（渲出来还是旧时长）。调用方据此 fail-closed。
+    """
+    snap_path = snapshot_dir(project_root, run.id) / "snapshot.json"
+    snap = _read_json(snap_path) if snap_path.exists() else {}
+    if snap.get("schema") != SNAPSHOT_SCHEMA:
+        return {}
+    wf = session.get(Workflow, run.workflow_id)
+    if not wf:
+        return {}
+    current = {d.kind: d for d in session.exec(select(ProjectDoc).where(
+        ProjectDoc.project_id == wf.project_id)).all()}  # type: ignore[arg-type,union-attr]
+    drift: dict[str, dict] = {}
+    for kind, entry in (snap.get("docs") or {}).items():
+        row = current.get(kind)
+        run_hash, cur_hash = str(entry.get("hash") or ""), str(row.hash if row else "")
+        if run_hash and cur_hash and run_hash != cur_hash:
+            drift[kind] = {"runHash": run_hash, "currentHash": cur_hash,
+                           "runVersion": entry.get("version"),
+                           "currentVersion": row.version if row else None}
+    return drift
+
+
 def ensure_run_snapshot(session: Session, run: Run, project_root: str) -> dict:
     run_dir = snapshot_dir(project_root, run.id)
     snap_path = run_dir / "snapshot.json"

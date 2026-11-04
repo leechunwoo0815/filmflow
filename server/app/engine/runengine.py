@@ -390,10 +390,12 @@ async def execute_node(run_id: int, node_id: str) -> dict:
                              run.caps_json or [], doc_sha)
 
         # 缓存命中：同 workflow 任意 run 的同键成功记录（规格 §5.3）
-        prev = session.exec(select(NodeRun).where(
+        candidates = session.exec(select(NodeRun).where(
             NodeRun.node_id == node_id, NodeRun.cache_key == key,
-            NodeRun.status.in_(TERMINAL_OK))).first()  # type: ignore[arg-type,union-attr]
-        if prev is not None and prev.run_id != run_id:
+            NodeRun.status.in_(TERMINAL_OK)).order_by(NodeRun.id.desc())).all()  # type: ignore[arg-type,union-attr]
+        prev = next((c for c in candidates
+                     if c.run_id != run_id and _cache_hit_is_material(session, c, node_id)), None)
+        if prev is not None:
             st.status = "cached"
             st.cache_key = key
             st.finished_at = _now()
@@ -491,6 +493,19 @@ def _auto_approve_a05(session: Session, run: Run, wf: Workflow, states: dict, pr
                          note=decision.get("reason") or "导入继承原风格"))
     session.commit()
     emit("gate.decided", run.id, "A05", decision="approved", auto=True)
+
+
+def _cache_hit_is_material(session: Session, prev: NodeRun, node_id: str) -> bool:
+    """缓存命中必须"文件真的还在"，否则退回真实执行。
+
+    产物是内容寻址存在**产出它的那个项目根**里的，跨项目命中只登记路径不复制文件。
+    所以删掉一个验收残留项目，就会让之后任何 Run 的命中指向空气：实测 C02 命中已删的
+    `r3-audio-v2-299/artifacts/a3/a304….txt`，C03 直接报"变量字体缺失：先运行 C02"，
+    整条渲染链在一个全新项目上跑不下去。
+    """
+    rows = session.exec(select(Artifact).where(
+        Artifact.run_id == prev.run_id, Artifact.node_id == node_id)).all()  # type: ignore[arg-type]
+    return all(Path(a.path).exists() for a in rows)
 
 
 def _clone_artifacts(session: Session, prev: NodeRun, run_id: int, new_node_run_id: int | None, node_id: str) -> None:

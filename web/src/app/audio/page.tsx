@@ -50,7 +50,8 @@ function AudioInner() {
   const [onsets, setOnsets] = useState<any[]>([]);
   const [markerTime, setMarkerTime] = useState(0);
   const [concatUrl, setConcatUrl] = useState("");
-  const [lic, setLic] = useState({ source: "", license: "", authorized: true, expires: "", note: "" });
+  // P1-18：授权默认**不勾选**——默认打勾等于让用户在没确认的情况下声明"已授权"
+  const [lic, setLic] = useState({ source: "", license: "", authorized: false, expires: "", note: "" });
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -70,7 +71,7 @@ function AudioInner() {
     setMarkers(d.markers?.markers || []);
     setOnsets(d.markers?.onsets || []);
     setLic({ source: d.license?.source || "", license: d.license?.license || "",
-             authorized: d.license?.authorized !== false, expires: d.license?.expires || "",
+             authorized: d.license?.authorized === true, expires: d.license?.expires || "",
              note: d.license?.note || "" });
     const takeId = d.primary?.id || d.takes[0]?.id || "";
     setSelected((v) => v || takeId);

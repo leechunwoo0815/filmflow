@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.12.0"  # P1-12：非整数 fps 帧网格口径统一（fpscalc），旧缓存自动失效
+EXECUTOR_VERSION = "2.13.0"  # P2-31：C02 字体下载加 sha 钉 + 报告记 pinMatches，旧缓存自动失效
 # 2.12.0：帧/program/manifest/快照落盘改唯一临时名 + fsync + os.replace（app/atomicwrite），
 # 崩溃不再留下被当成有效产物的半文件；读取路径不变，但产物写入行为变了，必须升版。
 

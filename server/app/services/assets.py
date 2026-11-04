@@ -343,7 +343,13 @@ def _owner(entry: dict) -> tuple:
 def scan_usages(session: Session, sha: str | None = None,
                 project_ids: list[int] | None = None,
                 include_history: bool = False) -> dict[str, list[dict]]:
-    """引用面 = 时间轴 + 其它项目文档 + 模板；include_history 时再含 Run 快照（删除/替换保护用）。"""
+    """引用面 = 时间轴 + 其它项目文档 + 模板；include_history 时再含 Run 快照（删除/替换保护用）。
+
+    `card/audio.json` **不是**资产引用面（专家 P1-15 列了它，实测不成立）：里面存的是
+    口播/音乐 Take 自己的 `sha256`（`card/audio/<id>.wav` 的摘要，audio.py:111），
+    全仓没有 `assetSha` 字段。就算某个 Take 与某个资产字节相同，Take 也是独立副本，
+    删资产不会让音频链断——把它算进引用面只会造成"删不掉"的假阳性。
+    """
     out: dict[str, list[dict]] = {}
 
     def add(s: str, entry: dict) -> None:

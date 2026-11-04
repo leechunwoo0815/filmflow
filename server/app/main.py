@@ -29,10 +29,11 @@ async def lifespan(app: FastAPI):
     clean = jobs_svc.cleanup_orphans()
     with Session(engine) as session:
         recovered = jobs_svc.recover(session)
+        expired = jobs_svc.expire_parked(session)
     for run_id in recovered["requeued"]:
         runengine.start_run(run_id)
-    if clean["killed"] or clean["removedProfiles"] or recovered["requeued"]:
-        print(f"[recovery] cleanup={clean} recovered={recovered}", flush=True)
+    if clean["killed"] or clean["removedProfiles"] or recovered["requeued"] or expired:
+        print(f"[recovery] cleanup={clean} recovered={recovered} expiredParked={expired}", flush=True)
     yield
 
 

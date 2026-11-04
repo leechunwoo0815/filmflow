@@ -20,6 +20,13 @@ function fmtTC(t: number, fps: number) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}:${String(ff).padStart(2, "0")}`;
 }
 function clamp(x: number, a: number, b: number) { return Math.max(a, Math.min(b, x)); }
+/** 409 冲突详情里的字段值：截断到能看清是什么，不把整个文档糊在横幅上。 */
+function fmtDiff(v: any): string {
+  if (v === null || v === undefined) return "（无）";
+  const s = typeof v === "string" ? v : JSON.stringify(v);
+  return s.length > 60 ? `${s.slice(0, 60)}…` : s;
+}
+
 function sceneText(scene: any, script: any) {
   if (scene?.text) return scene.text;
   const ss = script?.sentences || [];
@@ -62,7 +69,10 @@ function TimelineInner() {
   const [previewErr, setPreviewErr] = useState("");
   const [resize, setResize] = useState<{ id: string; end: number } | null>(null);
   const [dragId, setDragId] = useState("");
-  const [conflict, setConflict] = useState<null | { op: string; extra: any; opts: any; serverVersion: number | null }>(null);
+  const [conflict, setConflict] = useState<null | {
+    op: string; extra: any; opts: any; serverVersion: number | null;
+    diff: { path: string; from: any; to: any }[];
+  }>(null);
   const opRef = useRef<any>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLTextAreaElement | null>(null);
@@ -144,7 +154,9 @@ function TimelineInner() {
         return runOp(op, extra, { ...opts, force: true });
       }
       if (e.code === "E_DOC_CONFLICT" || m.includes("DOC_CONFLICT") || m.includes("文档版本")) {
-        setConflict({ op, extra, opts, serverVersion: e.details?.current_version ?? null });
+        // 服务端在 409 里带了字段级 diff（project_docs.diff_docs）：不展示就等于让用户盲选
+        setConflict({ op, extra, opts, serverVersion: e.details?.current_version ?? null,
+          diff: (Array.isArray(e.details?.diff) ? e.details.diff : []).slice(0, 12) });
         setMsg("文档已被其他窗口修改。你的本地编辑和待应用操作已保留。");
       } else setMsg(m);
     } finally { setSaving(false); }
@@ -430,6 +442,18 @@ function TimelineInner() {
           <span className="text-dim ml-2">服务端版本 {conflict.serverVersion ?? "已更新"}；本地编辑未丢失。</span>
           <button className="btn ml-3" onClick={refreshConflict}>只看服务端</button>
           <button className="btn ml-2" onClick={overwriteConflict}>保留本地并重试</button>
+          {conflict.diff.length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-dim" data-testid="timeline-conflict-diff">
+              {conflict.diff.map((d) => (
+                <li key={d.path} className="truncate">
+                  <code className="text-fg">{d.path}</code>
+                  <span className="ml-2">服务端 {fmtDiff(d.from)}</span>
+                  <span className="mx-1">→</span>
+                  <span>本地 {fmtDiff(d.to)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       {msg && <div className="px-3 py-1 text-xs text-gold border-b border-line">{msg}</div>}
