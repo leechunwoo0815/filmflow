@@ -165,7 +165,7 @@ QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
   连续 pytest 生产 DB 不变。
 - **P0-5**：`extend_scene` 同步 timeline + profile（失败补偿回滚）；QA `verified=null/documentVerified=true/requiresRerun=true`；`retry_run` fork 新 Run；撤销同步恢复 profile；报告增加 `pendingRerun`。
 - **P0-4a**：新增 `test_render_smoke.py`，真实 Chrome + ffmpeg + SSIM，断言 1s draft 输出 960×540/12fps/12 帧且帧一致性 ≥0.95。
-- **测试**：完整 `pytest server/tests -q` **288 passed + 1 skipped**（collected **289** = unit 264 + integration 18 + BDD 7；2026-11-04 B7 之后实测，56.8s），连跑生产 DB 不变。有 F01 占 `:8787` 时 `test_p1_foundations.py:174` 会 skip，计数随之变动。
+- **测试**：完整 `pytest server/tests -q` **320 passed + 1 skipped**（collected **321** = unit 282 + integration 32 + BDD 7；2026-11-04 B8 之后实测，68.7s），连跑生产 DB 不变。有 F01 占 `:8787` 时 `test_p1_foundations.py:174` 会 skip，计数随之变动。
 - **P0-4b 已补齐**：`verify_r2_incremental.py --project 5s|15s|40s`、`golden_run.py --resolution original`、`docs/reports/` JSON 归档；已实跑 5s 增量和 5s 原帧 golden。15s/40s 原帧 baseline 按需生成，本次未跑 40s。
 - **P1-13 交付门禁**：`run_delivery` 先比对当前 timeline 哈希与所选 Run 快照哈希，漂移即 `E_DELIVERY_GATE` 拒绝出片（2 项单测）。
 - **P1-08 时间轴冲突保稿**：409 `E_DOC_CONFLICT` 保留本地草稿并弹出「只看服务端 / 保留本地并重试」，冲突期间暂停自动保存。
@@ -174,10 +174,10 @@ QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
 - **判官 B1/B2（2026-11-04，当时 EXECUTOR_VERSION 升到 2.11.0）**：删除面硬化（白名单真子目录 + 不含 .git + rumor/演示保护需回显 confirm_name + 心跳判活 + 先校验后动数据 + 库删单事务 + force 留审计；5 项路由级 + 4 项服务级测试）；fps 端到端补齐（NTSC 十进制吸附精确有理数、profile_frames 现算不信任持久化 frames、delivery/timeline_ops/project_docs 三处 int(fps) 清零、F05 容差按半帧、final 帧率白名单），当时版本升到 2.11.0；真实 `--fps 23.976` 出片两画幅同帧网格 PASS。
 - **P1-14 已完成并实跑**：`verify_r2_profiles.py` 排序崩溃已修，SSIM 改为分窗口断言（稳定段 ≥0.98 / 切点与入场 0.5s 窗口 ≥0.90）；run 309 / project 248 全绿：稳定段最差 0.998663、窗口最差 0.952097。旧「0.9987」口径只取稳定段，已在 HANDOFF §2.4 作证据修正。
 - **判官 B5/B6（2026-11-04）**：文件响应白名单（HTML/XML/JS/未知后缀 → octet-stream + attachment，SVG 靠 CSP sandbox，`:8787` 数据根拒 HTML/JS、`/engine` 不受影响）；`app/atomicwrite.py` 统一落盘（唯一临时名 + fsync + `os.replace`），`server/app` 内裸 `write_text/write_bytes` 归零，`EXECUTOR_VERSION` → **2.12.0** 并以 15s/40s 原帧 golden 各两次独立 Run 复核（SSIM=1.000000）；版本链保 v1 + `truncated`/`keptFirst`；异步失败在 `api()` 层广播到全局 `ApiFailureBanner`（新 `scripts/e2e_error_visibility.py` 抓到并修了未知 Run 报告 500→404）；快照三道锁 + 迁移 4 `run.snapshot_sha` 库内封印；撤销走 `restore_license`/`restore_mix` 可退回残缺前置态。一键复核扩到 **13 项**。
-- **P1-23（两批 + B3）**：`api/schemas.py` 现有 20 个 `*In` 模型、20 个高风险写端点强校验（项目/文档/时间轴/资产/QA/preview/交付/门决议/档位/task/音频），非法输入统一 422；修掉两处内部传 dict 调用 `projects_create` 的回归；`test_request_models.py` 12 项（422 信封 + happy-path）。**还剩 31 个 `payload: dict`**。
+- **P1-23（三批 + B3/B8）**：`api/schemas.py` 现有 51 个 `*In` 模型、51 个写端点强校验（B8 补最后 31 个裸 dict，反射守卫拦回潮；`routes.py` 现在 0 个 `payload: dict`）（项目/文档/时间轴/资产/QA/preview/交付/门决议/档位/task/音频），非法输入统一 422；修掉两处内部传 dict 调用 `projects_create` 的回归；`test_request_models.py` + 新增 `test_request_models_batch3.py`（18 项 422 + 反射守卫）与 `test_write_api_happy_paths.py`（14 项真 uvicorn happy-path）。
 - **P1-07 迁移登记处**：`db.MIGRATIONS` + `apply_migrations`（版本升序、幂等、已登记跳过），替换一次性 `_migrate_job_table`/`_record_schema_versions`；3 项单测。
 - **P1-19（已开始）**：新增 `scripts/_acceptance.py` 自建自删项目脚手架；`verify_r3_qa.py` 全量改造为自包含（6 步：两处溢出→连续扩场景→LIFO 撤销与抢跑点名→许可 confirm→missing_asset→asset_license_missing→报告），演示项目 227 不再被改写；其余硬编码脚本按批迁移。
 - **P1-17 QA 撤销链**：修复记录写入 `afterHash/afterProfileHash`，撤销按链顶（内容仍等于该次修复结果）逐级倒序回退；`_timeline_before` 深拷贝修掉 before==after 的引用别名 bug；`verify_r3_qa.py` 实跑 5 步全绿。
 - **P1-16/P1-18 许可强制**：所有资产种类入库都要 source+type（到期日须未过期）；被引用资产不可清空许可；`rights.json` 由 Run 快照真实资产生成并有缺口即拒交付；QA 新增 `asset_license_missing`，`fill_license` 去掉 `authorized` 预置、UI 需显式 YES。
 - **P1 基础批次已完成**：A05 守卫、SQLite WAL/同步/NORMAL、workspace roots env、pytest 每次独立临时 DB；**`foreign_keys=ON` 已开**（前提：P1-06 + 判官 B1 把级联删除与删除顺序补齐）。
-- **下一步**：判官 §六 未闭项（`HANDOFF.md` §0.0 清单：存储型脚本面 / 原子写 / DocRevision 保 v1 / 异步错误边界 / 100 场景有效重测 / P1-19 收尾 / 31 个 `payload: dict` / 交付门禁后半）；做完并经老板点头才谈 FR-40/41。
+- **下一步**：判官 §六 未闭项（`HANDOFF.md` §0.0 清单：存储型脚本面 / 原子写 / DocRevision 保 v1 / 异步错误边界 / 100 场景有效重测 / P1-19 收尾 / P1-23 收尾 / 交付门禁后半）；做完并经老板点头才谈 FR-40/41。

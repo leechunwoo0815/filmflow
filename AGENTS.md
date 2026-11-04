@@ -5,7 +5,7 @@
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
 > 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（逻辑约 75MiB；mp4 为稀疏文件，磁盘分配约 9.3MiB；库不入 git）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
-> **当前进度（2026-11-04，B1–B7 之后）**：R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；判官复核（`docs/process/judge-review-2026-11-04.md`）判整夜循环未完成，其 **§六 #1–#11 现已全部关闭**：删除面 `7d5b6e4`、NTSC fps `9dfdff9`、422 信封 `dbc208a`、交付归属+QA 链序号 `fb15d58`、**存储型脚本面+原子写+版本链保 v1+异步失败可见 `a324415`**、**快照库内封印+撤销前置态+未知 Run 404 `63d37c0`**、**15s/40s 原帧 golden `8ca3e01`**、**100 场景有效重测 `7b06432`**、**文档一致性守卫 `77c1ab5`**、**验收脚本 fail-closed `e896a78`**、**自建前置态 builder + 第 14 项守卫 `a8818b9`**。实测：**288 passed + 1 skipped**（collected **289** = unit 264 / integration 18 / BDD 7，56.8s）、`verify_p1_governance.py` **14 项全绿**、`check_docs_consistency.py` **PASS**、迁移登记 `[1,2,3,4]`、`EXECUTOR_VERSION=2.12.0`、`foreign_keys=ON`、tsc 干净；DB **24 项目 / 23 目录 / 2.3GB**（备份 `~/filmflow-backup-20261104-pre-cleanup.db`）。B7 之后**验收脚本不再碰演示项目**（实测跑完 9 个脚本，演示 docrevision 计数零变化：188=28 / 211=37 / 227=58 / 174=3）；#6 结论：100 场景 × 4s 两次独立重跑（首屏 951/1640ms、ops p95 13.3–19.3ms、autosave 758–775ms、rAF 50.6 次/秒）→ **暂不虚拟化**（保留意见：headless rAF ≠ 用户 vsync 帧率，要下用户体验结论需 headed 复跑）。剩余工程债：31 个 `payload: dict`、交付门禁 `render.profile.json`/`caps_json`/`_alignment`、僵尸 `retry_wait` 11 条 + **88 条 root 已不存在的僵尸 `draft`**、CI/fresh-clone。FR-40/41 老板已点头，但仍按 `HANDOFF.md` §6.5 顺序做完再开；R4 不做。
+> **当前进度（2026-11-04，B1–B8 之后）**：R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；判官复核（`docs/process/judge-review-2026-11-04.md`）判整夜循环未完成，其 **§六 #1–#11 与 §三-10（P1-23）现已全部关闭**：删除面 `7d5b6e4`、NTSC fps `9dfdff9`、422 信封 `dbc208a`、交付归属+QA 链序号 `fb15d58`、**存储型脚本面+原子写+版本链保 v1+异步失败可见 `a324415`**、**快照库内封印+撤销前置态+未知 Run 404 `63d37c0`**、**15s/40s 原帧 golden `8ca3e01`**、**100 场景有效重测 `7b06432`**、**文档一致性守卫 `77c1ab5`**、**验收脚本 fail-closed `e896a78`**、**自建前置态 builder + 第 14 项守卫 `a8818b9`**、**31 个裸 dict 写端点清零 + 51 端点逐条 happy-path + 第 15 项守卫 `36411bf`**。实测：**320 passed + 1 skipped**（collected **321** = unit 282 / integration 32 / BDD 7，68.7s）、`verify_p1_governance.py` **15 项全绿**、`check_docs_consistency.py` **PASS**、迁移登记 `[1,2,3,4]`、`EXECUTOR_VERSION=2.12.0`、`foreign_keys=ON`、tsc 干净、`ruff check .` **353**（与 B8 前 HEAD 同数，新增文件 0 项）；DB **25 项目 / 24 目录 / 2.3GB**（今晚冷缓存超时的 605MB 残留项目已按删除端点回收；备份 `~/filmflow-backup-20261104-pre-cleanup.db`）。B7 之后**验收脚本不再碰演示项目**（实测跑完 9 个脚本，演示 docrevision 计数零变化：188=28 / 211=37 / 227=58 / 174=3）；#6 结论：100 场景 × 4s 两次独立重跑（首屏 951/1640ms、ops p95 13.3–19.3ms、autosave 758–775ms、rAF 50.6 次/秒）→ **暂不虚拟化**（保留意见：headless rAF ≠ 用户 vsync 帧率，要下用户体验结论需 headed 复跑）。剩余工程债：交付门禁 `render.profile.json`/`caps_json`/`params_snapshot`/`_alignment`、僵尸 `retry_wait` 11 条 + **91 条 root 已不存在的僵尸 `draft`** + verify 脚本缺 `finally` teardown、CI/fresh-clone。FR-40/41 老板已点头，但仍按 `HANDOFF.md` §6.5 顺序做完再开；R4 不做。
 > **完整接手 prompt**：[`QODER_PROMPT.md`](QODER_PROMPT.md)（历史 prompt；新 Agent 先看 HANDOFF §0/§6）。
 
 ## 这个仓库是什么
@@ -21,7 +21,8 @@ FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 
 - QA 多步修复必须**按链序号倒序撤销**（`undoKind`+`seq`，内容哈希作二次守卫）；既无 `seq` 又无 `afterHash` 的历史记录拒绝自动撤销；文档级修复 `verified=null` + `documentVerified=true`。
 - 帧率唯一口径 `server/app/engine/fpscalc.py`：NTSC 吸附精确有理数（24000/1001…）、有 duration 就现算帧数、final 只放行 `is_delivery_fps()` 白名单 → `EXECUTOR_VERSION=2.11.0`。
 - 删除项目只走 `DELETE /projects/{id}`：项目根必须是白名单**真子目录**且不含 `.git`（登记时就拒），保护名单（`rumor*` + 演示项目名精确）需回显 `confirm_name`，有在飞作业（心跳/`started_at` 120s 内）需 `force=true`；先校验后动数据、库删单事务、之后才删目录。
-- 20 个高风险写端点已用 Pydantic 请求模型（非法输入 **422 也走 ApiError 信封** `{code,message,details}`）；`/projects/import` 与 drafts materialize 是**直接函数调用** `projects_create(ProjectCreateIn(...))`，别再传 dict。
+- **51 个写端点全部收 Pydantic 请求模型**（非法输入 **422 也走 ApiError 信封** `{code,message,details}`；守卫＝反射，一键复核第 **15** 项 + `server/tests/unit/test_request_models_batch3.py::test_no_write_endpoint_takes_a_bare_dict`，`routes.py` 里 `payload: dict` 必须为 0）。三条约好的语义别破坏：**PATCH 语义**的服务层（`takes.update`/`review_comments.update`/`drafts_patch`/`label_submit`）只能收 `model_dump(exclude_unset=True)`，"没传"与"传了 null"不同；**透传语义**（批注、草稿 payload、审片 JSON）保留 `extra="allow"`，模型化不许丢键；`copy` 在线上传输键名不变、内部叫 `copy_text`（避开 `BaseModel.copy`）。`/projects/import` 与 drafts materialize 是**直接函数调用** `projects_create(ProjectCreateIn(...))`，别再传 dict。
+- **人工补标的 token 会直接进 WebGL 着色器**：`POST /labels/{style_id}` 的 `palette` 必须是 `#RGB`/`#RRGGBB`、`screen` 必须是数值（实测非 hex 会让 `preview/still` 抛 shader 编译错误 → 500）；补标写入必须 `flag_modified(st, "tokens_json")`，否则原地改 dict 不标脏、**补标静默丢失**（B8 实测到的老缺陷）。音频上传的 base64 长度上限与服务层 `audio.MAX_BYTES` 同源换算，改一边要同步另一边（单测会钉住）。
 - **文件响应只按白名单内联**：一律走 `security.file_response`——`INLINE_MEDIA` 之外（HTML/XML/JS/未知后缀）强制 `application/octet-stream` + `attachment`；SVG 保留 `image/svg+xml` 但响应带 `CSP sandbox`；`:8787` 的 `/project`、`/global-assets` 拒绝 HTML/JS（`/engine` 必须能跑自己的脚本，别加 CSP）。**别再写裸 `FileResponse(p)`。**
 - **落盘一律 `atomicwrite.write_atomic`**（唯一临时名 + fsync + `os.replace`）：`server/app` 里裸 `write_text/write_bytes` 已归零，一键复核第 11 项 + 单测会拦回潮；改执行器写行为要升版（现 **2.12.0**）。
 - **交付门禁现在认三道**：快照内 `run_id` 必须是所选 Run、`doc_snapshot_sha` 能自洽重算、快照文件 sha 等于 `run.snapshot_sha`（迁移 4；新快照写时即封印，历史 Run 首次通过内容校验时补封印）。QA 撤销走 `audio.restore_license`/`restore_mix`（原样回退、不跑提交校验），残缺前置态也退得回去。
@@ -67,7 +68,7 @@ NTSC 验收：`verify_r2_5_delivery.py --fps 23.976 --duration 2` → run 333 �
 
 ```bash
 ./dev.sh
-cd server && uv run pytest tests -q                       # 288 passed + 1 skipped（collected 289 = unit 264 + integration 18 + BDD 7；foreign_keys=ON）
+cd server && uv run pytest tests -q                       # 320 passed + 1 skipped（collected 321 = unit 282 + integration 32 + BDD 7；foreign_keys=ON）
 uv run --project server python scripts/e2e_ui.py          # UI 8 场景 ~15s
 uv run --project server python scripts/e2e_onboarding.py  # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py        # API 冒烟：46 / 93
@@ -82,7 +83,7 @@ uv run --project server python scripts/verify_r3_assets.py # 资产库/图片/�
 uv run --project server python scripts/e2e_assets.py      # 资产库 UI 冒烟
 uv run --project server python scripts/verify_r3_templates.py # 模板/场景/系列
 uv run --project server python scripts/e2e_templates.py   # 模板 UI 冒烟
-uv run --project server python scripts/verify_p1_governance.py # ★ 一条命令复核本轮 14 项 P1 门禁
+uv run --project server python scripts/verify_p1_governance.py # ★ 一条命令复核本轮 15 项 P1 门禁
 uv run --project server python scripts/e2e_error_visibility.py  # 异步失败必须可见（真机）
 uv run --project server python scripts/e2e_timeline_100.py      # 100 场景有效重测（正向播放 + 真 ops/autosave）
 uv run --project server python scripts/check_docs_consistency.py # 文档与代码/库/脚本一致性（改完必跑）

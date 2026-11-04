@@ -96,7 +96,9 @@ def main() -> int:
     viewed = False
     t0 = time.time()
     st: dict[str, str] = {}
-    while time.time() - t0 < 300:
+    # 冷缓存实测：F02 要渲 120 帧（约 5 分钟，run 333 于 21:24→21:29 完成），
+    # 原来的 300s 上限只有热缓存才够——干净机器上会把这条验收误判成失败。
+    while time.time() - t0 < 600:
         st = status(rid); pend = pending(rid)
         if "B08" in pend: req("POST", "/gates/B08/decide", {"run_id": rid, "decision": "approved", "author": "audio-v2"})
         if "D03" in pend and st.get("D02") in ("succeeded", "cached"):

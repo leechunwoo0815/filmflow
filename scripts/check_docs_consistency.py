@@ -81,9 +81,12 @@ def main() -> int:
     n_tests = collect_test_count()
     n_steps = governance_steps()
     n_projects = db_projects()
+    n_untyped = (ROOT / "server/app/api/routes.py").read_text(
+        encoding="utf-8").count("payload: dict")
     versions = sorted({m[0] for m in MIGRATIONS})
     print(f"现值：EXECUTOR={EXECUTOR_VERSION} · 迁移={versions} · "
-          f"collected={n_tests} · governance={n_steps} 步 · DB={n_projects} 项目", flush=True)
+          f"collected={n_tests} · governance={n_steps} 步 · DB={n_projects} 项目 · "
+          f"裸 dict 写端点={n_untyped}", flush=True)
 
     ver_re = re.compile(r"EXECUTOR_VERSION[^0-9]{0,12}(\d+\.\d+\.\d+)")
     for doc in DOCS:
@@ -109,6 +112,11 @@ def main() -> int:
         for n, line, m in lines_with(doc, re.compile(r"DB \**(\d+) 个项目")):
             if int(m.group(1)) != n_projects:
                 problems.append(f"{doc.name}:{n} 「DB {m.group(1)} 个项目」≠ 生产库 {n_projects}")
+        # P1-23：文档里「N 个 payload: dict」必须是 routes.py 现在的实测数（B8 之后为 0）
+        for n, line, m in lines_with(doc, re.compile(r"(\d+)\s*个\s*\*{0,2}`payload: dict`")):
+            if int(m.group(1)) != n_untyped:
+                problems.append(f"{doc.name}:{n} 说 {m.group(1)} 个 `payload: dict`"
+                                f" ≠ routes.py 实测 {n_untyped} 个")
         for phrase, why in BANNED:
             for n, line, _m in lines_with(doc, re.compile(re.escape(phrase))):
                 # 守卫自己在说明"哪些说法已作废"时必然要复述它们，这类行豁免
