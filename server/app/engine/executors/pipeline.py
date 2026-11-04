@@ -58,48 +58,42 @@ class FrameServer:
                     return
                 super().log_message(fmt, *args)
 
-            def _authorized(self, u) -> bool:
-                """P2-32：所有请求必须能证明持有本进程 token（?tok= 或 cookie）。
+            def _needs_token(self, u) -> bool:
+                """P2-32：token 只护**数据面**——项目/全局资产文件与帧上传。
 
-                绑定 127.0.0.1 只防外部，不防本机其它进程/其它用户的进程。query tok
-                只能覆盖顶层文档；embed.css 的 @font-face、相对子资源拿不到 query——
-                所以首载（带 ?tok）时种下 HttpOnly cookie，之后同源请求凭 cookie 过闸。
+                /engine/ 的页面与脚本是入库的公开引擎代码（另有 CSP sandbox 头），
+                不设闸：进程内随机 token 会随重启轮换，长命 Chrome 的缓存页/旧
+                cookie 会让相对路径的引擎脚本 403 → 静帧全黑（2026-11-05 实测的
+                D04 过暗回归）。数据面 URL 全部由服务端构造、必带 ?tok=，不受缓存影响。
                 """
+                p = u.path
+                if p.startswith("/project/") or p.startswith("/global-assets/"):
+                    return True
+                return False
+
+            def _authorized(self, u) -> bool:
                 import hmac
                 from ...config import settings
-                tok = ""
                 q = parse_qs(u.query)
-                if "tok" in q:
-                    tok = q["tok"][0]
-                else:
-                    cookie = self.headers.get("Cookie") or ""
-                    for part in cookie.split(";"):
-                        k, _, v = part.strip().partition("=")
-                        if k == "ff_tok":
-                            tok = v
-                            break
+                tok = (q.get("tok") or [""])[0]
                 return hmac.compare_digest(tok, settings.frame_token)
 
             def end_headers(self):
                 from ...security import frameserver_headers
                 for k, v in frameserver_headers(self.path).items():
                     self.send_header(k, v)
-                if self._authorized(urlparse(self.path)) and "tok" in urlparse(self.path).query:
-                    from ...config import settings
-                    self.send_header("Set-Cookie",
-                                     f"ff_tok={settings.frame_token}; Path=/; HttpOnly; SameSite=Lax")
                 super().end_headers()
 
             def do_GET(self):
                 u = urlparse(self.path)
-                if not self._authorized(u):
+                if self._needs_token(u) and not self._authorized(u):
                     self.send_error(403)
                     return
                 super().do_GET()
 
             def do_HEAD(self):
                 u = urlparse(self.path)
-                if not self._authorized(u):
+                if self._needs_token(u) and not self._authorized(u):
                     self.send_error(403)
                     return
                 super().do_HEAD()

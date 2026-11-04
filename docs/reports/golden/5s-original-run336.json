@@ -109,7 +109,7 @@
  "updateReason": "",
  "status": "pass",
  "environment": {
-  "executorVersion": "2.14.0",
+  "executorVersion": "2.15.0",
   "os": "Darwin 27.2.0 (arm64)",
   "python": "3.13.2",
   "chrome": "Google Chrome 156.0.8078.80",
@@ -118,7 +118,7 @@
   "styleLibrary": "/Users/litianyu/Documents/fy-style-library/代码动画_341种风格提示词",
   "styleLibraryStatsSha256": "8902bdf277a34c7722b01e5bb066dd7439ca08617e1f230804d6d02a08cea973"
  },
- "generatedAt": "2026-11-04T18:17:48Z",
+ "generatedAt": "2026-11-04T21:03:58Z",
  "resolution": "original",
  "summary": {
   "resolution": "original",
