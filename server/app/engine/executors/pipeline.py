@@ -1058,20 +1058,23 @@ async def f03(ctx):
                 row.qa_json = s
                 ctx["session"].add(row)
         ctx["session"].commit()
+    # 报告先落盘再抛错：失败路径也必须留下证据（此前 raise 在写报告之前，
+    # F03 一失败 frame_report.json 就不存在——被旧测试的恒真断言掩盖到 2026-11-05）。
+    ratio = dups / max(frames, 1)
+    # 规格 §6.2：重复帧=警告（有意停顿的影片必然有重复；§4.6 的 <0.1% 硬门与其冲突，按 §6.2 执行）
+    dup_warning = ratio >= 0.001
+    _artifact_json(ctx, "frame_report.json", {"frames": frames, "profile": profile_name,
+                                              "policy": policy, "missing": missing,
+                                              "black": black, "dups": dups,
+                                              "dup_ratio": round(ratio, 4),
+                                              "dup_warning": dup_warning,
+                                              "scene_report": scene_report})
     if missing:
         scene_ids = sorted({scene_by_frame[i] for i in missing if i in scene_by_frame})
         raise RuntimeError(f"缺失帧 {len(missing)}：{missing[:8]}…（场景 {scene_ids}）")
     if black:
         scene_ids = sorted({scene_by_frame[i] for i in black if i in scene_by_frame})
         raise RuntimeError(f"黑帧 {len(black)}：{black[:8]}…（场景 {scene_ids}）")
-    ratio = dups / max(frames, 1)
-    # 规格 §6.2：重复帧=警告（有意停顿的影片必然有重复；§4.6 的 <0.1% 硬门与其冲突，按 §6.2 执行）
-    dup_warning = ratio >= 0.001
-    _artifact_json(ctx, "frame_report.json", {"frames": frames, "profile": profile_name,
-                                              "policy": policy, "missing": [], "black": [],
-                                              "dups": dups, "dup_ratio": round(ratio, 4),
-                                              "dup_warning": dup_warning,
-                                              "scene_report": scene_report})
 
 
 @executor("ffmpeg-encode")

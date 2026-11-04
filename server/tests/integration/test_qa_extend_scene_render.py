@@ -169,7 +169,7 @@ def _cleanup(client: httpx.Client, pid: int) -> None:
         blockers = []
         try:
             blockers = plan.json().get("blockers") or []
-        except Exception:
+        except ValueError:          # 非 JSON 响应体（如 5xx 文本）＝没有结构化 blockers
             pass
         inflight = [b for b in blockers if "在飞" in b]
         if not inflight:

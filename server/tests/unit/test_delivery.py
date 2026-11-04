@@ -8,8 +8,8 @@ from sqlmodel import Session
 SERVER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SERVER))
 
-from app.db import engine  # noqa: E402
-from app.services.delivery import _srt, _ts, _wrap  # noqa: E402
+from app.db import engine
+from app.services.delivery import _srt, _ts, _wrap
 
 
 def test_wrap_respects_fullwidth_limit():
@@ -76,7 +76,8 @@ def test_delivery_job_rejects_duplicate_active(tmp_path):
 
     from app.errors import ApiError
     from app.models import Job, Project, Run, Workflow
-    from app.services import delivery, jobs as jobs_svc
+    from app.services import delivery
+    from app.services import jobs as jobs_svc
 
     with Session(engine) as session:
         p = Project(name="judge-del-dup", root=str(tmp_path / "dup"))

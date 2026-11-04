@@ -68,14 +68,12 @@ def test_p2_09_unique_indexes_are_really_unique(tmp_engine):
         for name in ("ix_preview_unique", "ix_node_run_unique", "ix_asset_scope_sha"):
             row = conn.exec_driver_sql(f"PRAGMA index_info({name})").fetchall()
             assert row, f"{name} 不存在"
+    from sqlalchemy.exc import IntegrityError
+
     from app.models import NodeRun
     with Session(tmp_engine) as session:
         session.add(NodeRun(run_id=501, node_id="A01", status="idle"))
         session.commit()
         session.add(NodeRun(run_id=501, node_id="A01", status="idle"))
-        try:
+        with pytest.raises(IntegrityError, match="UNIQUE"):
             session.commit()
-            raise AssertionError("noderun 的 (run_id,node_id) 唯一索引没有生效")
-        except Exception as e:
-            assert "UNIQUE" in str(e).upper(), e
-            session.rollback()
