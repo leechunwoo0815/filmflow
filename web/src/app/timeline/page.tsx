@@ -416,7 +416,7 @@ function TimelineInner() {
         <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} />吸附</label>
         <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} />循环</label>
         <div className="ml-auto flex items-center gap-2">
-          <span className="font-mono text-sm">{fmtTC(playhead, fps)} <span className="text-dim">/ {fmtTC(duration, fps)}</span></span>
+          <span className="font-mono text-sm" data-testid="playhead-tc">{fmtTC(playhead, fps)} <span className="text-dim">/ {fmtTC(duration, fps)}</span></span>
           <button className="btn" onClick={() => setPlaying((p) => p ? 0 : 1)}>{playing ? "暂停" : "播放"}</button>
           <a className="btn" href={`/player?project=${projectId}${runId ? `&run=${runId}` : ""}`}>审片</a>
           <a className="btn" href={`/takes?project=${projectId}`}>Take 对比</a>

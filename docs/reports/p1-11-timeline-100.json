@@ -1,11 +1,36 @@
 {
  "projectId": 249,
  "scenes": 100,
- "loadMs": 3626,
- "renderedSceneNodes": 203,
- "longTaskCount": 5,
- "longTaskTotalMs": 342,
- "longTaskMaxMs": 83,
- "avgFps5s": 59.8,
- "clickSelectMs": 215
+ "method": {
+  "playKey": "l (forward)",
+  "seeding": "PUT /docs/timeline (bulk)",
+  "interaction": "POST /timeline/ops + UI autosave"
+ },
+ "ops": {
+  "count": 30,
+  "p50ms": 9.7,
+  "p95ms": 13.3,
+  "maxMs": 33.3
+ },
+ "loadMs": 951,
+ "renderedSceneNodes": 100,
+ "playback": {
+  "tcBefore": "00:01:00",
+  "tcAfter": "00:06:00",
+  "advanced": true
+ },
+ "clockRatioPageToWall": 1.0,
+ "longTaskCount": 10,
+ "longTaskTotalMs": 972,
+ "longTaskMaxMs": 101,
+ "rafCallbacksPerWallSecond": 50.6,
+ "fpsIsUserFacing": true,
+ "clickSelectMs": 10,
+ "clickSelectShowsText": true,
+ "autosaveEndToEndMs": 775.0,
+ "autosaveVersionBumped": true,
+ "verdictNeedsVirtualization": false,
+ "verdictReasons": [
+  "墙上时钟可量到的指标都在阈值内"
+ ]
 }
