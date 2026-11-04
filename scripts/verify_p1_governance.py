@@ -364,6 +364,58 @@ def check_revision_chain(c: httpx.Client, pid: int) -> None:
 DEMO_IDS = frozenset(DEMO_PROJECTS)
 
 
+def check_typed_write_bodies(c: httpx.Client) -> None:
+    """判官 §三-10（P1-23）：每个写端点的请求体都必须是 Pydantic 模型，闸门还要真的在挡。
+
+    反射而不是 grep：退回 `payload: dict`、换 TypedDict、只改名字都会被拦。
+    现场的 422 探针都保证在 handler 之前被拒，所以打在开发库上也不写数据。
+    """
+    import inspect
+    import typing
+
+    from fastapi.routing import APIRoute
+    from pydantic import BaseModel
+
+    from app.api.routes import router as api_router
+    from app.api.schemas import _AUDIO_B64_MAX
+    from app.errors import ErrorCode
+    from app.services import audio as audio_svc
+
+    untyped: list[str] = []
+    bodies = 0
+    for route in api_router.routes:
+        if not isinstance(route, APIRoute) or not set(route.methods) & {"POST", "PUT", "PATCH"}:
+            continue
+        hints = typing.get_type_hints(route.endpoint)
+        for name, param in inspect.signature(route.endpoint).parameters.items():
+            if name not in ("payload", "body"):
+                continue
+            bodies += 1
+            ann = hints.get(name, param.annotation)
+            model = ann if isinstance(ann, type) else next(
+                (a for a in typing.get_args(ann)
+                 if isinstance(a, type) and issubclass(a, BaseModel)), None)
+            if not isinstance(model, type) or not issubclass(model, BaseModel):
+                untyped.append(f"{sorted(route.methods)} {route.path} → {ann}")
+    assert not untyped, f"未模型化的写端点：{untyped[:6]}"
+    assert bodies >= 51, f"模型化的写端点只有 {bodies} 个（判单口径 51）"
+
+    # 音频入口的 base64 上限必须与服务层落盘上限同源
+    assert 4 * (audio_svc.MAX_BYTES // 3) <= _AUDIO_B64_MAX < 4 * (audio_svc.MAX_BYTES // 3) + 8192
+
+    probes = [("POST", "/runs", {}), ("POST", "/runs", {"workflowId": "abc"}),
+              ("POST", "/assets/1/font-check", {"text": 5}),
+              ("POST", "/labels/__probe__", {"palette": ["高对比"]}),
+              ("POST", "/projects/1/audio/upload", {"filename": "a.wav", "data": "AAAA",
+                                                    "kind": "sine"})]
+    for method, path, body in probes:
+        r = c.request(method, path, json=body)
+        assert r.status_code == 422, f"{method} {path} {body} → {r.status_code} {r.text[:120]}"
+        assert r.json()["detail"]["code"] == ErrorCode.E_VALIDATION, r.text[:200]
+    ok(f"15 写端点请求体全部模型化（{bodies} 个 body）、5 条 422 探针都走 ApiError 信封、"
+       f"音频 base64 入口上限与服务层 {audio_svc.MAX_BYTES // 1024 // 1024}MB 同源")
+
+
 def check_no_demo_writes(c: httpx.Client) -> None:
     """判官 §六 #9：验收脚本既不写演示项目，也不留半截自建项目。
 
@@ -415,6 +467,7 @@ def main() -> int:
         check_migrations_and_validation(c)
         check_delete_surface(c)
         check_atomic_writes()
+        check_typed_write_bodies(c)
         check_no_demo_writes(c)      # 放在最后：.acceptance 残留检查要求前面的自建项目都已回收
     print("PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）")
     return 0

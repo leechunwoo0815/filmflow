@@ -61,26 +61,57 @@ from ..services import takes as takes_svc
 from ..services import templates as tpl_svc
 from ..services import timeline_ops as tl_svc
 from .schemas import (
+    AdoptSceneIn,
     AssetImportIn,
     AssetReplaceIn,
     AssetUpdateIn,
     AudioAlignmentSaveIn,
     AudioLicenseSaveIn,
+    AudioMarkersIn,
     AudioMixSaveIn,
+    AudioPrimaryIn,
+    AudioProcessIn,
+    AudioScenePrimaryIn,
+    AudioUploadIn,
     DeliveryIn,
     DocRestoreIn,
     DocSaveIn,
+    DraftCreateIn,
+    DraftPatchIn,
+    ExampleCloneIn,
+    FontCheckIn,
+    FromTemplateIn,
     GateDecideIn,
+    LabelSubmitIn,
     PreviewFilmIn,
     PreviewSegmentIn,
     PreviewStillIn,
     ProjectCreateIn,
+    ProjectImportIn,
     QaFixIn,
     QaUndoIn,
     RenderProfileUpdateIn,
+    ReviewCommentAddIn,
+    ReviewCommentPatchIn,
+    ReviewDecideIn,
+    ReviewImportIn,
+    ReviewPackageIn,
+    RunCreateIn,
     RunPromoteIn,
+    SceneTemplateApplyIn,
+    SceneTemplateSaveIn,
+    SeriesCreateIn,
+    StillsViewedIn,
+    TakeBranchIn,
+    TakeUpdateIn,
     TaskPutIn,
+    TemplateSaveIn,
+    TemplateUpgradeIn,
+    TemplateVersionIn,
     TimelineOpIn,
+    TimelineRebuildIn,
+    WorkflowCreateIn,
+    WorkflowPutIn,
 )
 
 router = APIRouter(prefix="/api")
@@ -276,27 +307,30 @@ async def label_queue(session: Session = Depends(get_session)):
 
 
 @router.post("/labels/{style_id}")
-async def label_submit(style_id: str, payload: dict, session: Session = Depends(get_session)):
+async def label_submit(style_id: str, payload: LabelSubmitIn,
+                       session: Session = Depends(get_session)):
     """人工补标：补 6 字段 + 语义族 → 解锁。"""
     st = session.get(Style, style_id)
     if not st:
         raise not_found("风格")
+    body = payload.model_dump(exclude_unset=True)
     tokens = st.tokens_json or {}
     for k in ("palette", "texture", "screen", "motion", "type", "composition"):
-        if k in payload:
-            tokens[k] = payload[k]
+        if k in body:
+            tokens[k] = body[k]
     st.tokens_json = tokens
+    flag_modified(st, "tokens_json")  # JSON 列原地改不标脏 → 补标会静默丢失
     st.missing_fields = [k for k in ("palette", "texture", "screen", "motion", "type", "composition")
                          if not tokens.get(k)]
-    if payload.get("family"):
-        st.family = payload["family"]
+    if body.get("family"):
+        st.family = body["family"]
         from ..services import engines as eng
         st.engine_status = "available" if eng.engine_for_family(st.family) else "unavailable"
-    st.labeled = bool(payload.get("labeled", True))
+    st.labeled = bool(body.get("labeled", True))
     st.tokens_status = "complete" if not st.missing_fields else "incomplete"
     session.add(st)
     session.commit()
-    audit(session, "label.submit", style_id, after={"fields": list(payload.keys())})
+    audit(session, "label.submit", style_id, after={"fields": list(body.keys())})
     return _style_dto(st)
 
 
@@ -362,15 +396,15 @@ async def projects_delete(project_id: int, confirm: bool = False, remove_dir: bo
 
 
 @router.post("/projects/import")
-async def projects_import(payload: dict, session: Session = Depends(get_session)):
+async def projects_import(payload: ProjectImportIn, session: Session = Depends(get_session)):
     """导入参考项目：读 task.json → workflow + run + 初始状态（T06）。"""
-    root = payload.get("root", "").strip()
+    root = payload.root.strip()
     rp = Path(root).resolve()
     _require_creatable_project_root(rp)
     task_p = rp / "card" / "task.json"
     if not task_p.exists():
         raise ApiError(ErrorCode.E_VALIDATION, f"缺少 card/task.json：{rp}")
-    created = await projects_create(ProjectCreateIn(name=payload.get("name") or rp.name,
+    created = await projects_create(ProjectCreateIn(name=payload.name or rp.name,
                                                       root=str(rp)), session)
     proj = session.get(Project, created["project"]["id"])
     task = json.loads(task_p.read_text(encoding="utf-8-sig"))
@@ -452,9 +486,8 @@ async def project_workflows(project_id: int, session: Session = Depends(get_sess
 # ---------- drafts（T05） ----------
 
 @router.post("/drafts")
-async def drafts_create(payload: dict, session: Session = Depends(get_session)):
-    d = Draft(name=payload.get("name", "未命名项目"), step=int(payload.get("step", 1)),
-              payload_json=payload.get("payload", {}))
+async def drafts_create(payload: DraftCreateIn, session: Session = Depends(get_session)):
+    d = Draft(name=payload.name, step=payload.step, payload_json=payload.payload)
     session.add(d)
     session.commit()
     session.refresh(d)
@@ -470,15 +503,16 @@ async def drafts_get(draft_id: int, session: Session = Depends(get_session)):
 
 
 @router.patch("/drafts/{draft_id}")
-async def drafts_patch(draft_id: int, payload: dict, session: Session = Depends(get_session)):
+async def drafts_patch(draft_id: int, body: DraftPatchIn,
+                       session: Session = Depends(get_session)):
     d = session.get(Draft, draft_id)
     if not d:
         raise not_found("draft")
-    if "step" in payload:
-        d.step = int(payload["step"])
-    if "payload" in payload:
-        merged = {**(d.payload_json or {}), **payload["payload"]}
-        d.payload_json = merged
+    patch = body.model_dump(exclude_unset=True)
+    if patch.get("step") is not None:
+        d.step = patch["step"]
+    if patch.get("payload") is not None:
+        d.payload_json = {**(d.payload_json or {}), **patch["payload"]}
     session.add(d)
     session.commit()
     session.refresh(d)
@@ -753,15 +787,15 @@ async def _finish_saved_template_materialize(session, tpl, content, content_sub,
 
 
 @router.post("/projects/{project_id}/save-template")
-async def project_save_template(project_id: int, payload: dict,
+async def project_save_template(project_id: int, payload: TemplateSaveIn,
                                 session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    name = str(payload.get("name") or f"{proj.name} 模板").strip()[:80]
+    name = (payload.name or f"{proj.name} 模板").strip()[:80]
     if not name:
         raise ApiError(ErrorCode.E_VALIDATION, "模板名称不能为空")
-    content = _project_template_content(session, project_id, payload.get("copy"),
-                                        str(payload.get("description") or ""))
-    t = Template(kind="project", name=name, description=str(payload.get("description") or ""),
+    content = _project_template_content(session, project_id, payload.copy_text,
+                                        payload.description)
+    t = Template(kind="project", name=name, description=payload.description,
                  content_json=content)
     session.add(t)
     session.commit()
@@ -771,22 +805,23 @@ async def project_save_template(project_id: int, payload: dict,
 
 
 @router.post("/templates/{template_id}/version")
-async def template_new_version(template_id: str, payload: dict,
+async def template_new_version(template_id: str, payload: TemplateVersionIn,
                                session: Session = Depends(get_session)):
     if not template_id.startswith("saved:"):
         raise ApiError(ErrorCode.E_VALIDATION, "内置模板不能改版本")
     _, _content, saved, _ = _resolve_template(session, template_id)
     if not saved or saved.kind != "project":
         raise ApiError(ErrorCode.E_VALIDATION, "只有项目模板可保存新版本")
-    project_id = int(payload.get("projectId") or 0)
-    content = _project_template_content(session, project_id, payload.get("copy"),
-                                        str(payload.get("description") or saved.description))
+    project_id = payload.projectId
+    content = _project_template_content(
+        session, project_id, payload.copy_text,
+        payload.description if payload.description is not None else saved.description)
     saved.content_json = content
     flag_modified(saved, "content_json")
     saved.version += 1
     saved.updated_at = datetime.now(UTC)
-    if payload.get("name"):
-        saved.name = str(payload["name"])[:80]
+    if payload.name:
+        saved.name = payload.name[:80]
     session.add(saved)
     session.commit()
     session.refresh(saved)
@@ -796,7 +831,7 @@ async def template_new_version(template_id: str, payload: dict,
 
 
 @router.post("/projects/{project_id}/scenes/{scene_id}/save-template")
-async def project_save_scene_template(project_id: int, scene_id: str, payload: dict,
+async def project_save_scene_template(project_id: int, scene_id: str, payload: SceneTemplateSaveIn,
                                       session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
@@ -804,11 +839,11 @@ async def project_save_scene_template(project_id: int, scene_id: str, payload: d
     scene = next((s for s in timeline.get("scenes") or [] if s.get("id") == scene_id), None)
     if not scene:
         raise not_found("场景")
-    name = str(payload.get("name") or f"{scene_id} 场景模板").strip()[:80]
+    name = (payload.name or f"{scene_id} 场景模板").strip()[:80]
     content = tpl_svc.scene_template_content(
-        scene, keep_text=bool(payload.get("keepText")),
-        description=str(payload.get("description") or ""), source_project_id=project_id)
-    t = Template(kind="scene", name=name, description=str(payload.get("description") or ""),
+        scene, keep_text=payload.keepText,
+        description=payload.description, source_project_id=project_id)
+    t = Template(kind="scene", name=name, description=payload.description,
                  content_json=content)
     session.add(t)
     session.commit()
@@ -819,10 +854,10 @@ async def project_save_scene_template(project_id: int, scene_id: str, payload: d
 
 
 @router.post("/projects/{project_id}/timeline/scene-template")
-async def project_apply_scene_template(project_id: int, payload: dict,
+async def project_apply_scene_template(project_id: int, payload: SceneTemplateApplyIn,
                                        session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    kind, content, saved, builtin = _resolve_template(session, str(payload.get("templateId") or ""))
+    kind, content, saved, builtin = _resolve_template(session, payload.templateId)
     if kind != "scene":
         raise ApiError(ErrorCode.E_VALIDATION, "不是场景模板")
     scene = deepcopy(content)
@@ -834,11 +869,11 @@ async def project_apply_scene_template(project_id: int, payload: dict,
                                  content.get("assetShas") or [])
     current = docs_svc.doc_payload(session, project_id, proj.root, "timeline")
     script = docs_svc.doc_payload(session, project_id, proj.root, "script")["content"]
-    index = payload.get("index")
-    if payload.get("afterSceneId"):
+    index = payload.index
+    if payload.afterSceneId:
         ids = [s.get("id") for s in current["content"].get("scenes") or []]
         try:
-            index = ids.index(str(payload["afterSceneId"])) + 1
+            index = ids.index(payload.afterSceneId) + 1
         except ValueError:
             index = None
     try:
@@ -847,17 +882,16 @@ async def project_apply_scene_template(project_id: int, payload: dict,
     except tl_svc.TimelineOpError as e:
         raise ApiError(ErrorCode.E_VALIDATION, f"{e.code}: {e.message}",
                        status=e.status, details=e.details)
-    base = int(payload.get("baseVersion") if payload.get("baseVersion") is not None
-               else current["version"])
+    base = payload.baseVersion if payload.baseVersion is not None else current["version"]
     doc, diff = docs_svc.save_doc(session, project_id, "timeline", new_content, base,
-                                  payload.get("author", "scene-template"))
+                                  payload.author)
     before = {s.get("id") for s in current["content"].get("scenes") or []}
     inserted = next((s.get("id") for s in new_content.get("scenes") or [] if s.get("id") not in before), "")
     audit(session, "template.scene.apply", f"project:{project_id}",
-          after={"template": payload.get("templateId"), "sceneId": inserted})
+          after={"template": payload.templateId, "sceneId": inserted})
     return {**docs_svc.doc_payload(session, project_id, proj.root, "timeline"),
             "sceneId": inserted, "diff": diff, "validation": meta["validation"],
-            "template": (f"saved:{saved.id}" if saved else str(payload.get("templateId")))}
+            "template": (f"saved:{saved.id}" if saved else payload.templateId)}
 
 
 @router.get("/projects/{project_id}/template-lock")
@@ -880,16 +914,16 @@ async def project_template_diff(project_id: int, templateId: str,
 
 
 @router.post("/projects/{project_id}/template-upgrade")
-async def project_template_upgrade(project_id: int, payload: dict,
+async def project_template_upgrade(project_id: int, payload: TemplateUpgradeIn,
                                    session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    kind, content, saved, _ = _resolve_template(session, str(payload.get("templateId") or ""))
+    kind, content, saved, _ = _resolve_template(session, payload.templateId)
     if kind != "project" or not saved:
         raise ApiError(ErrorCode.E_VALIDATION, "升级只支持已保存的项目模板")
     profile_doc = docs_svc.doc_payload(session, project_id, proj.root, "profile")
     timeline_doc = docs_svc.doc_payload(session, project_id, proj.root, "timeline")
     diff = tpl_svc.template_diff(profile_doc["content"], timeline_doc["content"], content)
-    if not payload.get("confirm"):
+    if not payload.confirm:
         return {"applied": False, "diff": diff, "lock": tpl_svc.read_lock(proj.root)}
     assets_svc.ensure_asset_shas(session, content.get("sourceProjectId"), proj.root,
                                  content.get("assetShas") or [])
@@ -910,17 +944,17 @@ async def project_template_upgrade(project_id: int, payload: dict,
 
 
 @router.post("/series/from-template")
-async def series_from_template(payload: dict, session: Session = Depends(get_session)):
-    template_id = str(payload.get("templateId") or "")
+async def series_from_template(payload: SeriesCreateIn, session: Session = Depends(get_session)):
+    template_id = payload.templateId
     kind, content, saved, _ = _resolve_template(session, template_id)
     if kind != "project" or not saved:
         raise ApiError(ErrorCode.E_VALIDATION, "系列只支持已保存的项目模板")
-    items = payload.get("items") or []
+    items = payload.items
     if not isinstance(items, list) or not items:
         raise ApiError(ErrorCode.E_VALIDATION, "items 不能为空")
     if len(items) > 5:
         raise ApiError(ErrorCode.E_VALIDATION, "v1 系列最多 5 项；批量 CSV/队列属 R4 FR-46")
-    prefix = str(payload.get("name") or saved.name or "系列")
+    prefix = payload.name or saved.name or "系列"
     results = []
     for i, item in enumerate(items):
         item = item if isinstance(item, dict) else {"copy": str(item)}
@@ -984,20 +1018,20 @@ async def _materialize_first(session: Session, *, name: str, copy: str, profile:
 
 
 @router.post("/projects/from-template")
-async def project_from_template(payload: dict, session: Session = Depends(get_session)):
-    template_id = str(payload.get("templateId") or "")
+async def project_from_template(payload: FromTemplateIn, session: Session = Depends(get_session)):
+    template_id = payload.templateId
     if template_id.startswith("saved:"):
         kind, _content, saved, _ = _resolve_template(session, template_id)
         if kind != "project" or not saved:
             raise ApiError(ErrorCode.E_VALIDATION, "不是项目模板")
         return await _materialize_saved_template(
-            session, saved, payload.get("variables") or {},
-            str(payload.get("name") or saved.name), payload.get("copy"))
+            session, saved, payload.variables,
+            payload.name or saved.name, payload.copy_text)
     tpl = next((t for t in FIRST_TEMPLATES if t["id"] == template_id), None)
     if not tpl:
         raise not_found("模板")
     return await _materialize_first(
-        session, name=str(payload.get("name") or f"第一条片 · {tpl['title']}"),
+        session, name=payload.name or f"第一条片 · {tpl['title']}",
         copy=tpl["copy"], profile=tpl["profile"], family=tpl.get("style_family") or "print",
         title=tpl["title"], source=tpl["id"],
         placeholder=tpl.get("audioPlaceholder") or "voice")
@@ -1013,14 +1047,14 @@ async def examples_list():
 
 
 @router.post("/examples/{example_id}/clone")
-async def example_clone(example_id: str, payload: dict | None = None,
+async def example_clone(example_id: str, payload: ExampleCloneIn | None = None,
                         session: Session = Depends(get_session)):
     item = onboarding_svc.example(example_id)
     if not item:
         raise not_found("示例")
-    payload = payload or {}
+    name = (payload.name if payload else "") or f"我的示例 · {item['title']}"
     result = await _materialize_first(
-        session, name=str(payload.get("name") or f"我的示例 · {item['title']}"),
+        session, name=name,
         copy=item["copy"], profile=onboarding_svc.example_profile(item),
         family=str(item.get("family") or "print"),
         title=str(item.get("titleText") or item["title"]), source=item["id"],
@@ -1037,8 +1071,9 @@ async def wizard_titles(copy: str = ""):
 # ---------- workflow / runs ----------
 
 @router.post("/workflows")
-async def workflows_create(payload: dict, session: Session = Depends(get_session)):
-    wf = Workflow(project_id=payload["projectId"], graph_json=payload.get("graph", {}))
+async def workflows_create(payload: WorkflowCreateIn, session: Session = Depends(get_session)):
+    _project_or_404(session, payload.projectId)  # 外键已开，但缺项目要给 404 而不是 500
+    wf = Workflow(project_id=payload.projectId, graph_json=payload.graph)
     session.add(wf)
     session.commit()
     session.refresh(wf)
@@ -1054,12 +1089,14 @@ async def workflow_get(workflow_id: int, session: Session = Depends(get_session)
 
 
 @router.put("/workflows/{workflow_id}")
-async def workflow_put(workflow_id: int, payload: dict, session: Session = Depends(get_session)):
+async def workflow_put(workflow_id: int, payload: WorkflowPutIn,
+                       session: Session = Depends(get_session)):
     wf = session.get(Workflow, workflow_id)
     if not wf:
         raise not_found("workflow")
     wf.version += 1
-    wf.graph_json = payload.get("graph", wf.graph_json)
+    if payload.graph is not None:
+        wf.graph_json = payload.graph
     flag_modified(wf, "graph_json")
     session.add(wf)
     session.add(WorkflowVersion(workflow_id=wf.id, version=wf.version, graph_json=wf.graph_json))
@@ -1068,11 +1105,11 @@ async def workflow_put(workflow_id: int, payload: dict, session: Session = Depen
 
 
 @router.post("/runs")
-async def runs_create(payload: dict, session: Session = Depends(get_session)):
-    wf = session.get(Workflow, payload["workflowId"])
+async def runs_create(payload: RunCreateIn, session: Session = Depends(get_session)):
+    wf = session.get(Workflow, payload.workflowId)
     if not wf:
         raise not_found("workflow")
-    run = Run(workflow_id=wf.id, params_snapshot=payload.get("params", {}))
+    run = Run(workflow_id=wf.id, params_snapshot=payload.params)
     session.add(run)
     session.commit()
     session.refresh(run)
@@ -1704,13 +1741,12 @@ async def assets_waveform(asset_id: int, w: int = 2000,
 
 
 @router.post("/assets/{asset_id}/font-check")
-async def assets_font_check(asset_id: int, payload: dict,
+async def assets_font_check(asset_id: int, payload: FontCheckIn,
                             session: Session = Depends(get_session)):
     asset = assets_svc.get_asset(session, asset_id)
     if asset.kind != "font":
         raise ApiError(ErrorCode.E_ASSET_KIND, "只有字体资产可做覆盖检查")
-    return await asyncio.to_thread(assets_svc.font_coverage, asset.path,
-                                   str(payload.get("text") or ""))
+    return await asyncio.to_thread(assets_svc.font_coverage, asset.path, payload.text)
 
 
 @router.post("/assets/{asset_id}/replace")
@@ -1792,46 +1828,42 @@ async def project_audio(project_id: int, session: Session = Depends(get_session)
 
 
 @router.post("/projects/{project_id}/audio/upload")
-async def project_audio_upload(project_id: int, payload: dict,
+async def project_audio_upload(project_id: int, payload: AudioUploadIn,
                                session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     _require_workspace_root(Path(proj.root).resolve())
     take = await asyncio.to_thread(
-        audio_svc.import_take, proj.root, str(payload.get("filename") or "take.wav"),
-        str(payload.get("data") or ""), str(payload.get("kind") or "voice"),
-        str(payload.get("sceneId") or ""), str(payload.get("name") or ""))
+        audio_svc.import_take, proj.root, payload.filename,
+        payload.data, payload.kind, payload.sceneId, payload.name)
     audit(session, "audio.upload", proj.root, after={"take": take["id"], "kind": take["kind"]})
     return {"take": take, "primary": audio_svc.primary_take(proj.root)}
 
 
 @router.post("/projects/{project_id}/audio/primary")
-async def project_audio_primary(project_id: int, payload: dict,
+async def project_audio_primary(project_id: int, payload: AudioPrimaryIn,
                                 session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    take = audio_svc.set_primary(proj.root, str(payload.get("takeId") or ""))
+    take = audio_svc.set_primary(proj.root, payload.takeId)
     audit(session, "audio.primary", proj.root, after={"take": take["id"]})
     return {"primary": take}
 
 
 @router.post("/projects/{project_id}/audio/scene-primary")
-async def audio_scene_primary(project_id: int, payload: dict,
+async def audio_scene_primary(project_id: int, payload: AudioScenePrimaryIn,
                               session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    scene_id = str(payload.get("sceneId") or "")
-    take_id = str(payload.get("takeId") or "")
-    if not scene_id:
-        raise ApiError(ErrorCode.E_VALIDATION, "sceneId 必填")
-    result = (audio_svc.clear_scene_primary(proj.root, scene_id) if not take_id
-              else audio_svc.set_scene_primary(proj.root, scene_id, take_id))
+    result = (audio_svc.clear_scene_primary(proj.root, payload.sceneId) if not payload.takeId
+              else audio_svc.set_scene_primary(proj.root, payload.sceneId, payload.takeId))
     audit(session, "audio.scene_primary", proj.root, after=result)
     return result
 
 
 @router.post("/projects/{project_id}/audio/takes/{take_id}/process")
-async def audio_process_take(project_id: int, take_id: str, payload: dict | None = None,
+async def audio_process_take(project_id: int, take_id: str, payload: AudioProcessIn | None = None,
                              session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    take = await asyncio.to_thread(audio_svc.process_take, proj.root, take_id, payload or {})
+    take = await asyncio.to_thread(audio_svc.process_take, proj.root, take_id,
+                                   payload.model_dump() if payload else {})
     audit(session, "audio.process", proj.root, after={"take": take_id,
           "processing": take.get("processing")})
     return {"take": take}
@@ -1882,11 +1914,10 @@ async def audio_markers_get(project_id: int, session: Session = Depends(get_sess
 
 
 @router.post("/projects/{project_id}/audio/markers")
-async def audio_markers_save(project_id: int, payload: dict,
+async def audio_markers_save(project_id: int, payload: AudioMarkersIn,
                              session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    data = audio_svc.save_markers(proj.root, payload.get("markers") or [],
-                                  payload.get("onsets") or [])
+    data = audio_svc.save_markers(proj.root, payload.markers or [], payload.onsets or [])
     audit(session, "audio.markers", proj.root, after={"markers": len(data["markers"])})
     return data
 
@@ -1996,32 +2027,32 @@ async def project_review(project_id: int, session: Session = Depends(get_session
 
 
 @router.post("/projects/{project_id}/review/comments")
-async def review_comment_add(project_id: int, payload: dict,
+async def review_comment_add(project_id: int, payload: ReviewCommentAddIn,
                              session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    comment = review_svc.add(proj.root, payload)
+    comment = review_svc.add(proj.root, payload.model_dump())
     audit(session, "review.comment", f"{proj.root}:{comment['id']}",
           after={"frame": comment["frame"], "scene": comment["sceneId"]})
     return comment
 
 
 @router.patch("/projects/{project_id}/review/comments/{comment_id}")
-async def review_comment_update(project_id: int, comment_id: str, payload: dict,
+async def review_comment_update(project_id: int, comment_id: str, payload: ReviewCommentPatchIn,
                                 session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    comment = review_svc.update(proj.root, comment_id, payload)
+    comment = review_svc.update(proj.root, comment_id, payload.model_dump(exclude_unset=True))
     audit(session, "review.update", f"{proj.root}:{comment_id}",
           after={"status": comment.get("status")})
     return comment
 
 
 @router.post("/projects/{project_id}/review/decisions")
-async def review_decide(project_id: int, payload: dict,
+async def review_decide(project_id: int, payload: ReviewDecideIn,
                         session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    decisions = review_svc.decide(proj.root, payload)
+    decisions = review_svc.decide(proj.root, payload.model_dump())
     audit(session, "review.decision", proj.root,
-          after={"scene": payload.get("sceneId"), "decision": payload.get("decision")})
+          after={"scene": payload.sceneId, "decision": payload.decision})
     return decisions
 
 
@@ -2045,21 +2076,20 @@ async def review_export(project_id: int, format: str = "json",
 
 
 @router.post("/projects/{project_id}/review/import")
-async def review_import(project_id: int, payload: dict,
+async def review_import(project_id: int, payload: ReviewImportIn,
                         session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    result = review_svc.import_json(proj.root, payload)
+    result = review_svc.import_json(proj.root, payload.model_dump())
     audit(session, "review.import", proj.root, after=result)
     return result
 
 
 @router.post("/projects/{project_id}/review/package")
-async def review_package(project_id: int, payload: dict | None = None,
+async def review_package(project_id: int, payload: ReviewPackageIn | None = None,
                          session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
-    payload = payload or {}
     artifact, _url = _review_pick_video(session, project_id,
-                                        int(payload["videoId"]) if payload.get("videoId") else None)
+                                        payload.videoId if payload else None)
     result = review_svc.package(proj.root, Path(artifact.path), proj.name)
     audit(session, "review.package", proj.root, after=result)
     return {**result, "download": f"/api/projects/{project_id}/review/package"}
@@ -2077,12 +2107,14 @@ async def review_package_file(project_id: int, session: Session = Depends(get_se
 # ---------- 静帧查看记录（D03 前置） ----------
 
 @router.post("/projects/{project_id}/stills/viewed")
-async def stills_viewed(project_id: int, payload: dict, session: Session = Depends(get_session)):
+async def stills_viewed(project_id: int, payload: StillsViewedIn,
+                        session: Session = Depends(get_session)):
     proj = session.get(Project, project_id)
     if not proj:
         raise not_found("project")
-    entry = {k: payload[k] for k in ("scene", "sceneId", "time", "t", "region", "zoom", "at")
-             if k in payload}
+    sent = payload.model_dump(exclude_unset=True)
+    entry = {k: sent[k] for k in ("scene", "sceneId", "time", "t", "region", "zoom", "at")
+             if k in sent}
     if "sceneId" in entry and "scene" not in entry:
         entry["scene"] = entry.pop("sceneId")
     if "t" in entry and "time" not in entry:
@@ -2412,10 +2444,10 @@ async def project_takes(project_id: int, includeHidden: bool = False,
 
 
 @router.patch("/projects/{project_id}/takes/{run_id}")
-async def project_take_update(project_id: int, run_id: int, payload: dict,
+async def project_take_update(project_id: int, run_id: int, payload: TakeUpdateIn,
                               session: Session = Depends(get_session)):
     proj, _ = _take_run(session, project_id, run_id)
-    take = takes_svc.update(proj.root, run_id, payload)
+    take = takes_svc.update(proj.root, run_id, payload.model_dump(exclude_unset=True))
     audit(session, "take.update", f"{project_id}:run:{run_id}", after=take)
     return take
 
@@ -2439,13 +2471,13 @@ async def project_take_delete(project_id: int, run_id: int,
 
 
 @router.post("/projects/{project_id}/takes/{run_id}/branch")
-async def project_take_branch(project_id: int, run_id: int, payload: dict | None = None,
+async def project_take_branch(project_id: int, run_id: int, payload: TakeBranchIn | None = None,
                               session: Session = Depends(get_session)):
     proj, source = _take_run(session, project_id, run_id)
     script, timeline, profile = _take_source_docs(session, proj, source)
     if not timeline.get("scenes"):
         raise ApiError(ErrorCode.E_VALIDATION, "该 Take 没有可复制的 timeline 快照", status=409)
-    author = payload.get("author", "take-branch") if payload else "take-branch"
+    author = payload.author if payload else "take-branch"
     saved_docs: list[tuple[str, dict, int]] = []  # (kind, 保存前内容, 保存前版本)
     try:
         if script.get("text"):
@@ -2491,12 +2523,10 @@ async def project_take_branch(project_id: int, run_id: int, payload: dict | None
 
 
 @router.post("/projects/{project_id}/takes/{run_id}/adopt-scene")
-async def project_take_adopt_scene(project_id: int, run_id: int, payload: dict,
+async def project_take_adopt_scene(project_id: int, run_id: int, payload: AdoptSceneIn,
                                    session: Session = Depends(get_session)):
     proj, source = _take_run(session, project_id, run_id)
-    scene_id = str(payload.get("sceneId") or "")
-    if not scene_id:
-        raise ApiError(ErrorCode.E_VALIDATION, "sceneId 必填")
+    scene_id = payload.sceneId
     source_script, source_timeline, _profile = _take_source_docs(session, proj, source)
     source_scene = next((s for s in source_timeline.get("scenes", []) if s.get("id") == scene_id), None)
     if not source_scene:
@@ -2532,7 +2562,7 @@ async def project_take_adopt_scene(project_id: int, run_id: int, payload: dict,
 
 
 @router.post("/projects/{project_id}/docs/timeline/rebuild")
-async def project_timeline_rebuild(project_id: int, payload: dict,
+async def project_timeline_rebuild(project_id: int, payload: TimelineRebuildIn,
                                    session: Session = Depends(get_session)):
     proj = _project_or_404(session, project_id)
     script = docs_svc.get_doc(session, project_id, "script")
@@ -2543,9 +2573,10 @@ async def project_timeline_rebuild(project_id: int, payload: dict,
         session, project_id, proj.root, "profile")
     content = docs_svc.build_timeline_doc(script_content, profile_content)
     current = docs_svc.get_doc(session, project_id, "timeline")
-    base = int(payload.get("base_version", current.version if current else 0))
+    base = (payload.base_version if payload.base_version is not None
+            else (current.version if current else 0))
     doc, diff = docs_svc.save_doc(session, project_id, "timeline", content, base,
-                                  payload.get("author", "local"))
+                                  payload.author)
     audit(session, "doc.rebuild", f"{project_id}:timeline", after={"version": doc.version})
     return {**docs_svc.doc_payload(session, project_id, proj.root, "timeline"),
             "diff": diff, "impact": _doc_impact("timeline")}

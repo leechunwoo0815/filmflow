@@ -116,7 +116,8 @@ def test_take_branch_rolls_back_docs_when_run_creation_fails(tmp_path: Path, mon
 
         with pytest.raises(RuntimeError, match="injected run failure"):
             asyncio.new_event_loop().run_until_complete(
-                routes_mod.project_take_branch(pid, src.id, {"author": "test"},
+                routes_mod.project_take_branch(pid, src.id,
+                                               routes_mod.TakeBranchIn(author="test"),
                                                session=BoomOnAdd(session)))
 
         for kind in ("script", "timeline"):
