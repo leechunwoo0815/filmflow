@@ -123,6 +123,10 @@ def project_template_content(*, profile: dict, timeline: dict, style_id: str = "
                     "text_scale"):
             if s.get(key) not in (None, "", [], {}):
                 item[key] = deepcopy(s[key])
+        # P2-18：场景文本是 timeline/ops 改出来的（script 文档还是原始 copy），
+        # 不存 text 的话模板重建会把用户的改字全部丢回原始文案。
+        if s.get("text") not in (None, ""):
+            item["text"] = str(s["text"])
         scenes.append(item)
     prof = dict(profile)
     if total > 0:
@@ -193,6 +197,10 @@ def build_timeline_from_content(content: dict, script: dict, profile: dict) -> d
                     "layers", "audio_layers", "fontSha", "text_scale"):
             if ts.get(key) not in (None, "", [], {}):
                 scene[key] = deepcopy(ts[key])
+        # P2-18：这一组没分到句子时用模板保存的场景文本兜底（重建同款，不丢改字）；
+        # 分到了句子的场景仍以 script 为准（模板用于换文案的场景）。
+        if not groups[i] and ts.get("text") not in (None, ""):
+            scene["text"] = str(ts["text"])
         scenes.append(scene)
         t += dur
     doc = {"schema": "filmflow.timeline/2",
@@ -218,9 +226,11 @@ def overlay_template(current_timeline: dict, content: dict,
                     "text_scale"):
             if key in ts:
                 scene[key] = deepcopy(ts[key])
-            elif key in ("layers", "audio_layers", "fontSha", "camera_keyframes",
-                         "camera_anchor", "transition_duration"):
+            elif key in ("fontSha", "camera_keyframes", "camera_anchor",
+                         "transition_duration"):
                 scene.pop(key, None)
+            # P2-19：layers/audio_layers 是用户资产（图片/SFX），模板场景没带就不许删——
+            # 此前 pop 会把当前项目的图层在"升级"里静默清空。
     prof = {}
     tpl_profile = content.get("profile") or {}
     for key in ("width", "height", "fps"):

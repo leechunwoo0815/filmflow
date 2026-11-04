@@ -323,13 +323,25 @@ def analyze(session: Session, project: Project, run_id: int | None = None) -> di
         for st in states:
             if st.status != "failed":
                 continue
-            cat = _classify_node(st.node_id, st.message)
+            # P2-22：分类优先吃结构化证据（F03 的 frame_report.json 由 2.15.0 起
+            # 失败路径也落盘），消息子串只做回退——措辞一变分类就漂。
+            cat = None
+            if st.node_id == "F03":
+                rep = _json_artifact(session, run.id, "F03") or {}
+                if rep.get("missing"):
+                    cat = "missing_frame"
+                elif rep.get("black"):
+                    cat = "black_frame"
+            if cat is None:
+                cat = _classify_node(st.node_id, st.message)
             add(_issue(cat, node_id=st.node_id, reason=st.message or f"{st.node_id} 失败",
                        suggestions=_node_suggestions(cat, st.node_id),
                        path=f"/canvas?project={project.id}&run={run.id}"))
         motion = _json_artifact(session, run.id or 0, "E06")
         from ..engine.fpscalc import norm_fps
-        fps = norm_fps(timeline.get("fps") or 24)
+        # P2-23：staticRuns/cutSpikes 的帧号是 E06 报告里那个 fps（代理档）下的帧号，
+        # 拿 timeline 的 fps 去换算会把定位错开整数倍——报告自带 fps，必须用它。
+        fps = norm_fps(motion.get("fps") or timeline.get("fps") or 24)
         for sr in motion.get("staticRuns") or []:
             f0 = int(sr.get("from") or 0)
             add(_issue("static_too_long", scene_id=_scene_at_frame(scenes, fps, f0),
@@ -477,7 +489,13 @@ def apply_fix(session: Session, project: Project, issue_id: str, action: str,
         before_state = {"kind": "mix", "content": audio_svc.load_mix(project.root)}
     if action == "fill_license":
         before_state = {"kind": "license", "content": audio_svc.load_license(project.root)}
-    after_state, extra = _apply(session, project, issue, action, params, run_id, before_state)
+    try:
+        after_state, extra = _apply(session, project, issue, action, params, run_id, before_state)
+    except Exception as e:
+        # P2-21：失败也是"尝试"。此前只记 applied——failed 恒 0、successRate 恒 1.0，
+        # 报告的两个核心指标结构性失真。失败落账后再抛，UI/脚本看到的错误不变。
+        _record_failed_fix(project, issue, action, run_id, str(e), before_state)
+        raise
     doc_verified = None
     verified = None
     requires_rerun = False
@@ -499,10 +517,20 @@ def apply_fix(session: Session, project: Project, issue_id: str, action: str,
                                 i["location"]["sceneId"] == issue["location"]["sceneId"])
                                for i in after_issues)
         verified = bool(doc_verified)
+    return _record_fix(session, project, issue, action, run_id,
+                       before_state, after_state, extra,
+                       verified=verified, doc_verified=doc_verified,
+                       requires_rerun=requires_rerun, next_action=next_action)
+
+
+def _record_fix(session: Session, project: Project, issue: dict, action: str,
+                run_id: int | None, before_state: dict | None,
+                after_state: dict, extra: dict, *, verified, doc_verified,
+                requires_rerun: bool, next_action: str | None) -> dict:
     data = _read_fixes(project.root)
     undo_kind = (before_state or {}).get("kind") or "none"
     entry = {"id": "fix_" + uuid.uuid4().hex[:12], "at": _now(),
-             "issueId": issue_id, "category": issue["category"], "action": action,
+             "issueId": issue["id"], "category": issue["category"], "action": action,
              "projectId": project.id, "runId": run_id, "result": "applied",
              "verified": verified, "documentVerified": doc_verified,
              "requiresRerun": requires_rerun, "nextAction": next_action,
@@ -513,6 +541,19 @@ def apply_fix(session: Session, project: Project, issue_id: str, action: str,
              "afterHash": after_state.get("hash"),
              "afterProfileVersion": after_state.get("profileVersion"),
              "afterProfileHash": after_state.get("profileHash"), "extra": extra}
+    data["items"].append(entry)
+    _write_fixes(project.root, data)
+    return entry
+
+
+def _record_failed_fix(project: Project, issue: dict, action: str, run_id: int | None,
+                       error: str, before_state: dict | None) -> dict:
+    data = _read_fixes(project.root)
+    entry = {"id": "fix_" + uuid.uuid4().hex[:12], "at": _now(),
+             "issueId": issue["id"], "category": issue["category"], "action": action,
+             "projectId": project.id, "runId": run_id, "result": "failed",
+             "error": error[:2000],
+             "before": before_state, "undoKind": (before_state or {}).get("kind") or "none"}
     data["items"].append(entry)
     _write_fixes(project.root, data)
     return entry
@@ -617,7 +658,8 @@ def report(project: Project) -> dict:
     verified = [x for x in applied if x.get("verified") is True]
     unverified = [x for x in applied if x.get("verified") is None]
     pending_rerun = [x for x in applied if x.get("requiresRerun") and not x.get("undone")]
-    failed = [x for x in items if x.get("result") != "applied"]
+    # P2-21：failed 现在是真实落账的失败尝试（此前恒 0）；successRate 分母含失败。
+    failed = [x for x in items if x.get("result") == "failed"]
     by_action: dict[str, int] = {}
     for x in items:
         by_action[x.get("action", "")] = by_action.get(x.get("action", ""), 0) + 1

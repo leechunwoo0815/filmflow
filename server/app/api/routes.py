@@ -961,6 +961,7 @@ async def series_from_template(payload: SeriesCreateIn, session: Session = Depen
         raise ApiError(ErrorCode.E_VALIDATION, "v1 系列最多 5 项；批量 CSV/队列属 R4 FR-46")
     prefix = payload.name or saved.name or "系列"
     results = []
+    created: list[int] = []
     for i, item in enumerate(items):
         item = item if isinstance(item, dict) else {"copy": str(item)}
         vars = item.get("variables") or item.get("vars") or item
@@ -969,6 +970,7 @@ async def series_from_template(payload: SeriesCreateIn, session: Session = Depen
             r = await _materialize_saved_template(
                 session, saved, vars if isinstance(vars, dict) else {}, name,
                 item.get("copy"))
+            created.append(int(r["project"]["id"]))
             results.append({"index": i, "ok": True, "name": name,
                             "project": r["project"], "run_id": r["run_id"],
                             "missingVariables": r.get("missingVariables")})
@@ -979,11 +981,40 @@ async def series_from_template(payload: SeriesCreateIn, session: Session = Depen
             except Exception:
                 _log.debug("swallowed exception in series_from_template (except Exception:)", exc_info=True)
             results.append({"index": i, "ok": False, "name": name, "error": str(e)[:300]})
+    # P2-20：系列要求"整批成立"。半途失败时把本批已建的项目回滚（取消在飞 Run 后
+    # 级联删除），否则每次失败都留一批孤儿项目。回滚明细进响应，可审计。
+    rolled_back: list[dict] = []
+    if any(not r["ok"] for r in results) and created:
+        from ..engine import runengine
+        from ..services.project_cleanup import delete_project
+        # 逐个取消该项目名下未终态 Run，再级联删除
+        for pid in created:
+            try:
+                for rid in _run_ids_of_project(session, pid):
+                    try:
+                        runengine.cancel_run(rid)
+                    except Exception:
+                        _log.debug("series rollback cancel run=%s failed", rid, exc_info=True)
+                delete_project(session, pid, remove_dir=True, force=True)
+                rolled_back.append({"projectId": pid})
+            except Exception as e:
+                rolled_back.append({"projectId": pid, "error": str(e)[:200]})
+                _log.warning("series rollback project=%s failed: %s", pid, e)
+        # 失败项保留原样（带 error），成功项标记 rolledBack——failed/created 仍如实统计
+        results = [{**r, "rolledBack": True} if r["ok"] else r for r in results]
     return {"template": f"saved:{saved.id}", "items": results,
-            "created": sum(1 for r in results if r["ok"]),
-            "failed": sum(1 for r in results if not r["ok"]),
-            "note": "v1 同步创建；CSV 批量/队列/批量 zip 属 R4 FR-46，未实现"}
+            "created": sum(1 for r in results if r.get("ok") and not r.get("rolledBack")),
+            "failed": sum(1 for r in results if not r.get("ok")),
+            "rolledBack": rolled_back,
+            "note": "v1 同步创建；整批成立，半途失败自动回滚已建项目；CSV 批量/队列属 R4 FR-46"}
 
+
+
+def _run_ids_of_project(session: Session, project_id: int) -> list[int]:
+    """项目名下所有 Run 的 id（系列回滚用）。"""
+    wfs = session.exec(select(Workflow).where(Workflow.project_id == project_id)).all()
+    ids = [w.id for w in wfs]
+    return [r.id for r in session.exec(select(Run)).all() if r.workflow_id in ids]
 
 def _first_available_style(session: Session, family: str) -> Style:
     st = session.exec(select(Style).where(
