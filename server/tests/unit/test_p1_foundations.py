@@ -46,12 +46,18 @@ SNAP_SCHEMA = "filmflow.snapshot/1"
 
 
 def _write_snapshot(tmp_path: Path, doc_map: dict, *, run_id: int = 1,
-                   profile: dict | None = None) -> dict:
+                   profile: dict | None = None,
+                   render_profiles: dict | None = None,
+                   caps: list | None = None, params: dict | None = None) -> dict:
     """写一份**生产形态**的快照：run_id + doc_snapshot_sha 必须自洽，否则门禁会先拦 sha。"""
     d = tmp_path / "runs" / str(run_id) / "docs"
     d.mkdir(parents=True, exist_ok=True)
     body = {"schema": SNAP_SCHEMA, "run_id": run_id, "imported": False,
-            "profile": profile or {}, "render_profiles": {}, "docs": doc_map}
+            "profile": profile or {}, "render_profiles": render_profiles or {}, "docs": doc_map}
+    if caps is not None:
+        body["caps"] = caps                     # 2.14.0 起新快照才有；历史快照缺省即不比对
+    if params is not None:
+        body["params"] = params
     body["doc_snapshot_sha"] = docs.content_hash({
         "docs": doc_map, "profile": body["profile"],
         "render_profiles": body["render_profiles"], "imported": False})
@@ -139,6 +145,60 @@ def test_delivery_accepts_matching_run_snapshot(monkeypatch, tmp_path: Path):
     snap = delivery._ensure_run_documents_match(
         None, SimpleNamespace(id=1), tmp_path, 1)
     assert snap["schema"] == SNAP_SCHEMA
+
+
+def test_delivery_rejects_caps_shrunk_after_snapshot(monkeypatch, tmp_path: Path):
+    """P1-13 残余：caps 只许经审批增长；快照里的 caps 在当前 Run 上缺了就是被改写过。"""
+    timeline = {"duration": 5.0, "scenes": [{"id": "S01"}]}
+    script = {"title": "t", "sentences": [{"text": "a"}]}
+    _write_snapshot(tmp_path, {"script": _doc(script), "timeline": _doc(timeline)},
+                    caps=["read", "write_plan", "logic_check", "approve_T01"])
+    _seed_current(monkeypatch, {"script": script, "timeline": timeline})
+    with pytest.raises(RuntimeError, match="E_DELIVERY_GATE.*caps"):
+        delivery._ensure_run_documents_match(
+            None, SimpleNamespace(id=1, caps_json=["read", "write_plan"]), tmp_path, 1)
+
+
+def test_delivery_caps_superset_passes(monkeypatch, tmp_path: Path):
+    timeline = {"duration": 5.0, "scenes": [{"id": "S01"}]}
+    script = {"title": "t", "sentences": [{"text": "a"}]}
+    _write_snapshot(tmp_path, {"script": _doc(script), "timeline": _doc(timeline)},
+                    caps=["read"])
+    _seed_current(monkeypatch, {"script": script, "timeline": timeline})
+    delivery._ensure_run_documents_match(
+        None, SimpleNamespace(id=1, caps_json=["read", "write_plan", "approve_T01"]),
+        tmp_path, 1)
+
+
+def test_delivery_rejects_params_drift(monkeypatch, tmp_path: Path):
+    """P1-13 残余：params 非空才比对（现网全空，不假装覆盖）；非空漂移必须拦。"""
+    timeline = {"duration": 5.0, "scenes": [{"id": "S01"}]}
+    script = {"title": "t", "sentences": [{"text": "a"}]}
+    _write_snapshot(tmp_path, {"script": _doc(script), "timeline": _doc(timeline)},
+                    params={"variant": "v1"})
+    _seed_current(monkeypatch, {"script": script, "timeline": timeline})
+    with pytest.raises(RuntimeError, match="E_DELIVERY_GATE.*params"):
+        delivery._ensure_run_documents_match(
+            None, SimpleNamespace(id=1, caps_json=[], params_snapshot={"variant": "v2"}),
+            tmp_path, 1)
+
+
+def test_delivery_rejects_final_crf_drift(monkeypatch, tmp_path: Path):
+    """P1-13 残余：final 档位从只比 w/h/fps 扩到全字段（crf/preset 直接进 master 编码）。"""
+    timeline = {"duration": 5.0, "scenes": [{"id": "S01"}]}
+    script = {"title": "t", "sentences": [{"text": "a"}]}
+    snap_final = {"width": 1920, "height": 1080, "fps": 24, "crf": 17, "preset": "medium"}
+    _write_snapshot(tmp_path, {"script": _doc(script), "timeline": _doc(timeline)},
+                    profile={"width": 1920, "height": 1080, "fps": 24},
+                    render_profiles={"final": snap_final})
+    _seed_current(monkeypatch, {"script": script, "timeline": timeline})
+    # render.profile.json 只能覆盖 crf/preset：把 crf 改成 19，resolve() 就会漂
+    (tmp_path / "render.profile.json").write_text(
+        json.dumps({"schema": "filmflow.render-profile/1", "final": {"crf": 19}}),
+        encoding="utf-8")
+    with pytest.raises(RuntimeError, match="E_DELIVERY_GATE.*crf"):
+        delivery._ensure_run_documents_match(
+            None, SimpleNamespace(id=1, caps_json=[]), tmp_path, 1)
 
 
 def test_delivery_title_prefers_snapshot_script(monkeypatch):

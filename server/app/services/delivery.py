@@ -340,7 +340,9 @@ def _ensure_run_documents_match(session: Session, run: Run, root: Path, project_
         if docs_svc.content_hash(snap_content) != docs_svc.content_hash(current_content(kind)):
             raise RuntimeError(f"E_DELIVERY_GATE: 当前 {kind} 与所选 Run 快照不一致；"
                                "请用该 Run 重跑 F02/G07，或基于当前文档新建 Run 后再交付")
-    # 渲染档位漂移（render.profile.json 不是 ProjectDoc，快照里有 render_profiles）
+    # 渲染档位漂移（render.profile.json 不是 ProjectDoc，快照里有 render_profiles）。
+    # P1-13 残余：final 档位从只比 w/h/fps 扩到**全字段**（crf/preset 也直接进 master 编码）；
+    # render.profile.json 的改动会体现在 resolve() 结果里，等价于对文件漂移的比对。
     snap_profiles = snapshot.get("render_profiles") or {}
     if snap_profiles:
         try:
@@ -349,15 +351,32 @@ def _ensure_run_documents_match(session: Session, run: Run, root: Path, project_
         except Exception:      # 档位解析失败交给后续 final 门禁报错，不在这里伪装成一致
             current_profiles = {}
         if current_profiles:
-            for tier in ("final",):
-                want, have = snap_profiles.get(tier) or {}, current_profiles.get(tier) or {}
-                if want and have and {k: want.get(k) for k in ("width", "height", "fps")} \
-                        != {k: have.get(k) for k in ("width", "height", "fps")}:
-                    raise RuntimeError(
-                        f"E_DELIVERY_GATE: {tier} 档位与所选 Run 快照不一致（"
-                        f"{want.get('width')}x{want.get('height')}@{want.get('fps')} → "
-                        f"{have.get('width')}x{have.get('height')}@{have.get('fps')}）；"
-                        "改档后请新建 Run 再交付")
+            tier = "final"
+            want, have = snap_profiles.get(tier) or {}, current_profiles.get(tier) or {}
+            diff = {k: (want.get(k), have.get(k)) for k in ("width", "height", "fps", "crf", "preset")
+                    if want.get(k) != have.get(k)}
+            if want and have and diff:
+                raise RuntimeError(
+                    f"E_DELIVERY_GATE: {tier} 档位与所选 Run 快照不一致（"
+                    + "；".join(f"{k}: 快照 {a} → 当前 {b}" for k, (a, b) in diff.items())
+                    + "）；改档后请新建 Run 再交付")
+    # caps 只许长大（caps_after_approval 只增不减）：快照里的 caps 必须是当前 caps 的子集，
+    # 否则说明 caps 被手工缩小/改写——渲染是在更大授权下做的，不能照单全收。
+    # 历史快照（2.14.0 之前）没有 caps 字段 → 缺省即不比对（不写成已覆盖）。
+    snap_caps = snapshot.get("caps")
+    if snap_caps is not None:
+        now_caps = set(getattr(run, "caps_json", None) or [])
+        missing = [c for c in (snap_caps or []) if c not in now_caps]
+        if missing:
+            raise RuntimeError(
+                "E_DELIVERY_GATE: Run 快照记录的 caps 在当前 Run 上已不存在（被缩小或改写）："
+                f"{missing}；caps 只允许经审批增长，请新建 Run 后再交付")
+    # params_snapshot 现网全部为空（POST /runs 的 payload.params 无人传）：
+    # 快照里非空才比对，空即不比对——不假装覆盖。
+    snap_params = snapshot.get("params") or {}
+    if snap_params and (getattr(run, "params_snapshot", None) or {}) != snap_params:
+        raise RuntimeError(
+            "E_DELIVERY_GATE: Run 的 params_snapshot 与快照记录不一致；请新建 Run 后再交付")
     if (docs.get("profile") or {}).get("content"):
         current_profile = docs_svc.get_doc(session, project_id, "profile")
         if current_profile is not None and docs_svc.content_hash(
@@ -637,6 +656,16 @@ def create_job(session: Session, project: Project, run_id: int | None = None,
         if not run:
             raise RuntimeError("项目没有 Run")
         run_id = run.id
+    # P2-05：同一 Run 不允许两个在飞交付作业——并发会 rmtree/重建同一个
+    # out/deliveries/<runId> 目录，产出交错损坏。已有 queued/leased/running/retry_wait
+    # 的 delivery 作业时直接 409，不重复入队。
+    live = session.exec(select(Job).where(
+        Job.kind == "delivery", Job.run_id == run_id,
+        Job.status.in_(("queued", "leased", "running", "retry_wait")))).all()  # type: ignore[arg-type]
+    if live:
+        raise ApiError(ErrorCode.E_DELIVERY_GATE,
+                       f"Run {run_id} 已有在飞的交付作业 job {live[0].id}（{live[0].status}），"
+                       "等它结束或先取消", status=409)
     job = jobs_svc.create_job(session, "delivery", jobs_svc.PRIORITY["delivery"],
                               {"projectId": project.id, "runId": run_id, "profile": profile},
                               run_id=run_id)
