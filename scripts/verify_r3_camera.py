@@ -91,7 +91,7 @@ def main() -> int:
     viewed = False
     t0 = time.time()
     st: dict[str, str] = {}
-    while time.time() - t0 < 300:
+    while time.time() - t0 < 420:      # EXECUTOR 升版后缓存全失效，冷链 E05+F02 实测 >300s
         st = status(rid); pend = pending(rid)
         if "B08" in pend: decide("B08", rid)
         if "D03" in pend and st.get("D02") in ("succeeded", "cached"):
