@@ -26,6 +26,8 @@ const FONT = '"Noto Sans SC"';
 const CROSS = { x: 1768, y: 128 };
 
 const qs = new URLSearchParams(location.search);
+const TOK = new URLSearchParams(location.search).get('tok') || '';
+const FFU = (p) => (TOK ? p + (p.includes('?') ? '&' : '?') + 'tok=' + encodeURIComponent(TOK) : p);
 const MODE = qs.get('mode') || '';
 const T0 = parseFloat(qs.get('t') || '0');
 
@@ -976,11 +978,11 @@ async function renderMode() {
   for (let i = start; i < Math.min(end, FRAMES); i++) {
     drawAt(i / FPS);
     const data = gl.canvas.toDataURL('image/png');
-    const r = await fetch('/frame?i=' + i, { method: 'POST', body: data });
+    const r = await fetch(FFU('/frame?i=' + i), { method: 'POST', body: data });
     if (!r.ok) { document.title = 'ERR frame ' + i; return; }
     if (i % 24 === 0) document.title = 'FRAME ' + i + '/' + FRAMES;
   }
-  if (end >= FRAMES) await fetch('/done', { method: 'POST' });
+  if (end >= FRAMES) await fetch(FFU('/done'), { method: 'POST' });
   document.title = 'DONE';
 }
 async function proxyMode() {
@@ -993,11 +995,11 @@ async function proxyMode() {
     drawAt((i * step) / FPS);
     pcx.drawImage(gl.canvas, 0, 0, 480, 270);
     const data = pc.toDataURL('image/png');
-    const r = await fetch('/pframe?i=' + i, { method: 'POST', body: data });
+    const r = await fetch(FFU('/pframe?i=' + i), { method: 'POST', body: data });
     if (!r.ok) { document.title = 'ERR pframe ' + i; return; }
     if (i % 12 === 0) document.title = 'PROXY ' + i + '/' + total;
   }
-  await fetch('/done', { method: 'POST' });
+  await fetch(FFU('/done'), { method: 'POST' });
   document.title = 'PROXY_DONE';
 }
 

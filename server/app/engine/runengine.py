@@ -24,6 +24,9 @@ from .runner import ProcessRunner
 from .snapshot import ensure_run_snapshot
 
 ACTIVE: dict[int, asyncio.Task] = {}
+from ..logs import get as _get_log
+_log = _get_log("engine")
+
 CANCELS: dict[int, asyncio.Event] = {}
 LOCK_MANAGER = LockManager()
 
@@ -451,19 +454,44 @@ async def execute_node(run_id: int, node_id: str) -> dict:
             "run_render_profiles": snapshot.get("render_profiles") or {},
         }
         try:
-            fn = REGISTRY[N[node_id]["executor"]]
-            result = fn(ctx)
-            if asyncio.iscoroutine(result):
-                result = await result
-            st.status = "succeeded"
-            st.progress = 1.0
-            st.message = ""   # 成功即清空历史失败信息（重试后 UI 不再显示旧错误）
-            emit("node.succeeded", run_id, node_id, lock_waits=lock_waits)
-            if node_id == "A04":
-                _auto_approve_a05(session, run, wf, states, project_root)
+            # P2-02：节点表的 timeout/retries 此前是死配置（从未被读取）。现在
+            # timeout>0 时强制 asyncio.wait_for（超时先杀执行器里仍在飞的子进程），
+            # 超时按 retries 自动重试（渲染类抖动的 Recoverable 失败）；timeout=0
+            # 表示节点自管超时（A04 每张 15s、A05 人工门），语义不变。
+            node_timeout = float(N[node_id].get("timeout") or 0)
+            retries_left = int(N[node_id].get("retries") or 0)
+            while True:
+                try:
+                    fn = REGISTRY[N[node_id]["executor"]]
+                    result = fn(ctx)
+                    if asyncio.iscoroutine(result):
+                        result = (await asyncio.wait_for(result, timeout=node_timeout)
+                                  if node_timeout > 0 else await result)
+                    st.status = "succeeded"
+                    st.progress = 1.0
+                    st.message = ""   # 成功即清空历史失败信息（重试后 UI 不再显示旧错误）
+                    emit("node.succeeded", run_id, node_id, lock_waits=lock_waits)
+                    if node_id == "A04":
+                        _auto_approve_a05(session, run, wf, states, project_root)
+                    break
+                except asyncio.TimeoutError:
+                    await runner.kill_current()
+                    if retries_left > 0:
+                        retries_left -= 1
+                        st.message = (f"E_NODE_TIMEOUT：节点超过 {node_timeout:.0f}s 未完成，"
+                                      f"自动重试（剩 {retries_left} 次）")
+                        st.progress = 0.0
+                        session.add(st)
+                        session.commit()
+                        emit("node.progress", run_id, node_id, pct=0.0, msg=st.message)
+                        continue
+                    raise RuntimeError(
+                        f"E_NODE_TIMEOUT：节点超过 {node_timeout:.0f}s 未完成"
+                        f"（已重试 {N[node_id].get('retries') or 0} 次）") from None
         except Exception as e:  # 失败必须可见（规格 §16）
             st.status = "failed"
             st.message = str(e)[:2000]
+            _log.warning("node failed run=%s node=%s: %s", run_id, node_id, str(e)[:300])
             emit("node.failed", run_id, node_id, error=str(e)[:500])
             _mark_skipped(session, run_id, states)
             run.status = "failed" if run.status == "running" else run.status
@@ -547,7 +575,7 @@ async def _heartbeat_job(job_id: int, owner: str) -> None:
                 jobs_svc.heartbeat(session, job_id, owner)
         except Exception:
             # 心跳失败不能杀死 run；下次心跳继续
-            pass
+            _log.debug("swallowed exception in _heartbeat_job (except Exception:)", exc_info=True)
 
 
 async def _run_loop(run_id: int) -> None:
@@ -598,12 +626,16 @@ async def _run_loop(run_id: int) -> None:
                     session.add(run)
                     session.commit()
                     if run.status == "succeeded":
+                        _log.info("run finished run=%s status=succeeded", run_id)
                         _job_finish(job_id, "succeeded", result={"runStatus": "succeeded"})
                     elif run.status == "failed":
+                        _log.info("run finished run=%s status=failed", run_id)
                         _job_finish(job_id, "failed", error_code="E_RUN_FAILED",
                                     error_msg="run failed", result={"runStatus": "failed"})
                     else:
                         # 等门/needs_changes：保留 active job，批准后 start_run 复用
+                        _log.info("run parked run=%s status=%s blocked=%s",
+                                  run_id, run.status, blocked)
                         _job_park(job_id, "retry_wait", "E_RUN_BLOCKED", run.status)
                     emit("run.finished", run_id, status=run.status)
                     return
@@ -633,16 +665,40 @@ async def _run_loop(run_id: int) -> None:
 def start_run(run_id: int) -> None:
     if run_id in ACTIVE and not ACTIVE[run_id].done():
         return
+    root = ""
     with Session(engine) as session:
         run = session.get(Run, run_id)
         if run:
             wf = session.get(Workflow, run.workflow_id)
             project = session.get(Project, wf.project_id) if wf else None
             if project:
+                root = project.root
                 ensure_run_snapshot(session, run, project.root)
         jobs_svc.ensure_run_job(session, run_id)
     CANCELS[run_id] = asyncio.Event()
-    ACTIVE[run_id] = asyncio.create_task(_run_loop(run_id))
+    ACTIVE[run_id] = asyncio.create_task(_run_loop_locked(run_id, root))
+
+
+# P2-03：同一项目根同一时刻只允许一个"执行中"的 Run 任务。frames/out/film 都是
+# 项目根共享的，两个任务并发写就是帧互相覆盖。锁按任务生命周期持有：任务 park
+# （等人工门）或结束就释放，等门的 Run 让位给同项目的下一个 Run，恢复时重新拿锁。
+_PROJECT_RUN_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _project_run_lock(root: str) -> asyncio.Lock:
+    lock = _PROJECT_RUN_LOCKS.get(root)
+    if lock is None:
+        lock = asyncio.Lock()
+        _PROJECT_RUN_LOCKS[root] = lock
+    return lock
+
+
+async def _run_loop_locked(run_id: int, root: str) -> None:
+    if not root:
+        await _run_loop(run_id)
+        return
+    async with _project_run_lock(root):
+        await _run_loop(run_id)
 
 
 async def step_run(run_id: int) -> dict:

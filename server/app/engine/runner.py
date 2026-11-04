@@ -128,6 +128,15 @@ class ProcessRunner:
         self._cancel_requested = True
         await self._terminate()
 
+    async def kill_current(self) -> None:
+        """节点级超时（wait_for 取消执行器协程）时由调用方调用：杀掉仍在飞的子进程。
+
+        run() 自己的 timeout 会走 _terminate，但节点级 wait_for 取消的是执行器协程，
+        里面的 `await proc.wait()` 被一并取消，不补这一刀 ffmpeg/Chrome 就成孤儿继续写产物。
+        """
+        self._cancel_requested = True
+        await self._terminate()
+
     async def _terminate(self) -> None:
         if self._proc is None or self._proc.returncode is not None:
             return

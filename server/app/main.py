@@ -19,7 +19,11 @@ from .security import LocalOriginMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from .logs import get, setup_logging
+    setup_logging()
+    log = get("main")
     init_db()
+    _daily_backup(log)
     # FR-29：清孤儿进程/旧 profile；恢复被 kill -9 中断的 Run Job
     from sqlmodel import Session
 
@@ -32,9 +36,37 @@ async def lifespan(app: FastAPI):
         expired = jobs_svc.expire_parked(session)
     for run_id in recovered["requeued"]:
         runengine.start_run(run_id)
-    if clean["killed"] or clean["removedProfiles"] or recovered["requeued"] or expired:
-        print(f"[recovery] cleanup={clean} recovered={recovered} expiredParked={expired}", flush=True)
+    log.info("startup cleanup=%s recovered=%s expiredParked=%s",
+             clean, recovered, expired)
     yield
+
+
+def _daily_backup(log) -> None:
+    """P2-34：启动时做一次当日 SQLite 在线备份（sqlite3 backup API，WAL 安全），
+    保留最近 10 份。替代"想起来才手工 cp"——手工备份曾是唯一的备份方式。"""
+    import sqlite3
+    from datetime import datetime
+
+    src = sqlite3.connect(str(settings.db_path))
+    try:
+        backup_dir = settings.home / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d")
+        dst = backup_dir / f"filmflow-auto-{stamp}.db"
+        if dst.exists():
+            return
+        dst_tmp = backup_dir / f".filmflow-auto-{stamp}.db.tmp"
+        with sqlite3.connect(str(dst_tmp)) as out:
+            src.backup(out)
+        dst_tmp.replace(dst)
+        olds = sorted(backup_dir.glob("filmflow-auto-*.db"))
+        for old in olds[:-10]:
+            old.unlink(missing_ok=True)
+        log.info("daily backup written: %s", dst)
+    except Exception as e:                # 备份失败不挡启动，但要留痕
+        log.warning("daily backup failed: %s", e)
+    finally:
+        src.close()
 
 
 app = FastAPI(title="FilmFlow", version="0.1.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/openapi.json")

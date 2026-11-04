@@ -1,6 +1,10 @@
 """D–G 阶段执行器：真实 Chrome / ffmpeg / whisper 调用（无 mock 生产路径）。"""
 from __future__ import annotations
 
+from ...logs import get as _get_log
+
+_log = _get_log("pipeline")
+
 import asyncio
 import json
 import threading
@@ -54,11 +58,51 @@ class FrameServer:
                     return
                 super().log_message(fmt, *args)
 
+            def _authorized(self, u) -> bool:
+                """P2-32：所有请求必须能证明持有本进程 token（?tok= 或 cookie）。
+
+                绑定 127.0.0.1 只防外部，不防本机其它进程/其它用户的进程。query tok
+                只能覆盖顶层文档；embed.css 的 @font-face、相对子资源拿不到 query——
+                所以首载（带 ?tok）时种下 HttpOnly cookie，之后同源请求凭 cookie 过闸。
+                """
+                import hmac
+                from ...config import settings
+                tok = ""
+                q = parse_qs(u.query)
+                if "tok" in q:
+                    tok = q["tok"][0]
+                else:
+                    cookie = self.headers.get("Cookie") or ""
+                    for part in cookie.split(";"):
+                        k, _, v = part.strip().partition("=")
+                        if k == "ff_tok":
+                            tok = v
+                            break
+                return hmac.compare_digest(tok, settings.frame_token)
+
             def end_headers(self):
                 from ...security import frameserver_headers
                 for k, v in frameserver_headers(self.path).items():
                     self.send_header(k, v)
+                if self._authorized(urlparse(self.path)) and "tok" in urlparse(self.path).query:
+                    from ...config import settings
+                    self.send_header("Set-Cookie",
+                                     f"ff_tok={settings.frame_token}; Path=/; HttpOnly; SameSite=Lax")
                 super().end_headers()
+
+            def do_GET(self):
+                u = urlparse(self.path)
+                if not self._authorized(u):
+                    self.send_error(403)
+                    return
+                super().do_GET()
+
+            def do_HEAD(self):
+                u = urlparse(self.path)
+                if not self._authorized(u):
+                    self.send_error(403)
+                    return
+                super().do_HEAD()
 
             def translate_path(self, path):
                 from ...security import frameserver_denied
@@ -81,6 +125,9 @@ class FrameServer:
 
             def do_POST(self):
                 u = urlparse(self.path)
+                if not self._authorized(u):
+                    self.send_error(403)
+                    return
                 q = parse_qs(u.query)
                 if u.path in ("/frame", "/pframe"):
                     i = int(q["i"][0])
@@ -107,11 +154,17 @@ class FrameServer:
         try:
             self.httpd = ReusableServer(("127.0.0.1", self.port), Handler)
         except OSError:
-            # 规格 §5.2：端口被占且可健康检查 → 复用已有服务
+            # 规格 §5.2：端口被占且可健康检查 → 复用已有服务。
+            # P2-32：探针必须带本进程 token——403 说明占端口的是**另一个进程**的
+            # 帧服务（token 不同），复用它会让引擎取到别的项目根的 program（曾实测
+            # 产出黑帧/毒帧），fail-closed 拒绝启动。
             import urllib.request
+            from ...config import settings
             try:
-                with urllib.request.urlopen(
-                        f"http://127.0.0.1:{self.port}/engine/riso/entry/film.html", timeout=3) as r:
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{self.port}/engine/riso/entry/film.html"
+                    f"?tok={settings.frame_token}")
+                with urllib.request.urlopen(req, timeout=3) as r:
                     if r.status != 200:
                         raise OSError
                 self.httpd = None  # 标记复用
@@ -178,7 +231,8 @@ def _engine_url(ctx, engine_build: dict, entry: str, query: str) -> str:
         root = Path(ctx["project_root"])
         embed_rel = ("fonts/noto-sans-sc/embed.css" if (root / "fonts/noto-sans-sc/embed.css").exists()
                      else "fonts/embed.css")
-        q += f"&embed=http://127.0.0.1:{settings.frame_port}/project/{embed_rel}"
+        q += f"&embed=http://127.0.0.1:{settings.frame_port}/project/{embed_rel}?tok={settings.frame_token}"
+    q += f"&tok={settings.frame_token}"
     return f"http://127.0.0.1:{settings.frame_port}/engine/{engine_build['engine_id']}/{base}?{q}"
 
 
@@ -245,7 +299,7 @@ def _legacy_entry(build: dict, name: str) -> str | None:
 
 def _project_url(ctx, rel: str) -> str:
     from ...config import settings
-    return f"http://127.0.0.1:{settings.frame_port}/project/{rel}"
+    return f"http://127.0.0.1:{settings.frame_port}/project/{rel}?tok={settings.frame_token}"
 
 
 def _still_times(start: float, end: float) -> list[float]:
@@ -835,7 +889,7 @@ async def _run_chrome_range(ctx, url: str, frames_dir: Path, start: int, end: in
                                       f"frame {frames_now}/{frames}")
             except Exception:
                 # 进度落库失败不能让 watcher 死掉；下一轮继续检查 DONE
-                pass
+                _log.debug("swallowed exception in _watch_done (except Exception:)", exc_info=True)
             await _aio.sleep(2)
     watcher = _aio.create_task(_watch_done())
     await ctx["runner"].run(argv, timeout=1800, on_progress=prog, cancel_event=node_cancel)
@@ -1134,7 +1188,7 @@ async def f05(ctx):
             try:
                 ssim_scores.append(float(line.split("All:")[1].split(" ")[0]))
             except Exception:
-                pass
+                _log.debug("swallowed exception in f05 (except Exception:)", exc_info=True)
     if ssim_scores and min(ssim_scores) < 0.98:
         raise RuntimeError(f"SSIM 最低 {min(ssim_scores):.4f} < 0.98")
     _artifact_json(ctx, "video_metrics.json", {"ffprobe": ff, "ssim_min": min(ssim_scores) if ssim_scores else None,
@@ -1425,17 +1479,17 @@ async def g06(ctx):
             try:
                 lufs = float(line.split("I:")[1].split("LUFS")[0].strip())
             except Exception:
-                pass
+                _log.debug("swallowed exception in g06 ()", exc_info=True)
         if "Peak:" in line and "dBFS" in line:
             try:
                 tp = float(line.split("Peak:")[1].split("dBFS")[0].strip())
             except Exception:
-                pass
+                _log.debug("swallowed exception in g06 ()", exc_info=True)
         if "True peak:" in line and "dBFS" in line:
             try:
                 tp = float(line.split("True peak:")[1].split("dBFS")[0].strip())
             except Exception:
-                pass
+                _log.debug("swallowed exception in g06 (except Exception:)", exc_info=True)
     if lufs is None:
         raise RuntimeError("ebur128 解析失败")
     from ...services import audio as audio_svc

@@ -1,6 +1,10 @@
 """FR-36 资产库：全局/项目存储、sha 去重、元数据、引用扫描与替换。"""
 from __future__ import annotations
 
+from ..logs import get as _get_log
+
+_log = _get_log("assets")
+
 import base64
 import hashlib
 import json
@@ -175,7 +179,7 @@ def _font_meta(path: Path) -> dict:
         try:
             weight = int(font.get("OS/2").usWeightClass)
         except Exception:
-            pass
+            _log.debug("swallowed exception in _font_meta (except Exception:)", exc_info=True)
         cmap = set()
         if "cmap" in font:
             for table in font["cmap"].tables:
@@ -205,7 +209,7 @@ def _make_thumb(path: Path, out: Path, kind: str, ext: str) -> str:
             img.save(out, "JPEG", quality=90)
             return out.name
     except Exception:
-        pass
+        _log.debug("swallowed exception in _make_thumb (except Exception:)", exc_info=True)
     return ""
 
 

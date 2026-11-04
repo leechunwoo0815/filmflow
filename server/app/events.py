@@ -1,6 +1,10 @@
 """事件总线：SSE 订阅者广播 + 按 Run 落 JSONL（规格 §7.9）。"""
 from __future__ import annotations
 
+from .logs import get as _get_log
+
+_log = _get_log("events")
+
 import asyncio
 import json
 from datetime import UTC, datetime
@@ -46,7 +50,7 @@ def emit(event_type: str, run_id: int | None = None, node_id: str | None = None,
                 )
             )
     except Exception:
-        pass
+        _log.debug("swallowed exception in emit (except Exception:)", exc_info=True)
     q_item = json.dumps({"event": event_type, **payload, "run_id": run_id, "node_id": node_id}, ensure_ascii=False, default=str)
     for q in list(_subscribers.get(run_id or 0, set())) + list(_global_subs):
         try:

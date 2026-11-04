@@ -18,6 +18,9 @@
 <script src="../assets/scene-render.js"></script>
 <script>
 const q = new URLSearchParams(location.search);
+const TOK = new URLSearchParams(location.search).get('tok') || '';
+const FFU = (p) => (TOK ? p + (p.includes('?') ? '&' : '?') + 'tok=' + encodeURIComponent(TOK) : p);
+
 const EMBED = q.get('embed');
 if (EMBED) {
   const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = EMBED;
@@ -38,7 +41,7 @@ function title(s) { document.title = s; }
 function fail(e) {
   title('FILM_ERR ' + (e && e.message ? e.message : e));
   // 让 F02 立即结束等待，再由缺帧检查报错（不要挂 1800s）；预览绝不写 DONE
-  if (MODE !== 'preview') fetch('/done', { method: 'POST' }).catch(() => {});
+  if (MODE !== 'preview') fetch(FFU('/done'), { method: 'POST' }).catch(() => {});
 }
 
 function allText(programs) {
@@ -171,11 +174,11 @@ async function boot() {
       ctx.clearRect(0, 0, out.width, out.height);
       ctx.drawImage(canvas, 0, 0, out.width, out.height);
       const data = out.toDataURL('image/png');
-      const r = await fetch('/pframe?i=' + i, { method: 'POST', body: data });
+      const r = await fetch(FFU('/pframe?i=' + i), { method: 'POST', body: data });
       if (!r.ok) throw new Error('pframe ' + i + ' ' + r.status);
       if (i % Math.max(1, Math.round(pfps)) === 0) title('PROXY ' + i + '/' + total);
     }
-    await fetch('/done', { method: 'POST' });
+    await fetch(FFU('/done'), { method: 'POST' });
     title('PROXY_DONE');
     return;
   }
@@ -184,12 +187,12 @@ async function boot() {
   for (let i = START; i < end; i++) {
     const canvas = SCENE_RENDER.renderFrameAt(programs, trs, i / FPS, { W, H });
     const data = canvas.toDataURL('image/png');
-    const r = await fetch('/frame?i=' + i, { method: 'POST', body: data });
+    const r = await fetch(FFU('/frame?i=' + i), { method: 'POST', body: data });
     if (!r.ok) throw new Error('frame ' + i + ' ' + r.status);
     if (i % 12 === 0) title('FRAME ' + i + '/' + total);
   }
   // 每次调用都发 DONE：F02 以 DONE 作为本段渲染结束信号（短片不再等 1800s）
-  await fetch('/done', { method: 'POST' });
+  await fetch(FFU('/done'), { method: 'POST' });
   title('DONE');
 }
 

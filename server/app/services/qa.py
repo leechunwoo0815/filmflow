@@ -1,6 +1,10 @@
 """FR-39 QA 修复建议：失败分类、位置、建议、可撤销的安全修复。"""
 from __future__ import annotations
 
+from ..logs import get as _get_log
+
+_log = _get_log("qa")
+
 import json
 import uuid
 from copy import deepcopy
@@ -418,7 +422,7 @@ def _apply(session: Session, project: Project, issue: dict, action: str,
                 try:
                     docs_svc.save_doc(session, pid, "timeline", before["content"], saved.version, "qa-fix-rollback")
                 except Exception:
-                    pass
+                    _log.debug("swallowed exception in  (except Exception:)", exc_info=True)
                 raise ValueError(f"配置文件更新失败，已尝试回滚时间轴：{e}")
             after_state.update({"profileVersion": profile_saved.version,
                                 "profileContent": profile_content,

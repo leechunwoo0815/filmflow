@@ -1,6 +1,10 @@
 """FR-28 交付 v1：16:9 + 9:16 master、SRT、双封面、manifest/qc/rights/zip。"""
 from __future__ import annotations
 
+from ..logs import get as _get_log
+
+_log = _get_log("delivery")
+
 import asyncio
 import hashlib
 import json
@@ -74,17 +78,17 @@ def _loudness(path: Path) -> dict:
             try:
                 lufs = float(line.split("I:")[1].split("LUFS")[0].strip())
             except Exception:
-                pass
+                _log.debug("swallowed exception in _loudness ()", exc_info=True)
         if "True peak:" in line and "dBFS" in line:
             try:
                 tp = float(line.split("True peak:")[1].split("dBFS")[0].strip())
             except Exception:
-                pass
+                _log.debug("swallowed exception in _loudness ()", exc_info=True)
         if "Peak:" in line and "dBFS" in line and "True peak" not in line:
             try:
                 tp = float(line.split("Peak:")[1].split("dBFS")[0].strip())
             except Exception:
-                pass
+                _log.debug("swallowed exception in _loudness (except Exception:)", exc_info=True)
     return {"lufs": lufs, "truePeak": tp}
 
 
@@ -167,7 +171,7 @@ def _font(size: int):
             try:
                 return ImageFont.truetype(str(p), size)
             except Exception:
-                pass
+                _log.debug("swallowed exception in _font (except Exception:)", exc_info=True)
     try:
         return ImageFont.load_default(size=size)
     except Exception:
@@ -551,7 +555,7 @@ async def run_delivery(job_id: int) -> None:
             try:
                 chrome_ver = _run_cmd([chrome, "--version"], 20).stdout.strip()
             except Exception:
-                pass
+                _log.debug("swallowed exception in  (except Exception:)", exc_info=True)
         ff = _run_cmd(["ffmpeg", "-version"], 20).stdout.splitlines()
         manifest = {"schema": "filmflow.delivery/1", "runId": run_id,
                     "project": {"id": project.id, "name": project.name},
@@ -631,7 +635,7 @@ async def _heartbeat(job_id: int) -> None:
             with Session(db_engine) as s:
                 jobs_svc.heartbeat(s, job_id, "delivery")
         except Exception:
-            pass
+            _log.debug("swallowed exception in _heartbeat (except Exception:)", exc_info=True)
 
 
 def create_job(session: Session, project: Project, run_id: int | None = None,

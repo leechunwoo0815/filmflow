@@ -7,6 +7,10 @@
 """
 from __future__ import annotations
 
+from ..logs import get as _get_log
+
+_log = _get_log("preview")
+
 import asyncio
 import base64
 import hashlib
@@ -462,17 +466,17 @@ class PreviewRenderer:
             if self._page is not None:
                 await self._page.close()
         except Exception:
-            pass
+            _log.debug("swallowed exception in close ()", exc_info=True)
         try:
             if self._browser is not None and not self._attached:
                 await self._browser.close()
         except Exception:
-            pass
+            _log.debug("swallowed exception in close ()", exc_info=True)
         try:
             if self._pw is not None:
                 await self._pw.stop()
         except Exception:
-            pass
+            _log.debug("swallowed exception in close (except Exception:)", exc_info=True)
         if self._held_lock:
             from ..engine.runengine import LOCK_MANAGER
             LOCK_MANAGER.release("chrome-queue", self.holder)
@@ -821,7 +825,7 @@ def _update_preview_job_progress(job: PreviewJob) -> None:
             jobs_svc.update_job(session, job.db_job_id, progress=job.progress,
                                 eta=job.eta, status=job.status)
     except Exception:
-        pass
+        _log.debug("swallowed exception in _update_preview_job_progress (except Exception:)", exc_info=True)
 
 
 def _finish_preview_db(job: PreviewJob, status: str, *, error_code: str = "",
@@ -837,7 +841,7 @@ def _finish_preview_db(job: PreviewJob, status: str, *, error_code: str = "",
                                 result={"previewJobId": job.id, "url": job.url,
                                         "path": job.path})
     except Exception:
-        pass
+        _log.debug("swallowed exception in _finish_preview_db (except Exception:)", exc_info=True)
 
 
 async def _heartbeat_preview(job: PreviewJob) -> None:
@@ -849,7 +853,7 @@ async def _heartbeat_preview(job: PreviewJob) -> None:
             with Session(db_engine) as session:
                 jobs_svc.heartbeat(session, job.db_job_id or 0, f"preview:{job.id}")
         except Exception:
-            pass
+            _log.debug("swallowed exception in _heartbeat_preview (except Exception:)", exc_info=True)
 
 
 async def _run_job(job: PreviewJob, watermark: bool) -> None:

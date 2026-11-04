@@ -5,6 +5,10 @@
 """
 from __future__ import annotations
 
+from ..logs import get as _get_log
+
+_log = _get_log("previs")
+
 import asyncio
 import base64
 import json
@@ -61,7 +65,8 @@ async def render_page_screenshot(url: str, width: int, height: int,
         try:
             await page.wait_for_function(f"window.{ready_flag} === true", timeout=timeout_ms)
         except Exception:
-            pass  # 超时也截图（回退路径）
+            _log.debug("swallowed exception in _shot (ready_flag 超时也截图，回退路径)",
+                       exc_info=True)  # 超时也截图（回退路径）
         data_url = await page.evaluate(f"window.{result_flag} || null")
         if data_url and str(data_url).startswith("data:image"):
             return base64.b64decode(str(data_url).split(",", 1)[1])

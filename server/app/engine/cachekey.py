@@ -8,7 +8,8 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.14.0"  # 帧服务端口可配置（FILMFLOW_FRAME_PORT，默认仍 8787）：F01/F02 的端口与 URL 构造变了
+EXECUTOR_VERSION = "2.15.0"  # P2-02/P2-03：节点 timeout/retries 强制执行 + 同项目 Run 互斥（调度行为变化）
+# 2.14.0：帧服务端口可配置（FILMFLOW_FRAME_PORT，默认仍 8787）+ 快照补 caps/params
 # 2.13.0：C02 字体下载加 sha 钉 + 报告记 pinMatches，旧缓存自动失效
 # 2.12.0：帧/program/manifest/快照落盘改唯一临时名 + fsync + os.replace（app/atomicwrite），
 # 崩溃不再留下被当成有效产物的半文件；读取路径不变，但产物写入行为变了，必须升版。

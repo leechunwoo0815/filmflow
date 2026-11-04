@@ -1,6 +1,10 @@
 """API 路由全集（规格 §9.1）。错误统一 ApiError 信封。"""
 from __future__ import annotations
 
+from ..logs import get as _get_log
+
+_log = _get_log("routes")
+
 import asyncio
 import json
 from copy import deepcopy
@@ -754,7 +758,7 @@ async def _materialize_saved_template(session: Session, tpl: Template, variables
         try:
             delete_project(session, pid, remove_dir=True)
         except Exception:
-            pass
+            _log.debug("swallowed exception in _materialize_saved_template (except Exception:)", exc_info=True)
         raise
 
 
@@ -973,7 +977,7 @@ async def series_from_template(payload: SeriesCreateIn, session: Session = Depen
             try:
                 session.refresh(saved)
             except Exception:
-                pass
+                _log.debug("swallowed exception in series_from_template (except Exception:)", exc_info=True)
             results.append({"index": i, "ok": False, "name": name, "error": str(e)[:300]})
     return {"template": f"saved:{saved.id}", "items": results,
             "created": sum(1 for r in results if r["ok"]),
@@ -1809,7 +1813,7 @@ async def assets_replace(asset_id: int, payload: AssetReplaceIn,
                 docs_svc.save_doc(session, pid, "timeline", content_before,
                                   row.version if row else 0, "asset-replace-rollback")
             except Exception:
-                pass
+                _log.debug("swallowed exception in assets_replace (except Exception:)", exc_info=True)
         raise
     untouched = {}
     for u in usages:
@@ -2530,7 +2534,7 @@ async def project_take_branch(project_id: int, run_id: int, payload: TakeBranchI
                 docs_svc.save_doc(session, project_id, kind, content_before,
                                   row.version if row else 0, "take-branch-rollback")
             except Exception:
-                pass
+                _log.debug("swallowed exception in project_take_branch (except Exception:)", exc_info=True)
         raise
     audit(session, "take.branch", f"{project_id}:run:{run_id}",
           after={"newRunId": new_run.id, "parentRunId": source.id})
