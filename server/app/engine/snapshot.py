@@ -108,9 +108,14 @@ def ensure_run_snapshot(session: Session, run: Run, project_root: str) -> dict:
                 write_atomic(run_dir / f"{kind}.doc.json",
                              json.dumps(docs[kind]["content"], ensure_ascii=False, indent=1))
     render_profiles = resolve_render_profiles(project_root, profile, allow_low_final=imported)
+    # caps/params 是 Run 状态不是文档状态：进快照文件（文件级封印覆盖它们），但**不进**
+    # doc_snapshot_sha——否则 2.14.0 之前的历史快照重算 sha 全部失配，交付门禁会把
+    # 全部历史 Run 拦死。历史快照没有这两个字段 → 交付门禁"缺省即不比对"（不写成已覆盖）。
     snapshot = {
         "schema": SNAPSHOT_SCHEMA, "run_id": run.id, "imported": imported,
         "profile": profile, "render_profiles": render_profiles, "docs": docs,
+        "caps": list(run.caps_json or []),
+        "params": dict(run.params_snapshot or {}),
         "created_at": datetime.now(UTC).isoformat(),
     }
     snapshot["doc_snapshot_sha"] = content_hash({

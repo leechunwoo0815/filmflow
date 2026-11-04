@@ -238,9 +238,13 @@ def _gate_valid(session: Session, run: Run, gate_id: str, content_hash: str) -> 
             if r.policy == "reapprove":
                 return (r.content_hash == content_hash), (r.content_hash != content_hash)
             return (r.content_hash == content_hash), (r.content_hash != content_hash)
-    # 跨 Run 复用（inherit）：查同 workflow 的其他 Run
+    # 跨 Run 复用（inherit）：查同 workflow 的其他 Run。
+    # P2-01：此前注释写"同 workflow"但查询没过滤——不同项目撞了相同 content_hash
+    # （比如同一段 copy 建的两个项目）会互相继承人工门批准，越权放行。
     if N[gate_id].get("policy", "inherit") == "inherit":
-        others = session.exec(select(Approval).where(Approval.gate_id == gate_id)).all()  # type: ignore[arg-type]
+        others = session.exec(
+            select(Approval).join(Run, Approval.run_id == Run.id).where(
+                Approval.gate_id == gate_id, Run.workflow_id == run.workflow_id)).all()  # type: ignore[arg-type]
         for r in others:
             if r.decision == "approved" and r.content_hash == content_hash and r.run_id != run.id:
                 return True, False

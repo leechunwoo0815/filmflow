@@ -28,11 +28,12 @@ _fs_instance = None
 
 
 class FrameServer:
-    """F01：8787 端口本地服务——引擎文件 + 项目文件 + POST /frame /pframe /done。"""
+    """F01：帧服务（默认 8787，`FILMFLOW_FRAME_PORT` 可覆盖）——引擎文件 + 项目文件 + POST /frame /pframe /done。"""
 
     def __init__(self, project_root: str):
+        from ...config import settings
         self.project_root = Path(project_root)
-        self.port = 8787
+        self.port = settings.frame_port
         self.httpd = None
         self.thread = None
 
@@ -117,7 +118,7 @@ class FrameServer:
                 return
             except Exception:
                 from ...errors import ApiError, ErrorCode
-                raise ApiError(ErrorCode.E_PORT_BUSY, "8787 被占用且不可复用")
+                raise ApiError(ErrorCode.E_PORT_BUSY, f"{self.port} 被占用且不可复用")
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
 
@@ -170,14 +171,15 @@ async def _chrome_screenshot(ctx, url: str, out_png: Path, width: int, height: i
 
 
 def _engine_url(ctx, engine_build: dict, entry: str, query: str) -> str:
+    from ...config import settings
     base = entry.split("?")[0]
     q = f"{query}"
     if "embed" not in q:
         root = Path(ctx["project_root"])
         embed_rel = ("fonts/noto-sans-sc/embed.css" if (root / "fonts/noto-sans-sc/embed.css").exists()
                      else "fonts/embed.css")
-        q += f"&embed=http://127.0.0.1:8787/project/{embed_rel}"
-    return f"http://127.0.0.1:8787/engine/{engine_build['engine_id']}/{base}?{q}"
+        q += f"&embed=http://127.0.0.1:{settings.frame_port}/project/{embed_rel}"
+    return f"http://127.0.0.1:{settings.frame_port}/engine/{engine_build['engine_id']}/{base}?{q}"
 
 
 def _asset_resolver(ctx):
@@ -242,7 +244,8 @@ def _legacy_entry(build: dict, name: str) -> str | None:
 
 
 def _project_url(ctx, rel: str) -> str:
-    return f"http://127.0.0.1:8787/project/{rel}"
+    from ...config import settings
+    return f"http://127.0.0.1:{settings.frame_port}/project/{rel}"
 
 
 def _still_times(start: float, end: float) -> list[float]:

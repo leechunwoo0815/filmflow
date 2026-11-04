@@ -17,19 +17,17 @@ import httpx
 import pytest
 from PIL import Image, ImageStat
 
-# 已知阻塞（不是产品缺陷）：隔离环境里 D02 渲出的静帧是黑的 → D04 判"过暗 lum_mean=17.9 < 40"。
-# 根因指向帧服务端口是全局单例（`config.frame_port = 8787` 写死、`locks` 里也叫 port-8787）：
-# dev 服务同时在跑时，两边共用一个 FrameServer，而它的项目根白名单属于另一个进程，
-# 于是引擎取不到 program/贴图 → 画黑帧。真环境（dev 服务，无第二个 server）已实测通过：
-# run 335 → 336，4.0s/96 帧 → **4.5s/108 帧**，尾部 S03 [3.166,4.5] 完好、静帧 lum≈233。
-# 去掉 xfail 的前置：把 frame_port 变成可配置（env 覆盖 + 集成 conftest 分配空闲端口）。
+# 历史阻塞（2026-11-05 已解）：隔离环境曾与 dev 服务共用 :8787 帧服务 → 引擎取不到
+# program/贴图 → 静帧全黑 → D04 判"过暗 lum_mean=17.9 < 40"。修法：`config.frame_port`
+# 支持 `FILMFLOW_FRAME_PORT` 覆盖（默认仍 8787，规格端口不偏离），集成 conftest 为隔离
+# 服务分配空闲端口，锁名 `port-8787` 在 acquire 处归一化成 `port-<实际端口>`；
+# 执行器行为变化 → `EXECUTOR_VERSION` 升 2.14.0。真环境在此之前的对照证据：
+# run 335 → 336，4.0s/96 帧 → 4.5s/108 帧，尾部 S03 [3.166,4.5] 完好、静帧 lum≈233。
 pytestmark = [
     pytest.mark.slow,
     pytest.mark.requires_style_library,
     pytest.mark.requires_chrome,
     pytest.mark.requires_ffmpeg,
-    pytest.mark.xfail(reason="隔离环境与 dev 服务共用 :8787 帧服务 → 黑帧；真环境已实测通过",
-                      strict=False),
 ]
 
 COPY_3 = "风起了。纸动了。字落了。"
@@ -126,9 +124,16 @@ def _master(client: httpx.Client, pid: int, run_id: int, dest: Path) -> dict:
 
 
 def _scene_ranges(timeline: dict) -> list[tuple[str, float, float]]:
+    """场景的实际时段（start/end 是 timeline 文档的规范字段）。
+
+    2026-11-05 实测：文档里的场景字典形状随最后写入路径变化——派生/ops 路径只有
+    start/end，qa 修复路径会带 duration 键；只读 duration 会把规范文档误判成
+    "range 清空"（第三轮 E2E 假失败的原因）。
+    """
     out, t = [], 0.0
     for s in timeline["scenes"]:
-        dur = float(s.get("duration") or 0)
+        dur = float(s["end"]) - float(s["start"]) if s.get("end") is not None \
+            else float(s.get("duration") or 0)
         out.append((str(s["id"]), t, t + dur))
         t += dur
     return out
@@ -136,10 +141,40 @@ def _scene_ranges(timeline: dict) -> list[tuple[str, float, float]]:
 
 def _cleanup(client: httpx.Client, pid: int) -> None:
     """删掉临时项目：先取消 Run（停在门上的 Run 会把作业 parked 成 retry_wait，
-    心跳 120s 内删除闸门判它"在飞"→ 409），再轮询 DELETE 到成功。"""
+    心跳 120s 内删除闸门判它"在飞"→ 409），**等作业真的离开 active 态**，再轮询 DELETE。
+    （2026-11-05 实测：cancel 响应被忽略 + 不等收敛时，首个 DELETE 仍会 409——虽然
+    手工探针证明 cancel 对 blocked Run 一定收掉 retry_wait 作业。）"""
     for r in client.get(f"/projects/{pid}/runs").json().get("items", []):
-        if (r.get("status") or "") not in ("succeeded", "failed", "canceled"):
-            client.post(f"/runs/{r['id']}/cancel", json={})
+        # 无条件 cancel：**终态为 failed/needs_changes 的 Run 仍可能持有活跃作业**
+        # （停在人工门时作业合法 park 成 retry_wait；实测 run2 failed 但 job 仍在
+        # running↔retry_wait 循环，跳过它删除就被"在飞作业"拦死）。终态 Run 没有
+        # 活跃作业时 cancel 是 no-op，无副作用。
+        resp = client.post(f"/runs/{r['id']}/cancel", json={})
+        print(f"  cancel run {r['id']} (status={r.get('status')}) -> {resp.status_code}",
+              flush=True)
+    time.sleep(1.0)
+    # 诊断：cancel 后作业必须离开 active 态；还停在 retry_wait 说明 cancel 只置了
+    # 标志位（引擎任务还活着在等什么）——把这组状态打出来再轮询。
+    jobs = client.get("/jobs?kind=run").json().get("items", [])
+    mine = [(j["id"], j.get("run_id"), j["status"]) for j in jobs]
+    runs = [(r["id"], r.get("status")) for r in
+            client.get(f"/projects/{pid}/runs").json().get("items", [])]
+    print(f"  cleanup 诊断 runs={runs} jobs={mine}", flush=True)
+    # 等 parked 作业收敛成 canceled（正常应立刻完成；轮询只是防未观察过的竞态）
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        plan = client.delete(f"/projects/{pid}", params={"confirm": "false"})
+        if plan.status_code < 400:
+            break
+        blockers = []
+        try:
+            blockers = plan.json().get("blockers") or []
+        except Exception:
+            pass
+        inflight = [b for b in blockers if "在飞" in b]
+        if not inflight:
+            break
+        time.sleep(1.0)
     deadline, last = time.time() + 90, None
     while time.time() < deadline:
         last = client.delete(f"/projects/{pid}", params={"confirm": "true"})

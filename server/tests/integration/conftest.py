@@ -65,6 +65,9 @@ def isolated_api(tmp_path_factory):
     env = os.environ.copy()
     env["FILMFLOW_HOME"] = str(home)
     env["FILMFLOW_WORKSPACE_ROOTS"] = json.dumps([str(workspace)])
+    # 帧服务端口是全局单例：不分配独立端口的话，隔离服务会跟 dev 服务抢 :8787，
+    # 引擎取不到 program/贴图 → 静帧全黑 → D04 判过暗（P0-5 E2E 曾因此挂 xfail）。
+    env["FILMFLOW_FRAME_PORT"] = str(_free_port())
     _seed_font_cache(home)
     port = _free_port()
     base = f"http://127.0.0.1:{port}/api"
