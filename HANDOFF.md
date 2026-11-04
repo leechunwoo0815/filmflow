@@ -26,17 +26,18 @@
 | Golden | `8ca3e01` | 老板点头的"15s/40s 原帧 baseline 实跑" | `fixtures/golden/{15s,40s}/baseline_original/`（各 6 张 1920×1080，17MiB，入库让干净机器也能跑原帧回归）+ `docs/reports/golden/*.json` | 各自**两次独立全管线**：15s run 333 生锚 → run 334 复核，40s run 335 生锚 → run 336 复核，**6/6 帧 SSIM=1.000000、pHash 距离 0**；跑在 2.12.0（原子写改造后）上，顺带证明落盘改造没改视觉产出 |
 
 **本轮实测数字（可直接复核，勿引用旧文档）**：`275 passed`（unit 250 + integration 18 + BDD 7，48.6s）；一键复核 **13 项全 ✓**；DB 24 项目 / 23 目录 / 2.3GB（残留已按老板点头清理，备份在 `~/filmflow-backup-20261104-pre-cleanup.db`）；HEAD 见 `git log -1`。
-> 注：同一条 `pytest tests -q` 在 B5 之前是 `273 passed + 1 skipped + 1 failed`——那个 skip 是 [server/tests/unit/test_p1_foundations.py:174](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L174)「8787 已被 dev 服务占用则跳过」，取决于当时有没有 F01 在跑，不是代码变化。申报计数时先看这类环境门控。
+> 注：同一条 `pytest tests -q` 在 B5 之前是 273 项通过 + 1 跳过 + 1 失败——那个 skip 是 [server/tests/unit/test_p1_foundations.py:174](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L174)「8787 已被 dev 服务占用则跳过」，取决于当时有没有 F01 在跑，不是代码变化。申报计数时先看这类环境门控。
 
 **还没做（别当成已完成，按此顺序继续）**
 > 编号一律对齐判官报告的条目：`docs/process/judge-review-2026-11-04.md` §三 P1-1…P1-11 与 §六 修复表 #1…#10。
 > **已闭**：#1 删除面（B1）、#2 fps（B2）、#3 422 信封（B3，happy-path 覆盖仍缺）、#4 前半 runId 归属 + 档位漂移 + **后半快照封印**（B4/B6）、#5 QA 真 LIFO + 残缺前置态（B4/B6）、#7 存储型脚本面（B5）、#8 原子写 + 升版 + golden 复跑（B5）、#11 版本链保 v1（B5）、§三-6 异步失败可见（B5，含 `error.tsx` 抓不到的那一整类）。
-1. **还没做的只剩 5 件（按此顺序）**：
-   - ~~**#6 / P1-5 「100 场景 60fps」无效测量**~~ ✅ **已重测并出结论**（`scripts/e2e_timeline_100.py` 全量重写：按 `l` 正向播放 + 断言播放头真的前进、ops/autosave 真路径、去恒真断言、页内 `performance.now()` 量选中延迟、加「页内/墙上时钟比」诊断）。实测 100 场景 × 4.0s：100 块全渲染、首屏 951ms、ops p50 9.7 / p95 13.3 / max 33.3ms、选中 10ms、autosave 端到端 775ms（含 700ms 防抖）、播放头 00:01:00→00:06:00（1× 真速、时钟比 1.0）、rAF 50.6 次/秒、5s 内 10 个长任务共 972ms（最长 101ms）。**判定：暂不虚拟化**（阈值都没踩）。两条保留意见照写：长任务占窗口 ~19%（忙碌但没到阻断线）；rAF 次数是 headless 合成节奏，**不等于用户 vsync 下的成片帧率**，要下「用户体验一定顺」的结论还得 headed 复跑一次。
-   - **#9 / P1-19 只做了一半**：`e2e_takes.py:15 PID=188`、`e2e_audio_v2.py:16 PID=211` 仍写演示项目（判官实测写脏：188 timeline v16–18、211 timeline v31–35，`select count(*) from docrevision where doc_id in (…188,211…)` 现 65 行），`verify_r3_assets/templates/camera/takes/audio_v2` 同；要把"跑完不新增演示 docrevision"做成一键复核的新步骤并迁 `_acceptance`。**已消失的残留**：越权 `template` id 3 已按老板点头经 `DELETE /templates/saved:3` 清除。
+1. **判官 §六 只剩 #9 未动，另有 3 条尾巴（按此顺序）**：
+   - ~~**#6 / P1-5 「100 场景 60fps」无效测量**~~ ✅ **已重测并出结论**（`scripts/e2e_timeline_100.py` 全量重写：按 `l` 正向播放 + 断言播放头真的前进、ops/autosave 真路径、去恒真断言、页内 `performance.now()` 量选中延迟、加「页内/墙上时钟比」诊断）。两次独立重跑（同一脚本、每次自建自删项目）：100 场景 × 4.0s 全渲染 100 块、首屏 951 / 1640ms（dev 模式首编译抖动）、ops p50 9.7ms / p95 13.3–19.3ms / max 46.3ms、点选响应 10–13ms、autosave 端到端 758–775ms（含页面 700ms 防抖）、播放头 00:01:00→00:06:00（1× 真速、页内/墙上时钟比 1.0）、rAF 两次都是 50.6 次/秒、5s 窗口内 10 个长任务共 966–972ms（最长 101–102ms）。**两次判定一致：暂不虚拟化**（阈值都没踩）。两条保留意见照写：长任务占窗口 ~19%（忙碌但没到阻断线）；rAF 次数是 headless 合成节奏，**不等于用户 vsync 下的成片帧率**，要下「用户体验一定顺」的结论还得 headed 复跑一次。
+   - **#9 / P1-19（唯一还没动的判官项）**：`e2e_takes.py:15 PID=188`、`e2e_audio_v2.py:16 PID=211` 仍写演示项目（判官实测写脏：188 timeline v16–18、211 timeline v31–35，`select count(*) from docrevision where doc_id in (…188,211…)` 现 65 行），`verify_r3_assets/templates/camera/takes/audio_v2` 同；要把"跑完不新增演示 docrevision"做成一键复核的新步骤并迁 `_acceptance`。**已消失的残留**：越权 `template` id 3 已按老板点头经 `DELETE /templates/saved:3` 清除。
    - **#10 / P1-23 覆盖面**：`routes.py` 仍有 **31 个 `payload: dict`**（含 `/projects/import`、`/projects/{id}/audio/upload` 落盘无大小/类型校验）；20 个已模型化端点里只有 3 个有 happy-path（`POST /projects`、`gate_decide`、`/runs/{id}/report` 404），判官 #3 要的"两头都测"没补齐。
    - **#4 剩余的小半**：`render.profile.json`/`caps_json`/`params_snapshot` 仍未参与比对。其中 `params_snapshot` 现网**所有 Run 都是空**（`select … where params_snapshot not in ('','{}')` → 0 行），我没写成"已覆盖"；`_alignment` 也仍会回退读当前 `card/alignment.manual.json`（F-DEL-4，判官明写"记录不改"）。
-   - **#10 文档清扫 + 运维债**：全文一致性仍**没有自动化守卫**（本轮重写过一遍，下次照样会漂）；DB 里 **11 个 `retry_wait` 僵尸作业**（心跳早过期）仍无回收策略；CI（P1-20）与干净机器 fresh-clone（P1-21）仍未做——原帧锚已入 git，fresh-clone 现在缺的是风格库/rumor/Chrome/ffmpeg 的 bootstrap 脚本。
+   - ~~**#10 文档清扫**~~ ✅ **已有机检守卫** `scripts/check_docs_consistency.py`：核对 `EXECUTOR_VERSION`、迁移登记 `[1,2,3,4]`、`pytest --collect-only` 用例数、生产库项目数、一键复核步数，并封禁一批**已经反了**的说法（`foreign_keys 仍关闭`、`没有 DELETE /projects 端点`、旧测试数）。它第一次跑就抓出我文档里 9 处漂移。约定：`N passed` 只写当前实测，历史跑分写中文。**机检管不了叙述性文字**（把已完成项再写成未做），那仍靠人读。
+   - **运维债（判官条目之外）**：DB 里 **11 个 `retry_wait` 僵尸作业**（心跳早过期）仍无回收策略；CI（P1-20）与干净机器 fresh-clone（P1-21）仍未做——原帧锚已入 git，fresh-clone 现在缺的是风格库/rumor/Chrome/ffmpeg 的 bootstrap 脚本。
 2. **老板已点头并执行完的**：审计残留清理（11 行 it-*／root 已不存在的行 + 7 个孤儿目录 + 4 个今晚的 golden 验证项目，释放 11.6GB；备份 `~/filmflow-backup-20261104-pre-cleanup.db`）、越权 template id 3 清除、15s/40s 原帧 golden 实跑（结果见上表）。**FR-40/41 老板也点了头**，但我按判官闸门的顺序先把上面 5 件做完再开——**不要顺手做 R4**。
 
 ---
@@ -61,7 +62,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 > 422 信封打破前端契约、60fps 结论来自空载测量、报告 4 处度量与实测不符。修单与验收口径见该文 §六。
 > **其后状态**：该文 §六 的 **#1/#2/#3/#4/#5/#7/#8/#11 已由 B1–B6 关闭**（§0.0 有逐项真实证据）；
 > 当时只剩 **#6（有效重测 100 场景）、#9（P1-19 剩余脚本）、#10（文档一致性守卫）**；**#6 已在同日重测并出结论（§0.0/§9-16）**，剩 #9/#10。
-> §3.5/§9-16 里那句 59.8fps 的旧数字**已作废并被有效重测取代**（`docs/reports/p1-11-timeline-100.json`：100 场景首屏 951ms、rAF 50.6 次/秒、ops p95 13.3ms、autosave 775ms），新结论是「暂不虚拟化，但 headless rAF 不等于用户帧率，需 headed 复跑」。
+> §3.5/§9-16 里那句 59.8fps 的旧数字**已作废并被有效重测取代**（`docs/reports/p1-11-timeline-100.json`：100 场景首屏 951/1640ms、rAF 50.6 次/秒、ops p95 13.3–19.3ms、autosave 758–775ms），新结论是「暂不虚拟化，但 headless rAF 不等于用户帧率，需 headed 复跑」。
 
 > 若要交给专家做整夜自主循环开发（goal 模式），提示词已固化在
 > [`docs/process/expert-overnight-goal-prompt.md`](docs/process/expert-overnight-goal-prompt.md)：
@@ -96,6 +97,8 @@ uv run --project server python scripts/verify_r3_templates.py       # 模板/场
 uv run --project server python scripts/e2e_templates.py             # 模板 UI
 uv run --project server python scripts/verify_p1_governance.py   # ★ 一条命令复核本轮全部 P1 门禁（13 项，自建自删）
 uv run --project server python scripts/e2e_error_visibility.py    # B5：异步失败必须可见（真机）
+uv run --project server python scripts/e2e_timeline_100.py         # 判官 #6：100 场景有效重测（自建自删）
+uv run --project server python scripts/check_docs_consistency.py   # 判官 #10：文档与代码/库/脚本一致性守卫
 uv run --project server python scripts/verify_r3_qa.py              # QA 修复建议（自建自删临时项目）
 uv run --project server python scripts/e2e_qa.py                     # QA UI
 ```
@@ -173,7 +176,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 | P1-08 时间轴 409 保稿 | ✅ | [web/src/app/timeline/page.tsx](file:///Users/litianyu/cc-projects/ai-v/filmflow/web/src/app/timeline/page.tsx)（`conflict` 态、`data-testid="timeline-conflict"`） | 409 时保留草稿 + 「只看服务端 / 保留本地并重试（对新版本重放）」，冲突期间暂停自动保存；`pnpm --dir web exec tsc --noEmit` 干净 |
 | P1-09 多步写事务 | ✅ 四路故障注入 | [server/tests/unit/test_multi_step_writes.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_multi_step_writes.py)：branch Run 失败→文档倒序回滚（base 用当前版本）；replace 中途失败→已改项目回滚；模板 materialize 失败→delete_project 清半成品；qa extend profile 失败→timeline 补偿（锁定） |
 | P1-10 失败可见 | ✅（B5 换了一层做） | [web/src/lib/api.ts](file:///Users/litianyu/cc-projects/ai-v/filmflow/web/src/lib/api.ts) 失败广播 + [web/src/components/ApiFailureBanner.tsx](file:///Users/litianyu/cc-projects/ai-v/filmflow/web/src/components/ApiFailureBanner.tsx)（挂在 `layout.tsx`）、`monitor/page.tsx` 本地 catch、`canvas` SSE `onerror` | `error.tsx`/`global-error.tsx` 存在但**抓不到异步拒绝**，所以可见性做在 `api()` 层：任何非 2xx 都进全局条（去重、点名 path+错误码、可关）。真机验收 `scripts/e2e_error_visibility.py`，当场抓出 `GET /runs/{id}/report` 未知 Run 返 500 的真缺陷（已修 404 + 回归测试） |
-| P1-11 时间轴性能 | ✅ 已有效实测（判官 #6 之后） | `scripts/e2e_timeline_100.py` 重写 + `web/src/app/timeline/page.tsx` 加 `data-testid=playhead-tc` | 100 场景 × 4s：100 块全渲染、首屏 951ms、ops p50 9.7/p95 13.3ms、选中 10ms、autosave 775ms、正向播放 rAF 50.6 次/秒、长任务 10 次共 972ms（最长 101ms）→ **暂不虚拟化**；报告 `docs/reports/p1-11-timeline-100.json`。旧 59.8fps（按 `j` 反向 + 绕 ops + 恒真断言）作废。保留意见：headless rAF ≠ 用户 vsync 帧率，需 headed 复跑 |
+| P1-11 时间轴性能 | ✅ 已有效实测（判官 #6 之后） | `scripts/e2e_timeline_100.py` 重写 + `web/src/app/timeline/page.tsx` 加 `data-testid=playhead-tc` | 100 场景 × 4s 两次独立重跑：100 块全渲染、首屏 951/1640ms、ops p50 9.7 / p95 13.3–19.3ms、选中 10–13ms、autosave 758–775ms、rAF 50.6 次/秒、长任务 10 次共 966–972ms（最长 101–102ms）→ **两次都是暂不虚拟化**；报告 `docs/reports/p1-11-timeline-100.json`。旧 59.8fps（按 `j` 反向 + 绕 ops + 恒真断言）作废。保留意见：headless rAF ≠ 用户 vsync 帧率，需 headed 复跑 |
 | P1-12 非整数 fps | ✅（B2 补完端到端） | [server/app/engine/fpscalc.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/fpscalc.py) 唯一口径：`norm_fps`（NTSC 吸附 **24000/1001** 精确有理数）、`frames_for`/`frame_at`/`time_at`/`fps_rational`/**`profile_frames`**（有 duration 就现算，不读持久化 frames）/**`is_delivery_fps`**（交付标准率白名单）；preview、`delivery._render_variant_frames`、`timeline_ops._fps`、`project_docs.build_timeline_doc`、`render_manifest`、`render_profiles`、QA 抽帧全部接线 | `test_fps_math.py` 全套（含吸附/半帧量化/白名单）；**`EXECUTOR_VERSION=2.11.0`**；真实出片 `verify_r2_5_delivery.py --fps 23.976 --duration 2` → **run 333** 两画幅同 48 帧/2.0s、`qc` 全 true、`|d16-d9| ≤ 半帧`；golden 5s 原帧在 2.11.0 重跑 → **run 334** SSIM 1.000000（`docs/reports/golden/5s-original-run334.json`）；F05 时长容差 `max(0.02, 0.5/fps)`。**判官旧结论"NTSC 交付路径仍截断 fps"已作废** |
 | P1-13 交付文档一致性 | ✅（B4 扩面，仍有残余） | [server/app/services/delivery.py:291](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/delivery.py#L291) `_ensure_run_documents_match`、`:275` `_load_run_snapshot_file`（**只读磁盘快照**，缺失/损坏/schema 不符直接拒）、`create_job` 校验 `runId` 归属 + final 档位与快照 `render_profiles` 一致 | 2 项单测 + 生产库 22 个真实快照实测：18 放行 / 4 真实漂移拦截，与哈希比对零分歧、无误拦；run 198 合成漂移确认抛 `E_DELIVERY_GATE`。**B4 新增**：外项目 run → 409（`test_delivery.py::test_delivery_job_rejects_foreign_run`）、档位 width/height/fps 漂移入门禁。**B6 补完后半**：`_load_run_snapshot_file` 三道锁——快照内 `run_id` 必须是所选 Run、`doc_snapshot_sha` 必须能自洽重算、文件 sha 对 `run.snapshot_sha`（迁移 4 新列；新快照写时即封印，历史 Run 首次通过内容校验时补封印），`imported` 分支也走同一读盘校验并要求有 docs 段。生产库 39 份真实快照重算 sha **全自洽、0 误拦**。**仍缺**：`render.profile.json`/`caps_json`/`params_snapshot` 未比对（`params_snapshot` 现网**所有 Run 都是空**，纳入比对就是假装覆盖）、`_alignment` 仍回退读当前文件 |
 | P1-14 档位验收脚本 | ✅ | `scripts/verify_r2_profiles.py` | run 309 / project 248 全绿：D02 混排不崩；**SSIM 改为分窗口**：稳定段最差 0.998663（≥0.98）、切点/入场 0.5s 窗口最差 0.952097（≥0.90）。旧「0.9987」口径已在 §2.4 修正 |
@@ -204,7 +207,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
    - 在飞判定按**心跳/started_at 120s 窗口**（`_job_is_live`），不看被启动恢复反复 bump 的 `updated_at`（现网 11 条僵尸 `retry_wait` 会把任何删除都拦死），也不单独看 `Run.status=="running"`（崩溃残留态）；确需强删用 `force=true`，只越过"在飞作业"这一条，并写进审计 `forcedInflight`。
    - 路由：`DELETE /projects/{id}?confirm=true[&remove_dir=&confirm_name=&force=]`；`confirm=false` 只回计划。测试：`server/tests/integration/test_project_delete_api.py`（5 项路由级）+ `test_p1_foundations.py`（目录策略矩阵 / 在飞拒绝且不留半死 / `force` 审计 / 白名单根被拒时库行仍在）。
 
-10. **非整数 fps 的单一口径（B2 `9dfdff9` 已补完，`EXECUTOR_VERSION=2.11.0`）**：
+10. **非整数 fps 的单一口径（B2 `9dfdff9` 已补完，当时 `EXECUTOR_VERSION` 是 2.11.0）**：
     - `norm_fps` 把 `23.976/29.97/59.94/47.952/119.88` **吸附到精确有理数**（24000/1001…），
       帧网格与 ffmpeg `-framerate` 不再一半按十进制一半按有理数（每帧差 2.4e-5·i，长片可测）。
     - 新增 `profile_frames(profile)`：**有 duration 就现算 frames**，不信任历史持久化值
@@ -249,7 +252,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 
 - ~~40s 增量渲染实跑~~ ✅（run 311，9.69%）；~~15s/40s 原帧 golden baseline~~ ✅（**2026-11-04 各自生锚 + 二次独立复核**：15s run 333→334、40s run 335→336，6/6 帧 SSIM=1.000000、pHash 距离 0；锚已入 `fixtures/golden/*/baseline_original/`）。
 - **判官 §六 仍未闭**：#6 **有效重测 100 场景帧率**（现有 60fps 结论作废，是唯一还没动的"结论级"项）、#9 P1-19 剩余脚本（`e2e_takes` 188 / `e2e_audio_v2` 211 仍写脏演示）、#10 文档一致性的自动化守卫（本轮重写过一遍，但仍无脚本防漂移）。
-- **已闭（本轮之前列为"没做"的）**：#7 存储型脚本面（Content-Type 白名单 + `:8787` CSP/nosniff + 存 HTML 回归测试）、#8 原子写（`server/app` 内裸写归零 + `EXECUTOR_VERSION=2.12.0` + golden 复跑）、#11/§三-11 版本链保 v1、§三-6 异步失败可见、§三-4 残余（残缺前置态可撤销）、#4 后半（快照 run_id/sha/库内封印三道锁）。
+- **已闭（本轮之前列为"没做"的）**：#7 存储型脚本面（Content-Type 白名单 + `:8787` CSP/nosniff + 存 HTML 回归测试）、#8 原子写（`server/app` 内裸写归零 + 升到 2.12.0 + golden 复跑）、#11/§三-11 版本链保 v1、§三-6 异步失败可见、§三-4 残余（残缺前置态可撤销）、#4 后半（快照 run_id/sha/库内封印三道锁）。
 - **判官 §三 残余（小半）**：`render.profile.json`/`caps_json`/`params_snapshot` 仍未参与比对——其中 `params_snapshot` **现网所有 Run 都是空**（`select … where params_snapshot not in ('','{}')` → 0 行），所以我没把它写成"已覆盖"；`_alignment` 仍回退读当前 `card/alignment.manual.json`（F-DEL-4，判官明写"记录不改"）。
 - **P1 治理 23 项里仍未完成**：P1-11（时间轴虚拟化 + 实测）、P1-20（CI/归档）、P1-21（干净机器 fresh-clone bootstrap；原帧锚已入 git，缺的是风格库/rumor/Chrome/ffmpeg）；P1-19/P1-23 部分（**31 个 `payload: dict`**，20 个模型化端点只有 3 个有 happy-path）。
 - **运维**：`retry_wait` 僵尸作业 **11 条**（`select count(*) from job where status='retry_wait'`）没有过期回收策略；`~/.filmflow/cache` 约 1.2GB 预览缓存可清但没人清。
@@ -318,7 +321,7 @@ uv run --project server python scripts/verify_p1_governance.py
 - **版本断言**：一键复核里 `EXECUTOR_VERSION` 用**下限**比较（`>= [2,12,0]`），写死等值会在正常升版时变红。
 - **`golden_run.py` 的 15s/40s 之前根本跑不完**（今晚才查到）：逐场门禁要求「每个场景都看过」，而脚本写死只标 `S01–S03`；15s 有 4 场、40s 有 5 场 → D03 永远拒批 → 轮询到 900s 超时。这不是磁盘/耗时问题，是脚本 bug，所以旧交接里「原帧 baseline 未实跑（磁盘考量）」的归因是**错的**。现在按 timeline 实际场景逐个标看，且门禁调用失败立刻抛错而不是静默轮询。
 - **测试里造 Run 要跟着 rowid 走**：写死的 `runs/1/docs/snapshot.json` 在被删过行的库上对不上新建 Run 的 id（SQLite 会复用 rowid），于是「快照属于 run 1，不是所选 run 4」把测试自己拦死。夹具必须按真实 `run.id` 建目录；这也说明门禁的报错信息是可诊断的。
-- **测试计数会随环境变**：`test_p1_foundations.py:174` 在有 F01 占着 `:8787` 时会 skip（跨进程不互斥）。同一条 `pytest tests -q` 可以是 `273 passed + 1 skipped + 1 failed` 也可以是 `275 passed`——申报前先看清 skip 门控，别把环境差异写成回归。
+- **测试计数会随环境变**：`test_p1_foundations.py:174` 在有 F01 占着 `:8787` 时会 skip（跨进程不互斥）。同一条 `pytest tests -q` 在 B5 之前是 273 项通过 + 1 跳过 + 1 失败，现在全绿——申报前先看清 skip 门控，别把环境差异写成回归（文档约定：`N passed` 只写当前实测值，历史跑分用中文，`scripts/check_docs_consistency.py` 会钉住这条）。
 - **`e2e_error_visibility.py` 一跑就抓到真缺陷**：`GET /api/runs/<id>/report` 对不存在的 Run 是 `table_dict(None)` → AttributeError → HTTP 500。加失败可见性的意义不只是 UI，它也把这类「用户只看到 500」的路径逼出来。
 
 ---
@@ -576,7 +579,7 @@ PASS: R2.5 FR-28 40s 交付验收通过（run 305.4s / delivery 190.0s）
 上面 ID 是证据记录，不是当前可打开的项目。当前保留的演示/证据项目见 §7.4；所有验收脚本可复现。
 
 **R3.0 v1 的诚实边界**：撤销 30 步已用 30 个文档版本恢复验证，但 30 步 UI 连点未自动化；
-100 场景已用重写后的 `e2e_timeline_100.py` **有效实测**（正向播放 + ops/autosave 真路径 + 时钟比诊断）：首屏 951ms、rAF 50.6 次/秒、ops p95 13.3ms、autosave 775ms → 暂不虚拟化（headless rAF ≠ 用户帧率，详见 §9-16）；
+100 场景已用重写后的 `e2e_timeline_100.py` **有效实测**两次（正向播放 + ops/autosave 真路径 + 时钟比诊断）：首屏 951/1640ms、rAF 50.6 次/秒、ops p95 13.3–19.3ms、autosave 758–775ms → 两次都判暂不虚拟化（headless rAF ≠ 用户帧率，详见 §9-16）；
 FR-38 没有音频波形对齐/帧差图，只做视频同步 + difference 叠加；FR-35 SFX 已随 FR-36 完成；
 FR-37 模板/系列 v1 已完成；**FR-39（R3.5 QA）已交付**（`3bb81a0` / tag `r3.5-qa`），FR-40/41 未开始。
 
@@ -872,7 +875,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 3. **还剩 3 件（判官 §六）+ 2 件工程债**：
    1. **#6 / P1-11 有效重测 100 场景**：修 `scripts/e2e_timeline_100.py` 的按键（`k` 正向，不是 `j` 反向）、走 ops/autosave 真路径、去掉恒真断言与硬编码 `wait_for_timeout(200)`；要么给有效数据，要么把"不需要虚拟化"改回待办。**这是唯一还没动的"结论级"项，别的都只是收尾。**
    2. **#9 / P1-19**：`e2e_takes.py`（PID 188）、`e2e_audio_v2.py`（PID 211）、`e2e_assets.py`、`verify_r3_*` 迁 `scripts/_acceptance.py` 自建自删；把"跑完 docrevision 不新增演示行"做成一键复核的新步骤。
-   3. **#10 / 文档一致性守卫**：写一个脚本核对版本号/测试数/FK 口径/引用路径（版本 `2.12.0`、`275 passed`、迁移 `[1,2,3,4]`），纳入验收；否则下一轮改动照样漂。
+   3. ~~#10 / 文档一致性守卫~~ ✅ [scripts/check_docs_consistency.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/scripts/check_docs_consistency.py)：机检 `EXECUTOR_VERSION`、迁移登记、pytest collected 用例数、生产库项目数、一键复核步数，外加一批「已经反了」的作废说法黑名单（`foreign_keys 仍关闭`、`没有 DELETE /projects 端点`、旧测试数）。**它已经抓出我自己文档里的 9 处漂移**（含 2 处 2.11.0 残留、2 处历史跑分写成 `N passed`）。约定随之确立：`N passed` 只指当前实测，历史值写中文。
    4. **P1-23**：剩余 **31** 个 `payload: dict`（`grep -c "payload: dict" server/app/api/routes.py`）+ 给已模型化的 20 个端点各补 happy-path（现在 3 个）。
    5. **运维/工程债**：`retry_wait` 僵尸作业（现 **11 条**）过期回收；**P1-20** CI（pytest + ruff + 一键复核）；**P1-21** fresh-clone bootstrap（原帧锚已入 git，缺风格库/rumor-39s/Chrome/ffmpeg 的接线脚本）。
 4. 之后 **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**——老板已点头，但我按上面顺序做完再开；未开始不虚报。
@@ -984,7 +987,7 @@ curl -s http://127.0.0.1:7860/api/queue
 15. **时间轴撤销**：UI 历史 50 步；30 步只验证了文档版本恢复；长链 UI 连点未自动化。
 16. **时间轴性能**：100 场景 ops 服务端 <0.2s；**浏览器 60fps 从未有效实测**——`scripts/e2e_timeline_100.py` 按的是 `j`（反向播放，播放头立刻归零停 rAF），还绕开 ops 走 `PUT /docs/timeline`，断言里有 `or longTaskCount >= 0` 恒真项。**任何"因此不需要虚拟化"的结论都不成立**（判官 P1-5，见 §6.5 B6-2）。
 17. **审片批注**：项目级 review.json（不按 Run 分桶）；Take 对比已做，但无音频波形对齐与帧差图。
-18. **R3 版本**：EXECUTOR_VERSION **2.11.0**；D01/E03/E04 已加入 project-local 缓存；
+18. **R3 版本**：EXECUTOR_VERSION **2.12.0**；D01/E03/E04 已加入 project-local 缓存；
     新项目二次 Run 的 B02/B03 必须读 Run 快照 timeline，不能读旧 card/task.json。
 19. **A03 扫描**：风格库扫描已改 `asyncio.to_thread`，但版本升级/首次索引仍可能耗时数分钟；
     不要把同步扫描塞回事件循环。
@@ -1017,7 +1020,7 @@ curl -s http://127.0.0.1:7860/api/queue
 31. **未跑的证据**：~~40s 增量~~ ✅（2026-11-04 run 311 实跑 PASS，9.69%，报告已归档）；
     15s/40s 原帧 golden（`golden_run.py --project 15s|40s --resolution original`）仍待实跑，
     各约 4.3GB / 数十分钟。申报"40s 复现"之前 40s 已可引用 run 311。
-    **5s 原帧 golden 已在 `EXECUTOR_VERSION=2.11.0` 下重跑**：run 334，6 帧 SSIM=1.000000、pHash 距离 0
+    **5s 原帧 golden 曾在 2.11.0 下重跑**（run 334，6 帧 SSIM=1.000000、pHash 距离 0）
     （`docs/reports/golden/5s-original-run334.json`）——旧条目只覆盖 2.10.0 之前的版本，B2 的帧网格改动没有把它打成回归。
 32. **NTSC 交付的真实证据只有 2 秒短片**：run 333（`--fps 23.976 --duration 2`）证明了两画幅同帧网格、`qc` 全绿；
     **9:16 变体的 `profile_frames` 修的是"frames 被 `int(fps)` 截断"这一类缺陷**，长片（40s）NTSC 交付仍未实跑，
@@ -1041,6 +1044,8 @@ curl -s http://127.0.0.1:7860/api/queue
 - [ ] 连跑两次上面这条，`GET /api/projects` 计数不变（当前 24）——这是 P0-3 的核心验收。
 - [ ] `uv run --project server python scripts/verify_p1_governance.py` → **13 项全 ✓**（3b 帧网格、9 删除面、10 文件响应策略、11 原子写、12 版本链；见 §0.6.3）。
 - [ ] `uv run --project server python scripts/e2e_error_visibility.py` → 异步失败真的落到界面上（B5/P1-6 的唯一真机证据）。
+- [ ] `uv run --project server python scripts/e2e_timeline_100.py` → 100 场景有效重测（正向播放 + 真 ops/autosave + 时钟比诊断），报告落 `docs/reports/`。
+- [ ] `uv run --project server python scripts/check_docs_consistency.py` → PASS（文档与代码/库/脚本一致；改完代码或文档都要重跑）。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
 - [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）；原帧 golden **5s/15s/40s 都已实跑**（`--project 5s|15s|40s --resolution original`，15s run 334、40s run 336 各 6 帧 SSIM=1.000000；锚在 `fixtures/golden/*/baseline_original/`）。
 - [ ] R2.5 review/audio/delivery verifier 全绿；NTSC 快跑一条：`verify_r2_5_delivery.py --fps 23.976 --duration 2`（run 333 口径）。

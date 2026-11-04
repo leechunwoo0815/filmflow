@@ -22,8 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
-import httpx  # noqa: E402
-from playwright.sync_api import sync_playwright  # noqa: E402
+import httpx
+from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:7860/api"
 WEB = "http://127.0.0.1:3000"
@@ -40,7 +40,7 @@ def wait_api(timeout: float = 60.0) -> None:
         try:
             if httpx.get(f"{BASE}/health", timeout=3).status_code == 200:
                 return
-        except Exception:
+        except (httpx.HTTPError, OSError):     # 服务还没起来，继续等
             pass
         time.sleep(1)
     raise RuntimeError("API 未就绪：先 ./dev.sh")
@@ -50,10 +50,10 @@ def pct(xs: list[float], q: float) -> float:
     if not xs:
         return 0.0
     s = sorted(xs)
-    return round(s[min(len(s) - 1, max(0, int(round(q * (len(s) - 1)))))], 1)
+    return round(s[min(len(s) - 1, max(0, round(q * (len(s) - 1))) )], 1)
 
 
-def build_project(c: httpx.Client) -> tuple[int, str]:
+def build_project(c: httpx.Client) -> int:
     """批量播种 100 场景（整份写文档）；后续交互全走 ops/autosave 真路径。"""
     root = ACCEPT / f"tl100-{uuid.uuid4().hex[:8]}"
     (root / "card").mkdir(parents=True, exist_ok=True)
@@ -75,14 +75,14 @@ def build_project(c: httpx.Client) -> tuple[int, str]:
     r = c.put(f"/projects/{pid}/docs/timeline",
               json={"content": content, "base_version": tl["version"], "author": "perf-seed"})
     assert r.status_code == 200, r.text
-    return pid, str(root)
+    return pid
 
 
 def main() -> int:
     from app.config import detect_chrome
     wait_api()
     c = httpx.Client(base_url=BASE, timeout=120, trust_env=False)
-    pid, root = build_project(c)
+    pid = build_project(c)
     print(f"project {pid} built ({SCENES} scenes)", flush=True)
     summary: dict = {"projectId": pid, "scenes": SCENES,
                      "method": {"playKey": "l (forward)", "seeding": "PUT /docs/timeline (bulk)",
