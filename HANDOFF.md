@@ -25,6 +25,11 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 
 ### 0.2 第一小时必做
 
+> **2026-11-04 判官复核**：整夜自主循环结果（`044ff59..280cd7f`）的独立审查结论在
+> [`docs/process/judge-review-2026-11-04.md`](docs/process/judge-review-2026-11-04.md) ——
+> 判定**未完成**：1 个 P0（`DELETE /projects/{id}` 可删到工作区根与 rumor 参考项目）、NTSC 交付路径仍截断 fps、
+> 422 信封打破前端契约、60fps 结论来自空载测量、报告 4 处度量与实测不符。修单与验收口径见该文 §六。
+
 > 若要交给专家做整夜自主循环开发（goal 模式），提示词已固化在
 > [`docs/process/expert-overnight-goal-prompt.md`](docs/process/expert-overnight-goal-prompt.md)：
 > 含收敛判据、先证伪再建设的顺序、每轮循环协议、反作弊条款与收尾产物要求。
