@@ -1,4 +1,6 @@
-"""SQLModel 数据模型 —— 规格 §8.1 的 15 张表。"""
+"""SQLModel 数据模型 —— 规格 §8.1 的 15 张表 + R2/R3 扩展的 6 张
+（StylePreview/WorkflowVersion/ProjectDoc/DocRevision/SchemaMigration/SceneState），
+共 21 个 `table=True` 类。"""
 from __future__ import annotations
 
 from datetime import UTC, datetime

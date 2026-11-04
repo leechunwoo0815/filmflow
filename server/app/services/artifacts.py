@@ -49,11 +49,3 @@ def register(session: Session, run_id: int, node_run_id: int | None, node_id: st
     session.commit()
     session.refresh(a)
     return a
-
-
-def node_output_hashes(session: Session, run_id: int, node_id: str) -> dict[str, str]:
-    """节点全部产物 sha（作为下游缓存键的 inputs.artifactSha）。"""
-    rows = session.exec(
-        select(Artifact).where(Artifact.run_id == run_id, Artifact.node_id == node_id)  # type: ignore[arg-type]
-    ).all()
-    return {f"{i}": r.sha256 for i, r in enumerate(sorted(rows, key=lambda x: (x.type, x.path)))}
