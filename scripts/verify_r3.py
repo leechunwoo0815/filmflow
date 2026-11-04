@@ -11,8 +11,14 @@ from pathlib import Path
 
 import httpx
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _acceptance import destroy
+from _scratch_state import build_review_source
+
 BASE = "http://127.0.0.1:7860/api"
 c = httpx.Client(base_url=BASE, timeout=240, trust_env=False)
+# 本脚本自建的项目（模板实例 + 审片源）；退出时全部回收，别留 r3-verify-* 在库里
+CREATED: list[tuple[int, Path]] = []
 PROJECTS = Path.home() / "cc-projects" / "ai-v" / "filmflow-projects"
 
 
@@ -30,6 +36,7 @@ def main() -> int:
                {"templateId": "product40", "name": f"r3-verify-{int(time.time())}"}).json()
     pid, rid = made["project"]["id"], made["run_id"]
     root = Path(made["project"]["root"])
+    CREATED.append((pid, root))
     tl = req("GET", f"/projects/{pid}/docs/timeline").json()
     doc, version = tl["content"], tl["version"]
     scenes = doc["scenes"]
@@ -116,45 +123,49 @@ def main() -> int:
           (versions["current_version"], initial["version"]), flush=True)
 
     # 6. 审片：10 条批注 export→clear→import、决议、审片包
-    proj = next(p for p in req("GET", "/projects").json()["items"] if p["id"] == 174)
-    root174 = Path(proj["root"])
-    rv_path = root174 / "review" / "review.json"
-    rv_path.unlink(missing_ok=True)
-    for i in range(10):
-        req("POST", "/projects/174/review/comments", {
-            "frame": i * 96, "time": i * 4.0, "sceneId": f"S{i % 5 + 1:02d}",
-            "kind": "rect" if i % 2 == 0 else "text",
-            "category": ["must", "suggest", "question"][i % 3],
-            "body": f"R3 验收批注 {i + 1}",
-            "geometry": {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.1} if i % 2 == 0 else {}})
-    exported = req("GET", "/projects/174/review/export").content
-    rv_path.unlink()
-    imp = req("POST", "/projects/174/review/import", json.loads(exported)).json()
-    assert imp == {"added": 10, "skipped": 0, "total": 10}, imp
-    again = req("POST", "/projects/174/review/import", json.loads(exported)).json()
-    assert again["added"] == 0 and again["skipped"] == 10
-    req("POST", "/projects/174/review/decisions", {"sceneId": "S03", "decision": "needs_changes"})
-    req("POST", "/projects/174/review/decisions", {"decision": "approved"})
-    videos = req("GET", "/projects/174/review/videos").json()["items"]
-    video = next(v for v in videos if v["node"] == "F04")
-    pkg = req("POST", "/projects/174/review/package", {"videoId": video["id"]}).json()
-    with tempfile.TemporaryDirectory() as td:
-        with zipfile.ZipFile(pkg["path"]) as z:
-            names = set(z.namelist())
-            assert {"review.mp4", "review.json", "README.txt"} <= names
-            z.extractall(td)
-        inner = json.loads((Path(td) / "review.json").read_text(encoding="utf-8"))
-        assert len(inner["comments"]) == 10
-        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                              "-of", "json", str(Path(td) / "review.mp4")],
-                             capture_output=True, text=True).stdout
-        dur = float(json.loads(out)["format"]["duration"])
-        assert abs(dur - 40.0) <= 0.1
-    print("✓ 审片 10 条批注 export→clear→import；审片包 %.1fMB / %.1fs" %
-          (pkg["bytes"] / 1048576, dur), flush=True)
+    #    判官 §六 #9：成片与批注都落在自建项目上（原先直接借用已交付演示 174/40s，
+    #    还 unlink 演示的 review.json）。4s 自建成片只多一分多钟，断言强度不变。
+    rev = build_review_source(c, "r3-review", duration=4.0)
+    rpid, rroot = rev["pid"], Path(rev["root"])
+    try:
+        assert rev["comments"] == 10, rev["comments"]
+        rv_path = rroot / "review" / "review.json"
+        exported = req("GET", f"/projects/{rpid}/review/export").content
+        rv_path.unlink()
+        imp = req("POST", f"/projects/{rpid}/review/import", json.loads(exported)).json()
+        assert imp == {"added": 10, "skipped": 0, "total": 10}, imp
+        again = req("POST", f"/projects/{rpid}/review/import", json.loads(exported)).json()
+        assert again["added"] == 0 and again["skipped"] == 10
+        req("POST", f"/projects/{rpid}/review/decisions",
+            {"sceneId": rev["scenes"][2], "decision": "needs_changes"})
+        req("POST", f"/projects/{rpid}/review/decisions", {"decision": "approved"})
+        videos = req("GET", f"/projects/{rpid}/review/videos").json()["items"]
+        video = next(v for v in videos if v["node"] == "F04")
+        pkg = req("POST", f"/projects/{rpid}/review/package", {"videoId": video["id"]}).json()
+        with tempfile.TemporaryDirectory() as td:
+            with zipfile.ZipFile(pkg["path"]) as z:
+                names = set(z.namelist())
+                assert {"review.mp4", "review.json", "README.txt"} <= names
+                z.extractall(td)
+            inner = json.loads((Path(td) / "review.json").read_text(encoding="utf-8"))
+            assert len(inner["comments"]) == 10
+            out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                  "-of", "json", str(Path(td) / "review.mp4")],
+                                 capture_output=True, text=True, check=True).stdout
+            dur = float(json.loads(out)["format"]["duration"])
+            assert abs(dur - 4.0) <= 0.1, dur
+        print(f"✓ 审片 10 条批注 export→clear→import；审片包 "
+          f"{pkg['bytes'] / 1048576:.1f}MB / {dur:.1f}s（自建项目 {rpid}）", flush=True)
+    finally:
+        destroy(c, rpid, rroot)
     print("PASS: R3.0 创作闭环验收通过")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    finally:
+        for x_pid, x_root in CREATED:
+            destroy(c, x_pid, x_root)
+        print(f"自建项目已回收 {len(CREATED)} 个")

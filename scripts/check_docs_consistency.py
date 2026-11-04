@@ -95,9 +95,13 @@ def main() -> int:
             if got != versions:
                 problems.append(f"{doc.name}:{n} 迁移登记 {got} ≠ 代码里的 {versions}")
         # 约定：文档里 `N passed` 只允许指**当前实测**；历史跑分写中文（如「273 项通过」）
-        for n, line, m in lines_with(doc, re.compile(r"(\d+) passed")):
-            if int(m.group(1)) != n_tests and not HISTORIC.search(line):
-                problems.append(f"{doc.name}:{n} 测试数 {m.group(1)} passed ≠ 实测 collected {n_tests}"
+        # 允许 `288 passed + 1 skipped`——环境门控的 skip（如 :8787 被占用）不该让守卫变红
+        for n, line, m in lines_with(doc, re.compile(r"(\d+) passed(?: \+ (\d+) skipped)?")):
+            claimed = int(m.group(1)) + int(m.group(2) or 0)
+            if claimed != n_tests and not HISTORIC.search(line):
+                problems.append(f"{doc.name}:{n} 测试数 {m.group(1)} passed"
+                                f"{(' + ' + m.group(2) + ' skipped') if m.group(2) else ''}"
+                                f" = {claimed} ≠ 实测 collected {n_tests}"
                                 "（历史值请写成中文，别用 `N passed`）")
         for n, line, m in lines_with(doc, re.compile(r"(?:连查|复核)\s*\**(\d+) 项")):
             if int(m.group(1)) != n_steps:

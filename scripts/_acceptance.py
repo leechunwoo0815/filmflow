@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import shutil
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -29,15 +30,55 @@ def create(client, name: str, copy_text: str) -> dict:
             "workflow_id": body.get("workflow_id"), "run_id": body.get("run_id")}
 
 
-def destroy(client, pid: int, root: Path) -> None:
-    """P1-06 后统一走级联删除服务（foreign_keys=ON 下手工顺序会踩 FK）。"""
+# 需要被验收脚本主动取消的 Run 状态（闸门另有判定，见 _settle）
+BUSY_RUN = ("running", "queued", "paused", "needs_changes")
+
+
+def _settle(client, pid: int, timeout: float = 150.0) -> None:
+    """取消本项目所有非终态 Run，并等到删除闸门不再报"在飞"。
+
+    闸门看的是**作业**（心跳/started_at 120s 内的 kind=run 作业），不是 Run 状态；
+    取消是异步的，所以必须轮询闸门自己的判定，而不是猜 Run 状态。
+    """
+    from app.db import engine
+    from app.services.project_cleanup import plan_delete
     from sqlmodel import Session
 
-    from app.db import engine
-    from app.services.project_cleanup import delete_project
+    for r in (client.get(f"/projects/{pid}/runs").json().get("items") or []):
+        if (r.get("status") or "") in BUSY_RUN:
+            client.post(f"/runs/{r['id']}/cancel", json={})
+    inflight: list[str] = []
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        with Session(engine) as s:
+            inflight = [b for b in plan_delete(s, pid)["blockers"] if "在飞" in b]
+        if not inflight:
+            return
+        time.sleep(1.5)
+    raise SystemExit(f"项目 {pid} 的作业在 {timeout:.0f}s 内没停（{inflight}）——拒绝强删")
 
+
+def destroy(client, pid: int, root: Path) -> None:
+    """P1-06 后统一走级联删除服务（foreign_keys=ON 下手工顺序会踩 FK）。
+
+    同时回收向导留下的 `draft` 行：materialize 不删草稿，验收脚本若不收，
+    每跑一次就在库里留一枚指向已删目录的僵尸草稿（实测一晚积了 6 条）。
+    """
+    from app.db import engine
+    from app.models import Draft
+    from app.services.project_cleanup import delete_project
+    from sqlmodel import Session, select
+
+    _settle(client, pid)
     with Session(engine) as s:
         delete_project(s, pid, remove_dir=False)
+        stale = [d for d in s.exec(select(Draft)).all()
+                 if str((d.payload_json or {}).get("root") or "").startswith(str(root))]
+        for d in stale:
+            s.delete(d)
+        if stale:
+            s.commit()
+        print(f"  回收向导草稿 {len(stale)} 条", flush=True)
     shutil.rmtree(root, ignore_errors=True)
 
 
@@ -56,6 +97,54 @@ def throwaway(client, name: str, copy_text: str):
 DEMO_PROJECTS = {202: "r3-demo-20261103", 174: "r2_5-delivery40", 188: "r3-camera",
                  211: "r3-audio-v2", 215: "r2_5-delivery", 216: "golden-5s",
                  223: "golden-5s", 227: "FR37 模板演示"}
+
+# 按设计可以碰非自建项目的脚本（新增豁免必须写理由，这里是唯一登记处）：
+#   cleanup_projects          —— 审计残留清理工具本身
+#   verify_rumor_regression   —— rumor-39s 参考片回归（46/46 基线就在它身上）
+#   drive_run                 —— 运维驱动器，Run/项目由操作者显式指定
+#   probe_profile_ssim_offset —— 只读探针
+#   smoke_m1                  —— 导入 rumor-39s 证明 46 节点画布；参考片不是演示项目
+POLLUTION_EXEMPT = {"cleanup_projects.py", "verify_rumor_regression.py", "drive_run.py",
+                    "probe_profile_ssim_offset.py", "smoke_m1.py"}
+
+# 自建入口：命中任意一个就说明项目/状态是本脚本造的
+SELFBUILT_TOKENS = ("require_scratch_project", "scratch_project", "throwaway(",
+                    "build_take_state", "build_review_source", "build_template_source",
+                    "build_golden_project", "from-template", '"/drafts"', '"/projects"')
+_WRITER_TOKENS = ('"POST"', '"PUT"', '"PATCH"', '"DELETE"',
+                  ".post(", ".put(", ".patch(", ".delete(")
+
+
+def audit_script_pollution(scripts_dir) -> tuple[list[str], list[str]]:
+    """静态扫描验收脚本：返回 (写了演示项目的行, 会写状态却没有自建入口的文件)。
+
+    `verify_p1_governance.py` 的第 14 项和单测共用这一份判据，避免两边漂移。
+    """
+    import re
+    from pathlib import Path
+
+    scripts_dir = Path(scripts_dir)
+    demo_ids = set(DEMO_PROJECTS)
+    demo_lines: list[str] = []
+    unguarded: list[str] = []
+    skip = set(POLLUTION_EXEMPT) | {"verify_p1_governance.py", "_acceptance.py", "_scratch_state.py"}
+    for py in sorted(scripts_dir.glob("*.py")):
+        if py.name.startswith("_") or py.name in skip:
+            continue
+        lines = py.read_text(encoding="utf-8").splitlines()
+        body = "\n".join(lines)
+        for n, line in enumerate(lines, 1):
+            code = line.split("#", 1)[0]
+            ids = {int(x) for x in re.findall(r"(?:PID|SOURCE|PROJECT_ID|PROJ) = '?(\d{2,4})'?", code)}
+            ids |= {int(x) for x in re.findall(r"/projects/(\d{2,4})", code)}
+            ids |= {int(x) for x in re.findall(r"[?&]project=(\d{2,4})", code)}
+            if ids & demo_ids:
+                names = "/".join(sorted(DEMO_PROJECTS[i] for i in ids & demo_ids))
+                demo_lines.append(f"{py.name}:{n}: {code.strip()}（{names}）")
+        if any(tok in body for tok in _WRITER_TOKENS) \
+                and not any(tok in body for tok in SELFBUILT_TOKENS):
+            unguarded.append(py.name)
+    return demo_lines, unguarded
 
 
 def require_scratch_project(client, argv_name: str, argv: list[str]) -> int:

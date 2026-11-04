@@ -8,12 +8,17 @@ from pathlib import Path
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from playwright.sync_api import expect, sync_playwright  # noqa: E402
+from _acceptance import destroy
+from _scratch_state import build_review_source
+from playwright.sync_api import expect, sync_playwright
 
 WEB = "http://localhost:3000"
 API = "http://127.0.0.1:7860/api"
-http = httpx.Client(base_url=API, timeout=120, trust_env=False)
+http = httpx.Client(base_url=API, timeout=600, trust_env=False)
+# 本次冒烟自建的项目（模板实例 + 审片源），退出时全部回收
+CREATED: list[tuple[int, Path]] = []
 
 
 def type_sticky(page, selector: str, text: str) -> None:
@@ -27,6 +32,7 @@ def main() -> int:
     name = f"r3-ui-{int(time.time())}"
     made = http.post("/projects/from-template", json={"templateId": "product40", "name": name}).json()
     pid, rid = made["project"]["id"], made["run_id"]
+    CREATED.append((pid, Path(made["project"]["root"])))
     print("project", pid, "run", rid, flush=True)
     with sync_playwright() as pw:
         from app.config import detect_chrome
@@ -87,13 +93,17 @@ def main() -> int:
         expect(page.locator('[data-testid="timeline-text"]')).to_have_value(new_text)
         print("✓ 6. 刷新恢复自动保存", flush=True)
 
-        # 审片播放器：用 40s 已交付项目 174 / run 223
-        page.goto(f"{WEB}/player?project=174&run=223", wait_until="domcontentloaded", timeout=60000)
+        # 审片播放器：自建 4s 成片 + 10 条批注（判官 §六 #9：原先借用已交付演示 174/run 223，
+        # 冒烟写进去的那条批注就一直留在演示项目里）
+        rev = build_review_source(http, "r3-ui-review", duration=4.0, comments=10)
+        rpid, rroot, rrun = rev["pid"], Path(rev["root"]), rev["run_id"]
+        CREATED.append((rpid, rroot))
+        page.goto(f"{WEB}/player?project={rpid}&run={rrun}", wait_until="domcontentloaded", timeout=60000)
         page.wait_for_selector('[data-testid="review-video"]', timeout=30000)
         page.wait_for_selector('[data-testid^="comment-"]', timeout=30000)
         n0 = page.locator('[data-testid^="comment-"]').count()
-        assert n0 >= 10, n0
-        comments = http.get("/projects/174/review").json()["comments"]
+        assert n0 >= 10, n0   # 10 条是 builder 刚写进去的
+        comments = http.get(f"/projects/{rpid}/review").json()["comments"]
         target = next(c for c in comments if c["time"] > 0)
         page.locator(f'[data-testid="comment-{target["id"]}"]').click()
         page.wait_for_timeout(500)
@@ -113,4 +123,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    finally:
+        for x_pid, x_root in CREATED:
+            destroy(http, x_pid, x_root)
+        print(f"自建项目已回收 {len(CREATED)} 个")

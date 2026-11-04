@@ -1,4 +1,7 @@
-"""FR-36 资产库验收：50 图去重/引用计数/删除保护/替换/缺资产阻断/字体缺字/全局复用。"""
+"""FR-36 资产库验收：50 图去重/引用计数/删除保护/替换/缺资产阻断/字体缺字/全局复用。
+
+判官 §六 #9：项目由 `_scratch_state.scratch_project()` 自建自删（原先写死演示 211，
+会把 50 条资产记录和一个图层留在演示名下）。"""
 from __future__ import annotations
 
 import base64
@@ -9,8 +12,11 @@ from pathlib import Path
 import httpx
 from PIL import Image
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _acceptance import require_scratch_project
+from _scratch_state import scratch_project, wait_api
+
 BASE = "http://127.0.0.1:7860/api"
-PID = 211
 c = httpx.Client(base_url=BASE, timeout=180, trust_env=False)
 
 
@@ -27,11 +33,11 @@ def png_b64(color: tuple[int, int, int], size=(24, 14)) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def upload(scope: str, name: str, data: str, **extra) -> dict:
+def upload(pid: int, scope: str, name: str, data: str, **extra) -> dict:
     payload = {"scope": scope, "filename": f"{name}.png", "name": name, "data": data,
                "license": {"source": "自制", "type": "CC0"}, **extra}
     if scope == "project":
-        payload["projectId"] = PID
+        payload["projectId"] = pid
     return req("POST", "/assets", payload).json()
 
 
@@ -43,13 +49,13 @@ def delete_asset(aid: int) -> None:
             raise
 
 
-def main() -> int:
+def main(pid: int) -> int:
     if c.get("/health", timeout=3).status_code != 200:
         raise SystemExit("API 未就绪")
-    tl = req("GET", f"/projects/{PID}/docs/timeline").json()
+    tl = req("GET", f"/projects/{pid}/docs/timeline").json()
     version = tl["version"]
     scenes = tl["content"]["scenes"]
-    s1, s2 = scenes[0]["id"], scenes[1]["id"]
+    s1 = scenes[0]["id"]
     before_layers = len(scenes[0].get("layers") or [])
     created: list[int] = []
 
@@ -61,7 +67,7 @@ def main() -> int:
     ids: dict[str, int] = {}
     for i in range(50):
         color, data = (color_a, data_a) if i % 2 == 0 else (color_b, data_b)
-        r = upload("project", f"f36-{color[0]}-{i}", data)
+        r = upload(pid, "project", f"f36-{color[0]}-{i}", data)
         ids.setdefault(str(color), r["asset"]["id"])
         if r["deduped"]:
             dup += 1
@@ -75,15 +81,15 @@ def main() -> int:
     # 2. 引用计数 + 使用处
     old_id = ids[str(color_a)]
     old_created = old_id in created
-    old_sha = next(a["sha256"] for a in req("GET", f"/assets?scope=project&projectId={PID}").json()["items"]
+    old_sha = next(a["sha256"] for a in req("GET", f"/assets?scope=project&projectId={pid}").json()["items"]
                    if a["id"] == old_id)
-    r = req("POST", f"/projects/{PID}/timeline/ops", {
+    r = req("POST", f"/projects/{pid}/timeline/ops", {
         "op": "add_image", "baseVersion": version, "sceneId": s1,
         "assetSha": old_sha, "box": [640, 300, 640, 360], "z": 20,
         "fit": "cover", "opacity": 0.9, "name": "F36 验收图"})
     version = r.json()["version"]
     layer_id = r.json()["content"]["scenes"][0]["layers"][-1]["id"]
-    listed = req("GET", f"/assets?scope=project&projectId={PID}").json()["items"]
+    listed = req("GET", f"/assets?scope=project&projectId={pid}").json()["items"]
     item = next(a for a in listed if a["id"] == old_id)
     assert item["refCount"] == 1 and item["usages"][0]["sceneId"] == s1
     assert item["usages"][0]["layerId"] == layer_id
@@ -98,15 +104,15 @@ def main() -> int:
     print("✓ 3. 删除被引用资产返回 E_ASSET_IN_USE + 使用处", flush=True)
 
     # 4. 替换只改使用该图的场景
-    rep = upload("project", "f36-replacement", png_b64((20, 160, 80)))
+    rep = upload(pid, "project", "f36-replacement", png_b64((20, 160, 80)))
     if not rep["deduped"]:
         created.append(rep["asset"]["id"])
     r = req("POST", f"/assets/{old_id}/replace", {"assetId": rep["asset"]["id"]})
     assert r.json()["affectedScenes"] == [s1], r.text
     assert all(p["scenes"] == [s1] for p in r.json()["projects"])
-    tl = req("GET", f"/projects/{PID}/docs/timeline").json()
+    tl = req("GET", f"/projects/{pid}/docs/timeline").json()
     version = tl["version"]
-    used = [l for l in tl["content"]["scenes"][0]["layers"] if l["id"] == layer_id][0]
+    used = next(l for l in tl["content"]["scenes"][0]["layers"] if l["id"] == layer_id)
     assert used["assetSha"] == rep["asset"]["sha256"]
     assert len(tl["content"]["scenes"][1].get("layers") or []) == 0
     if old_created:
@@ -114,16 +120,16 @@ def main() -> int:
     print("✓ 4. 替换只标记 S01；旧资产可删除", flush=True)
 
     # 5. 缺失资产在渲染前阻断
-    r = req("POST", f"/projects/{PID}/timeline/ops", {
+    r = req("POST", f"/projects/{pid}/timeline/ops", {
         "op": "add_image", "baseVersion": version, "sceneId": s1,
         "assetSha": "0" * 64, "box": [100, 100, 200, 200]})
     version = r.json()["version"]
     bogus_id = r.json()["content"]["scenes"][0]["layers"][-1]["id"]
-    pv = c.post(f"/projects/{PID}/preview/still", json={
+    pv = c.post(f"/projects/{pid}/preview/still", json={
         "sceneId": s1, "time": 0.5, "profile": "draft", "watermark": True})
     assert pv.status_code == 409, (pv.status_code, pv.text[:300])
     assert pv.json()["detail"]["code"] == "E_ASSET_MISSING"
-    r = req("POST", f"/projects/{PID}/timeline/ops", {
+    r = req("POST", f"/projects/{pid}/timeline/ops", {
         "op": "remove_layer", "baseVersion": version, "sceneId": s1, "layerId": bogus_id})
     version = r.json()["version"]
     print("✓ 5. 缺资产预览 409 E_ASSET_MISSING（给重新链接提示）", flush=True)
@@ -134,7 +140,7 @@ def main() -> int:
                 "node_modules/next/dist/compiled/@vercel/og/noto-sans-v27-latin-regular.ttf")
     if font.exists():
         data = "data:font/ttf;base64," + base64.b64encode(font.read_bytes()).decode()
-        fr = req("POST", "/assets", {"scope": "project", "projectId": PID,
+        fr = req("POST", "/assets", {"scope": "project", "projectId": pid,
                                      "filename": "f36-latin.ttf", "name": "F36 Latin",
                                      "data": data, "license": {"source": "Next.js", "type": "OFL"}}).json()
         if not fr["deduped"]:
@@ -146,25 +152,30 @@ def main() -> int:
         print("! 6. 跳过字体检查（Latin 测试字体不存在）", flush=True)
 
     # 7. 全局资产按 sha 复用，不复制
-    g = upload("global", "f36-global", png_b64((90, 30, 180)))
+    g = upload(pid, "global", "f36-global", png_b64((90, 30, 180)))
     if not g["deduped"]:
         created.append(g["asset"]["id"])
-    shared = upload("project", "f36-global-copy", png_b64((90, 30, 180)))
+    shared = upload(pid, "project", "f36-global-copy", png_b64((90, 30, 180)))
     assert shared["deduped"] is True and shared["asset"]["id"] == g["asset"]["id"]
     assert shared["asset"]["scope"] == "global"
     print("✓ 7. 项目引用全局资产复用同一条记录", flush=True)
 
     # 8. 清理，保持演示项目时间轴回到脚本执行前
-    r = req("POST", f"/projects/{PID}/timeline/ops", {
+    r = req("POST", f"/projects/{pid}/timeline/ops", {
         "op": "remove_layer", "baseVersion": version, "sceneId": s1, "layerId": layer_id})
     version = r.json()["version"]
     assert len(r.json()["content"]["scenes"][0].get("layers") or []) == before_layers
     for aid in created:
         delete_asset(aid)
     print("✓ 8. 清理测试图层/资产；时间轴图层数恢复", flush=True)
-    print("PASS: FR-36 资产库验收通过")
+    print(f"PASS: FR-36 资产库验收通过（自建项目 {pid}，演示零写入）")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if "--build" in sys.argv:
+        wait_api()
+        with scratch_project(c, "assets-verify") as proj:
+            sys.exit(main(proj["pid"]))
+    # 判官 P1-9：手动模式也必须指向自建项目，绝不回落到演示 211
+    sys.exit(main(require_scratch_project(c, Path(__file__).name, sys.argv)))

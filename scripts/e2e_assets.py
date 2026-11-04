@@ -1,6 +1,9 @@
 """FR-36 UI 冒烟：资产上传/列表/字体缺字/时间轴插入/引用计数/删除保护。
 
-只跑自建 scratch 项目：`--project <id>`（判官 P1-9：原先写死演示 211）。"""
+两种起手：
+  --build          自建 scratch 项目（判官 §六 #9：连项目带状态一起自建，用完自删）
+  --project <id>   已有的 scratch 项目
+指向演示/保护项目一律拒绝（判官 P1-9：原先写死演示 211）。"""
 from __future__ import annotations
 
 import hashlib
@@ -22,19 +25,18 @@ http = httpx.Client(base_url=API, timeout=120, trust_env=False)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _acceptance import require_scratch_project
+from _scratch_state import scratch_project, wait_api
 
-# 判官 P1-9：会插图层/替换资产，绝不能再打在演示项目 211 上
-PID = require_scratch_project(http, Path(__file__).name, sys.argv)
 stamp = str(int(time.time()))
 
 
-def cleanup(image_sha: str, asset_ids: list[int], layer_id: str | None) -> None:
+def cleanup(pid: int, image_sha: str, asset_ids: list[int], layer_id: str | None) -> None:
     try:
-        tl = http.get(f"/projects/{PID}/docs/timeline").json()
+        tl = http.get(f"/projects/{pid}/docs/timeline").json()
         if layer_id:
             for scene in tl["content"]["scenes"]:
                 if any(l.get("id") == layer_id for l in scene.get("layers") or []):
-                    http.post(f"/projects/{PID}/timeline/ops", json={
+                    http.post(f"/projects/{pid}/timeline/ops", json={
                         "op": "remove_layer", "baseVersion": tl["version"],
                         "sceneId": scene["id"], "layerId": layer_id})
                     break
@@ -44,7 +46,7 @@ def cleanup(image_sha: str, asset_ids: list[int], layer_id: str | None) -> None:
         print("cleanup warning:", e, flush=True)
 
 
-def main() -> int:
+def main(pid: int) -> int:
     png = Path(f"/tmp/f36-e2e-{stamp}.png")
     Image.new("RGB", (240, 140), (240, 90, 40)).save(png, "PNG")
     wav = Path(f"/tmp/f36-e2e-{stamp}.wav")
@@ -69,14 +71,14 @@ def main() -> int:
         page = b.new_page(viewport={"width": 1500, "height": 1000})
         page.set_default_timeout(30000)
         try:
-            page.goto(f"{WEB}/assets?project={PID}", wait_until="domcontentloaded", timeout=60000)
+            page.goto(f"{WEB}/assets?project={pid}", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_selector('div[data-testid^="asset-"]', timeout=30000)
             page.get_by_placeholder("自制 / CC0 / 购买").fill("system")
             page.get_by_placeholder("CC0 / OFL / 商业授权").fill("system")
             page.set_input_files('[data-testid="asset-file-input"]', [str(png), str(wav)])
             page.wait_for_selector(f'text={image_name}', timeout=30000)
             page.wait_for_selector(f'text={sfx_name}', timeout=30000)
-            items = http.get(f"/assets?scope=project&projectId={PID}").json()["items"]
+            items = http.get(f"/assets?scope=project&projectId={pid}").json()["items"]
             img = next(a for a in items if a["name"] == image_name and a["kind"] == "image")
             sfx = next(a for a in items if a["name"] == sfx_name and a["kind"] == "audio")
             asset_ids += [img["id"], sfx["id"]]
@@ -88,7 +90,7 @@ def main() -> int:
             font_item = None
             for _ in range(60):
                 font_item = next((a for a in http.get(
-                    f"/assets?scope=project&projectId={PID}").json()["items"]
+                    f"/assets?scope=project&projectId={pid}").json()["items"]
                                   if a["sha256"] == font_sha), None)
                 if font_item:
                     break
@@ -105,20 +107,20 @@ def main() -> int:
             page.wait_for_selector("text=缺 2 字", timeout=10000)
             print("✓ 2. 字体缺字在 UI 标红（缺 2 字）", flush=True)
 
-            page.goto(f"{WEB}/timeline?project={PID}", wait_until="domcontentloaded", timeout=60000)
+            page.goto(f"{WEB}/timeline?project={pid}", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_selector('[data-testid="scene-block-S01"]', timeout=30000)
             page.locator('[data-testid="scene-block-S01"]').click()
             page.wait_for_timeout(800)
             page.locator(f'[data-testid="asset-insert-{img["id"]}"]').click()
             page.wait_for_timeout(1500)
-            tl = http.get(f"/projects/{PID}/docs/timeline").json()
+            tl = http.get(f"/projects/{pid}/docs/timeline").json()
             layers = [l for s in tl["content"]["scenes"] for l in s.get("layers") or []
                       if l.get("assetSha") == image_sha]
             assert layers, tl["content"]["scenes"][0]
             layer_id = layers[0]["id"]
             print("✓ 3. 时间轴插入图片图层", flush=True)
 
-            page.goto(f"{WEB}/assets?project={PID}", wait_until="domcontentloaded", timeout=60000)
+            page.goto(f"{WEB}/assets?project={pid}", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_selector(f'div[data-testid="asset-{img["id"]}"]', timeout=30000)
             card = page.locator(f'div[data-testid="asset-{img["id"]}"]')
             card.locator('[data-testid="asset-ref-count"]').wait_for(timeout=10000)
@@ -130,10 +132,16 @@ def main() -> int:
             page.screenshot(path="/tmp/ff_e2e_assets.png")
         finally:
             b.close()
-    cleanup(image_sha, asset_ids, layer_id)
+    cleanup(pid, image_sha, asset_ids, layer_id)
     print("PASS: FR-36 资产库 UI 冒烟通过")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if "--build" in sys.argv:
+        wait_api()
+        # 判官 §六 #9：资产库冒烟本来就会自己上传资产，只差一个属于自己的项目
+        with scratch_project(http, "assets-e2e") as proj:
+            sys.exit(main(proj["pid"]))
+    # 判官 P1-9：会插图层/替换资产，绝不能再打在演示项目 211 上
+    sys.exit(main(require_scratch_project(http, Path(__file__).name, sys.argv)))

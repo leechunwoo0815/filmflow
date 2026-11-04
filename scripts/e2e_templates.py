@@ -8,8 +8,10 @@ from pathlib import Path
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from playwright.sync_api import sync_playwright  # noqa: E402
+from _scratch_state import scratch_project, wait_api
+from playwright.sync_api import sync_playwright
 
 WEB = "http://localhost:3000"
 API = "http://127.0.0.1:7860/api"
@@ -17,13 +19,15 @@ http = httpx.Client(base_url=API, timeout=120, trust_env=False)
 stamp = str(int(time.time()))
 
 
-def project_id() -> int:
-    items = http.get("/projects").json()["items"]
-    return int(items[-1]["id"])
-
-
 def main() -> int:
-    pid = project_id()
+    # 判官 §六 #9：这里原先取 `items[-1]["id"]`——"列表里最后一个项目"，
+    # 也就是**随便挑一个真实项目**（注释还写着"恢复演示时间轴"）。现在自建自删。
+    wait_api()
+    with scratch_project(http, "templates-e2e") as proj:
+        return smoke(proj["pid"])
+
+
+def smoke(pid: int) -> int:
     original = http.get(f"/projects/{pid}/docs/timeline").json()
     before_count = len(original["content"]["scenes"])
     created_template = None
@@ -63,10 +67,6 @@ def main() -> int:
             assert len(after["content"]["scenes"]) == before_count + 1, after["content"]["scenes"]
             print("✓ 3. UI 插入场景模板 + 跳转时间轴", flush=True)
 
-            # 恢复演示时间轴，避免留下测试场景
-            http.put(f"/projects/{pid}/docs/timeline", json={
-                "content": original["content"], "base_version": after["version"],
-                "author": "e2e-templates-cleanup"})
             page.wait_for_selector('[data-testid="scene-block-S01"]', timeout=30000)
             page.locator('[data-testid="scene-block-S01"]').click()
             page.wait_for_timeout(800)
@@ -77,9 +77,7 @@ def main() -> int:
             b.close()
     if created_template:
         http.delete(f"/templates/saved:{created_template}")
-    restored = http.get(f"/projects/{pid}/docs/timeline").json()
-    assert len(restored["content"]["scenes"]) == before_count
-    print("PASS: FR-37 模板/系列 UI 冒烟通过")
+    print(f"PASS: FR-37 模板/系列 UI 冒烟通过（自建项目 {pid}，退出即级联删除）")
     return 0
 
 

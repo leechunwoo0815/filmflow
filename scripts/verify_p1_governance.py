@@ -21,7 +21,13 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[0] / "server"))
 
-from _acceptance import throwaway  # noqa: E402
+from _acceptance import (
+    ACCEPT_ROOT,
+    DEMO_PROJECTS,
+    audit_script_pollution,
+    require_scratch_project,
+    throwaway,
+)
 
 BASE = "http://127.0.0.1:7860/api"
 ROOT = Path(__file__).resolve().parents[1]
@@ -120,11 +126,10 @@ def check_license_and_usage(c: httpx.Client, pid: int) -> int:
 def check_rights_and_delivery_gate(c: httpx.Client, pid: int) -> None:
     import json as _json
 
-    from sqlmodel import Session, select
-
     from app.db import engine
     from app.models import Project, Run, Workflow
     from app.services import delivery
+    from sqlmodel import Session, select
 
     with Session(engine) as s:
         proj = s.get(Project, pid)
@@ -244,8 +249,13 @@ def check_fps_grid(c: httpx.Client) -> None:
     """判官 B2：NTSC 十进制必须吸附精确有理数，帧数由现算而非持久化值决定。"""
     from fractions import Fraction
 
-    from app.engine.fpscalc import (frames_for, is_delivery_fps, norm_fps,
-                                    profile_frames, time_at)
+    from app.engine.fpscalc import (
+        frames_for,
+        is_delivery_fps,
+        norm_fps,
+        profile_frames,
+        time_at,
+    )
     assert norm_fps("23.976") == float(Fraction(24000, 1001))
     assert profile_frames({"fps": 23.976, "duration": 40.0, "frames": 920}) == 959
     assert frames_for(2.0, 23.976) == 48
@@ -255,10 +265,9 @@ def check_fps_grid(c: httpx.Client) -> None:
 
 
 def check_migrations_and_validation(c: httpx.Client) -> None:
-    from sqlmodel import Session, select
-
     from app.db import MIGRATIONS, apply_migrations, engine
     from app.models import SchemaMigration
+    from sqlmodel import Session, select
     with Session(engine) as s:
         before = sorted(m.version for m in s.exec(select(SchemaMigration)).all())
     assert apply_migrations(MIGRATIONS, engine) == [], "已登记的迁移不得重跑"
@@ -347,9 +356,40 @@ def check_revision_chain(c: httpx.Client, pid: int) -> None:
     v = c.get(f"/projects/{pid}/docs/script/versions").json()
     assert "truncated" in v and "keptFirst" in v, f"版本接口缺截断标注：{list(v)}"
     assert v["keptFirst"] == 1
-    assert [x["version"] for x in v["items"]][0] == v["current_version"]
+    assert next(x["version"] for x in v["items"]) == v["current_version"]
     ok(f"12 版本链：current=v{v['current_version']}、链上 {len(v['items'])} 条、"
        f"truncated={v['truncated']}、v1 永久保留")
+
+
+DEMO_IDS = frozenset(DEMO_PROJECTS)
+
+
+def check_no_demo_writes(c: httpx.Client) -> None:
+    """判官 §六 #9：验收脚本既不写演示项目，也不留半截自建项目。
+
+    静态判据在 `_acceptance.audit_script_pollution()`（与单测共用一份，避免两边漂移）；
+    运行时面还要证明闸门对真实演示 id 确实拒绝，而不是只在文档里说说。
+    """
+    demo_lines, unguarded = audit_script_pollution(ROOT / "scripts")
+    assert not demo_lines, f"脚本里出现演示项目 id：{demo_lines[:6]}"
+    assert not unguarded, f"这些脚本会写状态但没有自建入口：{unguarded}"
+
+    for demo in sorted(DEMO_IDS)[:3]:
+        try:
+            require_scratch_project(c, "probe.py", ["--project", str(demo)])
+            raise AssertionError(f"闸门没有拒绝演示项目 {demo}")
+        except SystemExit as e:
+            assert "拒绝" in str(e) or "不在" in str(e), f"闸门理由异常：{e}"
+    try:
+        require_scratch_project(c, "probe.py", ["--project", "999999"])
+        raise AssertionError("闸门没有拒绝不存在的项目")
+    except SystemExit as e:
+        assert "不在" in str(e), f"闸门理由异常：{e}"
+
+    leftovers = [p.name for p in ACCEPT_ROOT.glob("*")] if ACCEPT_ROOT.exists() else []
+    assert not leftovers, f".acceptance 下残留自建项目目录：{leftovers[:6]}"
+    ok(f"14 验收零演示污染：{len(list((ROOT / 'scripts').glob('*.py'))) - 5} 个脚本静态无演示 id、"
+       f"写状态脚本全部自建、闸门实测拒绝演示 id 与不存在 id、.acceptance 无残留")
 
 
 def main() -> int:
@@ -375,6 +415,7 @@ def main() -> int:
         check_migrations_and_validation(c)
         check_delete_surface(c)
         check_atomic_writes()
+        check_no_demo_writes(c)      # 放在最后：.acceptance 残留检查要求前面的自建项目都已回收
     print("PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）")
     return 0
 

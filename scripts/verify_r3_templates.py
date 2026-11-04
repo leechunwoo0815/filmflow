@@ -1,16 +1,20 @@
-"""FR-37 模板/系列验收：另存项目模板、变量实例化、场景模板、diff/upgrade、小系列。"""
+"""FR-37 模板/系列验收：另存项目模板、变量实例化、场景模板、diff/upgrade、小系列。
+
+判官 §六 #9：模板源项目由 `_scratch_state.build_template_source()` 自建（2 场 + S01 图层
++ S01 音效），实例/系列项目自建自删；原先写死演示 211，还用裸 sqlite DELETE 清实例。"""
 from __future__ import annotations
 
-import shutil
-import sqlite3
 import sys
 import time
 from pathlib import Path
 
 import httpx
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _acceptance import destroy
+from _scratch_state import build_template_source, wait_api
+
 BASE = "http://127.0.0.1:7860/api"
-SOURCE = 211
 c = httpx.Client(base_url=BASE, timeout=180, trust_env=False)
 
 
@@ -21,51 +25,18 @@ def req(method: str, path: str, payload: dict | None = None):
     return r.json()
 
 
-def cleanup_projects(ids: list[int]) -> None:
-    db = Path.home() / ".filmflow/filmflow.db"
-    con = sqlite3.connect(db)
-    try:
-        for pid in ids:
-            proj = con.execute("select root from project where id=?", (pid,)).fetchone()
-            if not proj:
-                continue
-            root = Path(proj[0])
-            assets = con.execute("select path from asset where project_id=?", (pid,)).fetchall()
-            con.execute("delete from asset where project_id=?", (pid,))
-            con.execute("delete from docrevision where doc_id in "
-                        "(select id from projectdoc where project_id=?)", (pid,))
-            con.execute("delete from projectdoc where project_id=?", (pid,))
-            con.execute("delete from stylepick where project_id=?", (pid,))
-            runs = con.execute("select id from run where workflow_id in "
-                               "(select id from workflow where project_id=?)", (pid,)).fetchall()
-            run_ids = [r[0] for r in runs]
-            for rid in run_ids:
-                con.execute("delete from artifact where run_id=?", (rid,))
-                con.execute("delete from approval where run_id=?", (rid,))
-                con.execute("delete from event where run_id=?", (rid,))
-                con.execute("delete from noderun where run_id=?", (rid,))
-                con.execute("delete from scenestate where run_id=?", (rid,))
-                con.execute("delete from job where run_id=?", (rid,))
-            con.execute("delete from run where workflow_id in "
-                        "(select id from workflow where project_id=?)", (pid,))
-            con.execute("delete from workflowversion where workflow_id in "
-                        "(select id from workflow where project_id=?)", (pid,))
-            con.execute("delete from workflow where project_id=?", (pid,))
-            con.execute("delete from project where id=?", (pid,))
-            con.execute("delete from draft where payload_json like ?", (f"%{root}%",))
-            for (p,) in assets:
-                Path(p).unlink(missing_ok=True)
-            shutil.rmtree(root, ignore_errors=True)
-        con.commit()
-    finally:
-        con.close()
+def cleanup_projects(items: list[tuple[int, Path]]) -> None:
+    """实例/系列项目一律走 DELETE 服务级联删除（裸 sqlite 会绕开外键与目录策略）。"""
+    for pid, root in items:
+        try:
+            destroy(c, pid, root)
+        except Exception as e:      # noqa: BLE001 - 清理失败不该掩盖验收结论
+            print(f"! 清理项目 {pid} 失败：{e}", flush=True)
 
 
-def main() -> int:
-    if c.get("/health", timeout=3).status_code != 200:
-        raise SystemExit("API 未就绪")
+def main(source_id: int) -> int:
     stamp = str(int(time.time()))
-    created_projects: list[int] = []
+    created_projects: list[tuple[int, Path]] = []
     template_ids: list[int] = []
     try:
         built = {t["id"] for t in req("GET", "/templates")["items"]}
@@ -74,7 +45,7 @@ def main() -> int:
         assert "builtin:scene-title" in scenes and "builtin:scene-cta" in scenes
         print("✓ 1. 内置项目/场景模板可见", flush=True)
 
-        saved = req("POST", f"/projects/{SOURCE}/save-template", {
+        saved = req("POST", f"/projects/{source_id}/save-template", {
             "name": f"F37 验收模板 {stamp}", "description": "两场结构+资产",
             "copy": "{{title}}：{{number}} 个要点。第二句说明。"})["template"]
         template_ids.append(saved["templateId"])
@@ -87,7 +58,7 @@ def main() -> int:
             "templateId": saved["id"], "name": f"F37 验收实例 {stamp}",
             "variables": {"title": "验收", "number": 3}})
         pid = inst["project"]["id"]
-        created_projects.append(pid)
+        created_projects.append((pid, Path(inst["project"]["root"])))
         assert inst["templateVersion"] == 1
         script = req("GET", f"/projects/{pid}/docs/script")["content"]["text"]
         assert script == "验收：3 个要点。第二句说明。", script
@@ -100,7 +71,7 @@ def main() -> int:
         assert lock["templateId"] == saved["templateId"] and lock["version"] == saved["version"]
         print(f"✓ 3. 实例化 project {pid}：文案替换/结构/资产复制/模板锁", flush=True)
 
-        st = req("POST", f"/projects/{SOURCE}/scenes/S01/save-template",
+        st = req("POST", f"/projects/{source_id}/scenes/S01/save-template",
                  {"name": f"F37 场景 {stamp}", "description": "带资产"})["template"]
         template_ids.append(st["templateId"])
         before = req("GET", f"/projects/{pid}/docs/timeline")
@@ -111,7 +82,7 @@ def main() -> int:
         print(f"✓ 4. 场景模板插入 {applied['sceneId']}", flush=True)
 
         versioned = req("POST", f"/templates/{saved['id']}/version", {
-            "projectId": SOURCE,
+            "projectId": source_id,
             "copy": "{{title}}：{{number}} 个要点。第二句说明。"})["template"]
         assert versioned["version"] == 2
         diff = req("GET", f"/projects/{pid}/template-diff?templateId={saved['id']}")
@@ -131,7 +102,7 @@ def main() -> int:
                       {"name": f"F37 系列 {stamp} B", "variables": {"title": "B", "number": 2}}]})
         assert series["created"] == 2 and series["failed"] == 0, series
         for item in series["items"]:
-            created_projects.append(item["project"]["id"])
+            created_projects.append((item["project"]["id"], Path(item["project"]["root"])))
             assert req("GET", f"/projects/{item['project']['id']}/docs/script")["content"]["text"] \
                 .startswith(("A：1", "B：2"))
         print("✓ 6. 系列 2 项同步创建；失败项隔离字段已返回", flush=True)
@@ -140,11 +111,17 @@ def main() -> int:
     finally:
         cleanup_projects(created_projects)
         for tid in template_ids:
-            try:
-                c.delete(f"/templates/saved:{tid}")
-            except Exception:
-                pass
+            r = c.delete(f"/templates/saved:{tid}")
+            if r.status_code >= 400:
+                print(f"! 模板 {tid} 删除返回 {r.status_code}（可能已被级联清理）", flush=True)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    wait_api()
+    # 模板源项目必须自带「图层 + 音效」资产引用，所以由 builder 造，而不是借演示 211
+    src = build_template_source(c, "templates-verify")
+    try:
+        sys.exit(main(src["pid"]))
+    finally:
+        destroy(c, src["pid"], src["root"])
+        print("模板源项目已清理")
