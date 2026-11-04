@@ -68,13 +68,18 @@ def destroy(client, pid: int, root: Path) -> None:
     每跑一次就在库里留一枚指向已删目录的僵尸草稿（实测一晚积了 6 条）。
     """
     from app.db import engine
-    from app.models import Draft
+    from app.models import Draft, Project
     from app.services.project_cleanup import delete_project
     from sqlmodel import Session, select
 
     _settle(client, pid)
     with Session(engine) as s:
-        delete_project(s, pid, remove_dir=False)
+        # confirm_name 用库行里的真名原样回显：自建项目撞上保护名单（如 golden_run 建
+        # 的 golden-5s）时删除是**正确**被拦的，回显真名不算削弱保护——其它调用者仍必须
+        # 显式给出 confirm_name（2026-11-05 golden_run 自删尾巴实测炸过一次 409）。
+        proj = s.get(Project, pid)
+        delete_project(s, pid, remove_dir=False,
+                       confirm_name=(proj.name if proj else ""))
         stale = [d for d in s.exec(select(Draft)).all()
                  if str((d.payload_json or {}).get("root") or "").startswith(str(root))]
         for d in stale:
