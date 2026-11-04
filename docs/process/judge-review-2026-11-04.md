@@ -72,7 +72,15 @@
 
 ## 六、修复顺序与验收口径（判官自己接手修，进度记在本节）
 
-> **进度（2026-11-04）**：#1 删除面 ✅（B1，见 `7d5b6e4`）、#2 fps 端到端 ✅（B2：真实 23.976 出片两画幅同帧网格 + golden 复跑，> 另有 NTSC 十进制吸附与 `profile_frames` 现算）；#3–#10 进行中。下面表格保留原始判据作为复核清单。
+> **进度（2026-11-04，HEAD `fb15d58`）**：
+> - **#1 删除面（P0-1）✅ B1 `7d5b6e4`**——白名单真子目录 + `.git` 拒 + rumor/演示名回显 + 心跳判活 + 先校验后动数据 + 库删单事务；5 项路由级 + 4 项服务级测试；并用端点清掉了当晚自身验证残留（`dirRemoved=true`，projects 回 35）。
+> - **#2 fps 端到端（P0-2）✅ B2 `9dfdff9`**——`delivery`/`timeline_ops`/`project_docs` 三处 `int(fps)` 清零，新增 `profile_frames`（不信任持久化 frames）与 `is_delivery_fps` 白名单，NTSC 吸附精确有理数，F05 容差按半帧；`EXECUTOR_VERSION=2.11.0`；真实 23.976 出片 run 333 两画幅同 48 帧/2.0s、`qc` 全绿；golden run 334 SSIM 1.0。
+> - **#3 422 信封 ✅ B3 `dbc208a`**（happy-path 仍只有 2/20 端点，判官要求的"每端点一条"未齐）。
+> - **#4 交付归属/档位漂移 ✅ B4 `fb15d58` 前半**（`runId` 归属 + final 档位与快照 `render_profiles`）；**后半未做**：`imported` 分支、快照↔DB `doc_snapshot_sha` 绑定、`render.profile.json`/`params_snapshot`/`caps_json`、`_alignment` 回退。
+> - **#5 QA 真 LIFO ✅ B4**（`undoKind`+`seq` 倒序、同值重复拦截、mix/license 入守卫、legacy 记录拒绝自动撤销）；**残余**：许可 `prev` 非法时 `save_license` 抛 409 卡 `applied`。
+> - **#6 撤回 60fps 结论、#7 真关 XSS 面、#8 原子写全覆盖+升版、#9 P1-19 收尾、#10 文档清扫**：⛔ **未动**。逐条状态与顺序见 `HANDOFF.md` §0.0/§6.5。
+>
+> 下面表格保留原始判据作为复核清单。
 
 
 | # | 动作 | 通过判据 |

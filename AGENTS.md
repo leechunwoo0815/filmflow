@@ -5,7 +5,7 @@
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
 > 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（逻辑约 75MiB；mp4 为稀疏文件，磁盘分配约 9.3MiB；库不入 git）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
-> **当前进度（2026-11-03 20:00）**：R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；**专家审查 P0 Gate 全部关闭**（P0-4b 的 40s 增量、15s/40s 原帧 baseline 仍未实跑）；**P1 治理已完成 14 项**（02/03/04/05/07/08/13/14/15/16/17/18/22 + 06/19/23 部分）。完整 `pytest server/tests -q` **201 passed**（unit 169 + integration 13 + BDD 7），`EXECUTOR_VERSION=2.10.0`、preview `1.8.0`。FR-40/41 已满足准入（等老板点头）；P1 剩余顺序见 `HANDOFF.md` §6.5，状态表 §0.6、破坏性语义 §0.6.1、运维坑 §0.7。R4 不做。
+> **当前进度（2026-11-04，HEAD `fb15d58`）**：R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；2026-11-03 专家审查 P0 Gate 已关；整夜自主循环结果经**判官独立复核判定未完成**（`docs/process/judge-review-2026-11-04.md`），其后 **B1–B4 已修复并推送**：删除面硬化 `7d5b6e4`、NTSC fps 端到端 `9dfdff9`（`EXECUTOR_VERSION=2.11.0`）、422 ApiError 信封 `dbc208a`、交付归属 + QA 链序号 LIFO `fb15d58`。完整 `pytest server/tests -q` **236 passed + 1 skipped**（collected 237 = unit 212 + integration 18 + BDD 7，59.4s）、`verify_p1_governance.py` **10 步全绿**、`foreign_keys=ON`、preview `1.8.0`。**未闭**：存储型脚本面/`:8787` CSP、原子写统一（全仓无 `os.replace`/fsync）、DocRevision 保 v1、异步错误边界、100 场景帧率有效重测、P1-19 剩余脚本（`e2e_takes` 188 / `e2e_audio_v2` 211 会写脏演示）、31 个 `payload: dict`、交付门禁后半（快照与 DB 哈希绑定）。**清单以 `HANDOFF.md` §0.0 为准**；判官 §六 未做完前不开 FR-40/41，R4 不做。
 > **完整接手 prompt**：[`QODER_PROMPT.md`](QODER_PROMPT.md)（历史 prompt；新 Agent 先看 HANDOFF §0/§6）。
 
 ## 这个仓库是什么
@@ -17,11 +17,11 @@ FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 
 - 资产入库必须给 `license.source` + `license.type`，`expires` 须为未过期 ISO 日期 → 否则 400 `E_ASSET_LICENSE`。
 - 资产被任何 timeline/文档/模板/Run 快照引用时不许清空或削弱许可（防洗白）。
 - `rights.json` 是 `filmflow.rights/2`，内容由 Run 快照真实资产引用生成；有许可缺口 → `E_LICENSE_MISSING` 拒交付。
-- 非导入项目交付前要求「当前 timeline 哈希 == 所选 Run 快照哈希」→ 否则 `E_DELIVERY_GATE`（演示 188/211 的部分 Run 当前就漂移）。
-- QA 多步修复必须**按链序号倒序撤销**（`undoKind`+`seq`，内容哈希作二次守卫）；无依据的历史记录拒绝自动撤销；文档级修复 `verified=null` + `documentVerified=true`。
-- 交付会校验 `runId` 属于该项目、final 档位与 Run 快照一致，否则 409 `E_DELIVERY_GATE`；`EXECUTOR_VERSION` 现为 **2.11.0**（NTSC 帧网格吸附精确有理数、帧数一律现算不读持久化值）。
-- 删除项目只走 `DELETE /projects/{id}`：项目根必须是白名单**真子目录**且不含 `.git`（登记时就拒），保护名单（rumor 回归基线 + 演示项目）需回显 `confirm_name`，有在飞作业需 `force=true`；先校验后动数据、库删单事务。
-- 9 个高风险写端点已用 Pydantic 请求模型（非法输入 422）；`/projects/import` 与 drafts materialize 是**直接函数调用** `projects_create(ProjectCreateIn(...))`，别再传 dict。
+- 非导入项目交付前要求「当前 timeline 哈希 == 所选 Run 快照哈希」→ 否则 `E_DELIVERY_GATE`（演示 188/211 的部分 Run 当前就漂移）；交付还必须**归属该项目**、final 档位与 Run 快照一致（B4）。
+- QA 多步修复必须**按链序号倒序撤销**（`undoKind`+`seq`，内容哈希作二次守卫）；既无 `seq` 又无 `afterHash` 的历史记录拒绝自动撤销；文档级修复 `verified=null` + `documentVerified=true`。
+- 帧率唯一口径 `server/app/engine/fpscalc.py`：NTSC 吸附精确有理数（24000/1001…）、有 duration 就现算帧数、final 只放行 `is_delivery_fps()` 白名单 → `EXECUTOR_VERSION=2.11.0`。
+- 删除项目只走 `DELETE /projects/{id}`：项目根必须是白名单**真子目录**且不含 `.git`（登记时就拒），保护名单（`rumor*` + 演示项目名精确）需回显 `confirm_name`，有在飞作业（心跳/`started_at` 120s 内）需 `force=true`；先校验后动数据、库删单事务、之后才删目录。
+- 20 个高风险写端点已用 Pydantic 请求模型（非法输入 **422 也走 ApiError 信封** `{code,message,details}`）；`/projects/import` 与 drafts materialize 是**直接函数调用** `projects_create(ProjectCreateIn(...))`，别再传 dict。
 
 ## 硬约束（不要违反）
 
@@ -52,8 +52,9 @@ R3.0 v1（FR-32–38）+ R3.5 FR-39。下一批：FR-40/41；不提前做 R4。
 审阅验收：D03 逐场门禁、contact sheet、改 S03 diff 只标 S03（HANDOFF §3.1）。
 音频验收：waveform 49ms、手动对齐、许可、Stems 5s、LUFS -16/TP -10.5（HANDOFF §3.2）。
 交付验收：9 文件、QC 全绿、9:16 1080×1920、zip（HANDOFF §3.3）。
-黄金验收：5s/15s/40s 6 帧 SSIM 1.0；干净 rumor 46/46、master 39.5s（HANDOFF §2.6）。
-下一步：R3.5 FR-40/41；不要开始 R4。详见 `HANDOFF.md` §6.5。
+黄金验收：5s 原帧在 `EXECUTOR_VERSION=2.11.0` 下 6 帧 SSIM=1.0（run 334，`docs/reports/golden/5s-original-run334.json`）；15s/40s 原帧 baseline **未实跑**；干净 rumor 46/46、master 39.5s（HANDOFF §2.6）。
+NTSC 验收：`verify_r2_5_delivery.py --fps 23.976 --duration 2` → run 333 两画幅同 48 帧/2.0s、`qc` 全绿（40s NTSC 长片未跑）。
+下一步：**判官 §六 未闭项（HANDOFF §0.0 清单）→ 才谈 FR-40/41**；不要开始 R4。详见 `HANDOFF.md` §0.0/§6.5。
 
 ## 先跑什么
 
@@ -61,7 +62,7 @@ R3.0 v1（FR-32–38）+ R3.5 FR-39。下一批：FR-40/41；不提前做 R4。
 
 ```bash
 ./dev.sh
-cd server && uv run pytest tests -q                       # 219 项（含 integration 真实出片冒烟 + P0/P1 回归；foreign_keys=ON）
+cd server && uv run pytest tests -q                       # 236 passed + 1 skipped（含 integration 真实出片冒烟 + P0/P1 回归；foreign_keys=ON）
 uv run --project server python scripts/e2e_ui.py          # UI 8 场景 ~15s
 uv run --project server python scripts/e2e_onboarding.py  # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py        # API 冒烟：46 / 93
@@ -76,7 +77,7 @@ uv run --project server python scripts/verify_r3_assets.py # 资产库/图片/�
 uv run --project server python scripts/e2e_assets.py      # 资产库 UI 冒烟
 uv run --project server python scripts/verify_r3_templates.py # 模板/场景/系列
 uv run --project server python scripts/e2e_templates.py   # 模板 UI 冒烟
-uv run --project server python scripts/verify_p1_governance.py # ★ 一条命令复核本轮 8 项 P1 门禁
+uv run --project server python scripts/verify_p1_governance.py # ★ 一条命令复核本轮 10 项 P1 门禁
 uv run --project server python scripts/verify_r3_qa.py    # QA 验收（自建自删临时项目，6 步）
 uv run --project server python scripts/e2e_qa.py          # QA UI 冒烟
 uv run --project server python scripts/verify_r2_incremental.py --project 5s  # Phase 4 增量验收（支持 5s/15s/40s）

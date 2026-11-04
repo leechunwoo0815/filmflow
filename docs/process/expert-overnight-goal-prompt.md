@@ -1,5 +1,8 @@
 # 专家夜以继日目标模式 Prompt（FilmFlow · 2026-11-03 交接后）
 
+> **状态（2026-11-04）**：本文是**历史提示词**，其中的数字（189 passed、`EXECUTOR_VERSION=2.9.3`、`foreign_keys` 未开、P1-23 9/51 等）是当时快照，已被后续批次推翻。
+> 那一晚的产出经独立判官复核**判定"完成"不成立**（`docs/process/judge-review-2026-11-04.md`），当前进度与未闭清单以 **`HANDOFF.md` §0.0 / §6.5** 为准。要再开一整夜自主循环时，用本文的**循环协议与反作弊条款**，但把基线数字与待办换成 §0.0。
+
 > 用法：整段作为 goal 提示给专家大模型（zcode goal 模式，不限轮次，整晚循环）。
 > 工作目录：`/Users/litianyu/cc-projects/ai-v/filmflow`（master 已同步到 `git@github.com:leechunwoo0815/filmflow`，HEAD `b9ac7dc`）。
 
