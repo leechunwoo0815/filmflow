@@ -52,6 +52,7 @@
 - **P1-13 闭合**：final 档位全字段比对（crf/preset）、caps 只许长大（快照 caps ⊄ 当前即 409）、params 非空才比对；快照补 caps/params 字段（不进 doc_snapshot_sha，历史快照缺省即不比对）。
 - **P2 ×7**：audit limit 下推、恒真断言×2（揭开 **F03 失败不落 frame_report.json 的证据灭失缺陷**，已修）、同 Run 交付防重入、门继承限同 workflow（P2-01 真越权面）、三个索引转真 UNIQUE（**迁移 5**，生产库 0 重复已验）、字体 CSS 对齐（`preview-1.9.0`）。
 - **P1-20/21**：CI 首版（unit+BDD+ruff+tsc；渲染级刻意留本机，理由在 workflow 注释）+ `scripts/bootstrap_fresh_clone.sh`（本机 READY exit=0）。
+- **终版实证（2.14.0，缓存全失效后）**：golden 5s 原帧复跑 **SSIM=1.000000 ×6**（run 336，报告 `docs/reports/golden/5s-original-run336.json`，环境指纹 EXECUTOR=2.14.0）、`e2e_b9_ui` 复跑 PASS、两者自删、DB 回 11。
 - **终验**：pytest **346 passed ×2**（342.8s/366.9s，0 skip 0 xfail）；治理 **16 项全 ✓**（迁移登记 [1,2,3,4,5]）；文档守卫 PASS；tsc 干净；ruff **349**（`cd server` 口径）/ **417**（仓库根 `ruff check .`＝server+scripts+根级 py）；生产库 11 项目恒定。**新发现真缺陷 7 个全部已修**（清单见 b9-close-report §四）；FR-40/41 按交接 §9 停止条件等老板点头，未开工。
 > 注：同一条 `pytest tests -q` 在 B5 之前是 273 项通过 + 1 跳过 + 1 失败——那个 skip 是 [server/tests/unit/test_p1_foundations.py:174](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L174)「8787 已被 dev 服务占用则跳过」，取决于当时有没有 F01 在跑，不是代码变化。申报计数时先看这类环境门控。
 

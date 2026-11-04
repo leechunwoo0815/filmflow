@@ -117,6 +117,8 @@
 | ruff | `cd server && uv run ruff check .` / 仓库根 `uv run --project server ruff check .` | **349 / 417**（口径：根=server+scripts+根级 py；本轮新增测试文件全部 ruff 清零，F821=0） |
 | 迁移 5 落库 | `init_db()` 后 `PRAGMA index_info` | 登记=[1,2,3,4,5]；三个 UNIQUE 索引列序正确；noderun 重复行 0 |
 | 生产库 | `GET /api/projects` | **11**（=演示/rumor 名单，恒定）；磁盘 1.5G / `~/.filmflow` 1.4G |
+| 终版 golden | `golden_run.py --project 5s --resolution original`（2.14.0，缓存全失效） | 6 帧 **SSIM=1.000000**、pHash 0（run 336，`docs/reports/golden/5s-original-run336.json`），自删、DB 回 11 |
+| 终版 UI e2e | `scripts/e2e_b9_ui.py` | PASS（P1-08 三条字段级 diff + P1-18 默认未勾选） |
 
 > 环境备注：终验 pytest 在 **dev 服务停止**下跑（消除 `test_p1_foundations.py:174` 的 8787 占用 skip 门控，
 > 计数才可复现）；治理与文档守卫在 dev 重启后跑（加载 2.14.0 + 迁移 5）。
