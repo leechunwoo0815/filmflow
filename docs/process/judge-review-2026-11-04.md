@@ -72,13 +72,19 @@
 
 ## 六、修复顺序与验收口径（判官自己接手修，进度记在本节）
 
-> **进度（2026-11-04，HEAD `fb15d58`）**：
+> **进度（2026-11-04 两次刷新，最新 HEAD `8ca3e01`）**：
 > - **#1 删除面（P0-1）✅ B1 `7d5b6e4`**——白名单真子目录 + `.git` 拒 + rumor/演示名回显 + 心跳判活 + 先校验后动数据 + 库删单事务；5 项路由级 + 4 项服务级测试；并用端点清掉了当晚自身验证残留（`dirRemoved=true`，projects 回 35）。
 > - **#2 fps 端到端（P0-2）✅ B2 `9dfdff9`**——`delivery`/`timeline_ops`/`project_docs` 三处 `int(fps)` 清零，新增 `profile_frames`（不信任持久化 frames）与 `is_delivery_fps` 白名单，NTSC 吸附精确有理数，F05 容差按半帧；`EXECUTOR_VERSION=2.11.0`；真实 23.976 出片 run 333 两画幅同 48 帧/2.0s、`qc` 全绿；golden run 334 SSIM 1.0。
 > - **#3 422 信封 ✅ B3 `dbc208a`**（happy-path 仍只有 2/20 端点，判官要求的"每端点一条"未齐）。
-> - **#4 交付归属/档位漂移 ✅ B4 `fb15d58` 前半**（`runId` 归属 + final 档位与快照 `render_profiles`）；**后半未做**：`imported` 分支、快照↔DB `doc_snapshot_sha` 绑定、`render.profile.json`/`params_snapshot`/`caps_json`、`_alignment` 回退。
-> - **#5 QA 真 LIFO ✅ B4**（`undoKind`+`seq` 倒序、同值重复拦截、mix/license 入守卫、legacy 记录拒绝自动撤销）；**残余**：许可 `prev` 非法时 `save_license` 抛 409 卡 `applied`。
-> - **#6 撤回 60fps 结论、#7 真关 XSS 面、#8 原子写全覆盖+升版、#9 P1-19 收尾、#10 文档清扫**：⛔ **未动**。逐条状态与顺序见 `HANDOFF.md` §0.0/§6.5。
+> - **#4 交付归属/档位漂移 ✅ B4 `fb15d58`**（`runId` 归属 + final 档位与快照 `render_profiles`）；**后半 ✅ B6 `63d37c0`**：`_load_run_snapshot_file` 三道锁（快照 `run_id` 自证、`doc_snapshot_sha` 自洽重算、文件 sha 对 `run.snapshot_sha` 库内封印——迁移 4 新列，新快照写时即封印、历史 Run 首次通过内容校验时补封印），`imported` 分支也走同一读盘校验并要求有 docs 段；生产库 39 份真实快照重算全自洽、0 误拦。**仍缺**：`render.profile.json`/`caps_json`/`params_snapshot` 未比对（`params_snapshot` 现网所有 Run 都是空，纳入就是假装覆盖），`_alignment` 仍回退读当前文件。
+> - **#5 QA 真 LIFO ✅ B4**（`undoKind`+`seq` 倒序、同值重复拦截、mix/license 入守卫、legacy 记录拒绝自动撤销）；**残余 ✅ B6**：撤销改走 `audio.restore_license`/`restore_mix`（原样回退、空则删文件），残缺/越界的历史前置态也退得回去，不再卡 `applied`。
+> - **#6 撤回 60fps 结论**：⛔ **未动**（唯一还没动的结论级项）。`e2e_timeline_100.py` 的按键/绕开 ops/恒真断言都还在，`HANDOFF.md` §9-16 与 §3.5 已把旧数字标注作废。
+> - **#7 真关 XSS 面 ✅ B5 `a324415`**——`security.file_response` 白名单（HTML/XML/JS/未知后缀 → octet-stream + attachment），SVG 保留 `image/svg+xml` 但响应 `CSP sandbox`；`:8787` 数据根拒 HTML/JS + nosniff+CSP，`/engine` 不受影响（引擎页要跑脚本）；HTTP 层存储型 HTML 回归测试 + 一键复核第 10 项实测真资产响应头。
+> - **#8 原子写全覆盖 + 升版 ✅ B5**——新增 `app/atomicwrite.py`（pid+uuid 唯一临时名、文件与父目录 fsync、`os.replace`、失败清临时名），`server/app` 内裸 `write_text/write_bytes` 从 50 处降到 **0**；`EXECUTOR_VERSION` 2.11.0→**2.12.0**；**15s/40s 原帧 golden 各自两次独立 Run**（333→334、335→336）6 帧 SSIM=1.000000、pHash 距离 0。
+> - **§三-6 错误边界 ✅ B5**——可见性做在 `api()` 层（`error.tsx` 抓不到异步拒绝），全局 `ApiFailureBanner` + monitor 本地 catch + canvas SSE `onerror`；新 `scripts/e2e_error_visibility.py` 真机验收，并当场抓出 `GET /runs/{id}/report` 未知 Run 返 500（已修 404 + 回归测试）。
+> - **§三-11 版本链 ✅ B5**——`_trim_revisions` 保 v1 + 最新 99 条，接口输出 `truncated`/`keptFirst`。
+> - **#9 P1-19 收尾**：⛔ 未动（`e2e_takes` 188 / `e2e_audio_v2` 211 仍写脏演示）；但点名的 `template` id 3 已按老板点头经 `DELETE /templates/saved:3` 清除。
+> - **#10 文档清扫**：`HANDOFF.md`/`AGENTS.md`/`r3_plan.md` 已按 2026-11-04 第二次实测重写（275 passed、13 项复核、迁移 [1,2,3,4]、2.12.0），但**仍无自动化守卫脚本**——这条按判官要求应纳入验收，还未做。
 >
 > 下面表格保留原始判据作为复核清单。
 

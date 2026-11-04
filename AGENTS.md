@@ -5,7 +5,7 @@
 > 2. [`docs/prd/PRD-002-production-workbench.md`](docs/prd/PRD-002-production-workbench.md) —— v2 深化需求（30 条 FR、场景 DSL、两级执行、R2–R4）。
 > 3. [`vendor/README.md`](vendor/README.md) —— 内置 `fy-code-animation` 技能与 341 风格库路径（逻辑约 75MiB；mp4 为稀疏文件，磁盘分配约 9.3MiB；库不入 git）。
 > **老板已裁决 D1–D7（2026-11-02，[ADR-0005](docs/adr/ADR-0005-v2-ratification.md)）；R2.0 直接开工，不要再等确认。**
-> **当前进度（2026-11-04，HEAD `fb15d58`）**：R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；2026-11-03 专家审查 P0 Gate 已关；整夜自主循环结果经**判官独立复核判定未完成**（`docs/process/judge-review-2026-11-04.md`），其后 **B1–B4 已修复并推送**：删除面硬化 `7d5b6e4`、NTSC fps 端到端 `9dfdff9`（`EXECUTOR_VERSION=2.11.0`）、422 ApiError 信封 `dbc208a`、交付归属 + QA 链序号 LIFO `fb15d58`。完整 `pytest server/tests -q` **236 passed + 1 skipped**（collected 237 = unit 212 + integration 18 + BDD 7，59.4s）、`verify_p1_governance.py` **10 步全绿**、`foreign_keys=ON`、preview `1.8.0`。**未闭**：存储型脚本面/`:8787` CSP、原子写统一（全仓无 `os.replace`/fsync）、DocRevision 保 v1、异步错误边界、100 场景帧率有效重测、P1-19 剩余脚本（`e2e_takes` 188 / `e2e_audio_v2` 211 会写脏演示）、31 个 `payload: dict`、交付门禁后半（快照与 DB 哈希绑定）。**清单以 `HANDOFF.md` §0.0 为准**；判官 §六 未做完前不开 FR-40/41，R4 不做。
+> **当前进度（2026-11-04，B1–B6 之后）**：R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；判官复核（`docs/process/judge-review-2026-11-04.md`）判整夜循环未完成，其 §六 的 #1/#2/#3/#4/#5/#7/#8/#11 已由 **B1–B6 关闭**：删除面 `7d5b6e4`、NTSC fps `9dfdff9`、422 信封 `dbc208a`、交付归属+QA 链序号 `fb15d58`、**存储型脚本面+原子写+版本链保 v1+异步失败可见 `a324415`**、**快照库内封印+撤销前置态+未知 Run 404 `63d37c0`**、**15s/40s 原帧 golden `8ca3e01`**。实测：**275 passed**（unit 250 / integration 18 / BDD 7）、`verify_p1_governance.py` **13 项全绿**、`verify_p1_governance` 里迁移登记 `[1,2,3,4]`、`EXECUTOR_VERSION=2.12.0`、`foreign_keys=ON`、tsc 干净、ruff 352（新增文件 0 项）。DB 已按老板点头清理到 **24 项目 / 23 目录 / 2.3GB**（备份 `~/filmflow-backup-20261104-pre-cleanup.db`）。**判官 §六 只剩 #6（有效重测 100 场景帧率——旧的 60fps 数字已作废，别引用）、#9（P1-19 剩余脚本仍写脏演示 188/211）、#10（文档一致性守卫）**；另有 31 个 `payload: dict`、僵尸 `retry_wait` 11 条、CI/fresh-clone。FR-40/41 老板已点头，但仍按 `HANDOFF.md` §6.5 顺序做完这三件再开；R4 不做。
 > **完整接手 prompt**：[`QODER_PROMPT.md`](QODER_PROMPT.md)（历史 prompt；新 Agent 先看 HANDOFF §0/§6）。
 
 ## 这个仓库是什么
@@ -22,6 +22,10 @@ FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 
 - 帧率唯一口径 `server/app/engine/fpscalc.py`：NTSC 吸附精确有理数（24000/1001…）、有 duration 就现算帧数、final 只放行 `is_delivery_fps()` 白名单 → `EXECUTOR_VERSION=2.11.0`。
 - 删除项目只走 `DELETE /projects/{id}`：项目根必须是白名单**真子目录**且不含 `.git`（登记时就拒），保护名单（`rumor*` + 演示项目名精确）需回显 `confirm_name`，有在飞作业（心跳/`started_at` 120s 内）需 `force=true`；先校验后动数据、库删单事务、之后才删目录。
 - 20 个高风险写端点已用 Pydantic 请求模型（非法输入 **422 也走 ApiError 信封** `{code,message,details}`）；`/projects/import` 与 drafts materialize 是**直接函数调用** `projects_create(ProjectCreateIn(...))`，别再传 dict。
+- **文件响应只按白名单内联**：一律走 `security.file_response`——`INLINE_MEDIA` 之外（HTML/XML/JS/未知后缀）强制 `application/octet-stream` + `attachment`；SVG 保留 `image/svg+xml` 但响应带 `CSP sandbox`；`:8787` 的 `/project`、`/global-assets` 拒绝 HTML/JS（`/engine` 必须能跑自己的脚本，别加 CSP）。**别再写裸 `FileResponse(p)`。**
+- **落盘一律 `atomicwrite.write_atomic`**（唯一临时名 + fsync + `os.replace`）：`server/app` 里裸 `write_text/write_bytes` 已归零，一键复核第 11 项 + 单测会拦回潮；改执行器写行为要升版（现 **2.12.0**）。
+- **交付门禁现在认三道**：快照内 `run_id` 必须是所选 Run、`doc_snapshot_sha` 能自洽重算、快照文件 sha 等于 `run.snapshot_sha`（迁移 4；新快照写时即封印，历史 Run 首次通过内容校验时补封印）。QA 撤销走 `audio.restore_license`/`restore_mix`（原样回退、不跑提交校验），残缺前置态也退得回去。
+- **文档版本链保留 v1 + 最新 99 条**，`/docs/{kind}/versions` 输出 `truncated`/`keptFirst`；**异步失败由 `api()` 广播到全局 `ApiFailureBanner`**（`error.tsx` 抓不到 promise 拒绝），不想要弹窗的调用传 `silent: true`。
 
 ## 硬约束（不要违反）
 
@@ -52,7 +56,7 @@ R3.0 v1（FR-32–38）+ R3.5 FR-39。下一批：FR-40/41；不提前做 R4。
 审阅验收：D03 逐场门禁、contact sheet、改 S03 diff 只标 S03（HANDOFF §3.1）。
 音频验收：waveform 49ms、手动对齐、许可、Stems 5s、LUFS -16/TP -10.5（HANDOFF §3.2）。
 交付验收：9 文件、QC 全绿、9:16 1080×1920、zip（HANDOFF §3.3）。
-黄金验收：5s 原帧在 `EXECUTOR_VERSION=2.11.0` 下 6 帧 SSIM=1.0（run 334，`docs/reports/golden/5s-original-run334.json`）；15s/40s 原帧 baseline **未实跑**；干净 rumor 46/46、master 39.5s（HANDOFF §2.6）。
+黄金验收：**5s/15s/40s 原帧都已实跑**（15s run 334、40s run 336 各 6 帧 SSIM=1.000000、pHash 距离 0，`EXECUTOR_VERSION=2.12.0`；锚在 `fixtures/golden/*/baseline_original/`）；干净 rumor 46/46、master 39.5s（HANDOFF §2.6）。原帧锚是**同版本两次独立 Run**自洽，不是与外部母带比对。
 NTSC 验收：`verify_r2_5_delivery.py --fps 23.976 --duration 2` → run 333 两画幅同 48 帧/2.0s、`qc` 全绿（40s NTSC 长片未跑）。
 下一步：**判官 §六 未闭项（HANDOFF §0.0 清单）→ 才谈 FR-40/41**；不要开始 R4。详见 `HANDOFF.md` §0.0/§6.5。
 
@@ -62,7 +66,7 @@ NTSC 验收：`verify_r2_5_delivery.py --fps 23.976 --duration 2` → run 333 �
 
 ```bash
 ./dev.sh
-cd server && uv run pytest tests -q                       # 236 passed + 1 skipped（含 integration 真实出片冒烟 + P0/P1 回归；foreign_keys=ON）
+cd server && uv run pytest tests -q                       # 275 passed（unit 250 + integration 18 + BDD 7；foreign_keys=ON）
 uv run --project server python scripts/e2e_ui.py          # UI 8 场景 ~15s
 uv run --project server python scripts/e2e_onboarding.py  # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py        # API 冒烟：46 / 93
@@ -77,7 +81,8 @@ uv run --project server python scripts/verify_r3_assets.py # 资产库/图片/�
 uv run --project server python scripts/e2e_assets.py      # 资产库 UI 冒烟
 uv run --project server python scripts/verify_r3_templates.py # 模板/场景/系列
 uv run --project server python scripts/e2e_templates.py   # 模板 UI 冒烟
-uv run --project server python scripts/verify_p1_governance.py # ★ 一条命令复核本轮 10 项 P1 门禁
+uv run --project server python scripts/verify_p1_governance.py # ★ 一条命令复核本轮 13 项 P1 门禁
+uv run --project server python scripts/e2e_error_visibility.py  # 异步失败必须可见（真机）
 uv run --project server python scripts/verify_r3_qa.py    # QA 验收（自建自删临时项目，6 步）
 uv run --project server python scripts/e2e_qa.py          # QA UI 冒烟
 uv run --project server python scripts/verify_r2_incremental.py --project 5s  # Phase 4 增量验收（支持 5s/15s/40s）

@@ -1,17 +1,17 @@
 # FilmFlow 交接文档（HANDOFF）
 
-> 更新时间：**2026-11-04（本地，darwin）**· R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；2026-11-03 专家审查的 **P0 Gate 全部关闭**；整夜自主循环结果经**判官独立复核判定未完成**（`docs/process/judge-review-2026-11-04.md`），其后 **B1–B4 四个修复批次已交付并推送**；剩余清单见 §0.0/§0.6.2/§6.5。
-> 复核基线：HEAD = **`fb15d58`**（master，已推送 `git@github.com:leechunwoo0815/filmflow`）；判官复核后的修复批次 `7d5b6e4`（B1 删除面）→ `9dfdff9`（B2 fps 端到端）→ `dbc208a`（B3 422 信封）→ `fb15d58`（B4 交付归属/QA 链序号）。更早基线：`07f9487` 判官报告、`280cd7f` 专家整夜报告、`9bc0f95` 本轮 P1 治理、FR-39 `3bb81a0`（tag `r3.5-qa`）。
-> **实测（2026-11-04，同一次采集）**：`cd server && uv run pytest tests -q` → **236 passed + 1 skipped（unit 212 + integration 18 + BDD 7 = 237 collected）· 59.43s**；`scripts/verify_p1_governance.py` → **10 步全 ✓ + PASS**；`ruff check` 343 项（存量风格债，未阻塞）；`EXECUTOR_VERSION=2.11.0`（[server/app/engine/cachekey.py:11](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/cachekey.py#L11)）、preview `1.8.0`；`foreign_keys=ON` 已开（[server/app/db.py:31](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/db.py#L31)）。
-> 数据现状：**DB 35 个项目（其中 8 行 root 目录已不存在）/ `filmflow-projects` 33 个目录（26 个已登记 + 7 个孤儿目录）2.3GB / `~/.filmflow` 1.4GB**（审计与验证残留，删除需老板点头；口径与逐项清单见 §7.4）。
-> **先读本文 §0.0（压缩后接续：B1–B4 证据 + 未闭清单）、§0.5（专家结论）、§0.6（状态表）、§0.6.1A/B（破坏性语义：B1–B4 批次 + 累积批次）、§0.7（运维坑）、§5、§6.5；再读 `docs/process/judge-review-2026-11-04.md`、`AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
-> 上下文压缩后继续开发时：**从 §0.0 的「还没做」清单和 §6.5 的 B5/B6 顺序接手**，不要提前做 R4，不要回滚已完成部分；申报完成必须按 §0.7 的复现命令附证据（数字来自同一次实测）。
+> 更新时间：**2026-11-04（本地，darwin）· 第二次刷新（B5/B6 + 原帧 golden 落地 + 残留清理之后）**· R2.0/R2.5/R3.0 v1（FR-32–38）/R3.5 FR-39 已交付；2026-11-03 专家审查的 **P0 Gate 全部关闭**；判官复核（`docs/process/judge-review-2026-11-04.md`）判"未完成"后，**B1–B6 六个修复批次已交付并推送**；剩余清单见 §0.0/§0.6.2/§6.5。
+> 复核基线：HEAD 见 `git log --oneline -1`；判官之后的批次依次是 `7d5b6e4`（B1 删除面）→ `9dfdff9`（B2 fps 端到端）→ `dbc208a`（B3 422 信封）→ `fb15d58`（B4 交付归属/QA 链序号）→ `5c4c727`（docs 交接刷新）→ **`a324415`（B5 安全面/原子写/版本链/错误可见性）→ `63d37c0`（B6 快照封印/撤销前置态/404）→ `8ca3e01`（15s+40s 原帧 golden）**。
+> **实测（2026-11-04 同一次采集）**：`cd server && uv run pytest tests -q` → **275 passed（unit 250 + integration 18 + BDD 7）· 48.6s**；`scripts/verify_p1_governance.py` → **13 项全 ✓ + PASS**；`EXECUTOR_VERSION=2.12.0`（[server/app/engine/cachekey.py:11](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/cachekey.py#L11)）、preview `1.8.0`、迁移登记 **[1,2,3,4]**、`foreign_keys=ON`；`pnpm --dir web exec tsc --noEmit` 干净；`ruff check .` **352**（新增文件 0 项，存量风格债）。
+> 数据现状：**DB 24 个项目、全部 root 目录都存在 / `filmflow-projects` 23 个目录 2.3GB / `~/.filmflow` 见 §7.4**（老板点头后已清理：删 11 行 it-* 与 root 已不存在的残留、7 个孤儿目录、越权 `template` id 3、以及今晚 4 个 golden-15s/golden-40s 验证项目（释放 11.6GB）；清理前的库备份在 `~/filmflow-backup-20261104-pre-cleanup.db`）。
+> **先读本文 §0.0（压缩后接续：B1–B6 证据 + 未闭清单）、§0.5（专家结论）、§0.6（状态表）、§0.6.1A/B（破坏性语义：B1–B4 批次 + 累积批次）、§0.7（运维坑）、§5、§6.5；再读 `docs/process/judge-review-2026-11-04.md`、`AGENTS.md`、`docs/process/r3_plan.md`、`docs/reviews/2026-11-03-expert-review-analysis.md`、PRD-002、ADR-0005/0007/0008/0009/0010/0011/0012。**
+> 上下文压缩后继续开发时：**从 §0.0 的「还没做」清单和 §6.5 的剩余 3+2 件接手**，不要提前做 R4，不要回滚已完成部分；申报完成必须按 §0.7 的复现命令附证据（数字来自同一次实测）。
 
 ---
 
 ## 0. 下一个 Agent 从这里开始（15 分钟）
 
-### 0.0 上下文压缩后接续（判官复核 → B1–B4 已交付，从这里继续）
+### 0.0 上下文压缩后接续（判官复核 → B1–B6 已交付，从这里继续）
 
 **已交付（全部已推 public，工作树干净）**
 
@@ -21,27 +21,23 @@
 | B2 | `9dfdff9` | P0-2 NTSC fps 端到端 | [server/app/engine/fpscalc.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/fpscalc.py)（`norm_fps` NTSC 吸附精确有理数、`profile_frames`、`is_delivery_fps`）+ `delivery._render_variant_frames`/`timeline_ops._fps`/`project_docs.build_timeline_doc`/`qa` | 真实出片 `scripts/verify_r2_5_delivery.py --fps 23.976 --duration 2` → **run 333** G07 成功、交付 job 12.1s、`qc` 全 true、两画幅均 23.976/2.0s、期望 48 帧、两画幅时长差 ≤ 半帧；`golden_run.py --project 5s --resolution original` 在 2.11.0 下重跑 → **run 334** 6 帧 SSIM=1.000000（`docs/reports/golden/5s-original-run334.json`） |
 | B3 | `dbc208a` | P1-1 422 信封 | [server/app/main.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/main.py) `RequestValidationError` handler + [web/src/lib/api.ts](file:///Users/litianyu/cc-projects/ai-v/filmflow/web/src/lib/api.ts) 数组兜底 | 422 现在返回 `{code:E_VALIDATION,message,details.errors}`（此前 Pydantic 默认 `{"detail":[...]}`，前端只读 `detail.message` → 用户看到裸 422）；测试补 2 项：信封形状 + `POST /projects` happy path 与级联删除闭环。**判官要求的"每个模型化端点一条 happy-path"只做到 `POST /projects` 与 `gate_decide`，其余仍缺**（见下面清单） |
 | B4 | `fb15d58` | P1-2 交付归属/档位漂移旁路、P1-4 QA 撤销非真 LIFO | `delivery.create_job` 校验 `runId` 归属 + final 档位与 Run 快照 `render_profiles` 一致（409 `E_DELIVERY_GATE`）；`qa.py` `_next_seq`/`undoKind`/`seq`、`_require_undo_head` 按链序号倒序 + 拒绝无依据历史记录 | `test_delivery.py::test_delivery_job_rejects_foreign_run`、`test_qa.py`（seq LIFO / legacy 拒绝 / 修复后手工改动仍守卫）；`verify_p1_governance.py` 扩到 **10 步**（新增 3b 帧网格、9 删除面探针；`EXECUTOR_VERSION` 改下限断言，不再因正常升版变红） |
+| B5 | `a324415` | **#7 存储型脚本面 / #8 原子写 / §三-6 错误边界 / §三-11 版本链吃 v1** | [server/app/security.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/security.py)（`INLINE_MEDIA` 白名单 + `file_response` + `frameserver_denied/headers`）、[server/app/atomicwrite.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/atomicwrite.py)（唯一临时名 + fsync + `os.replace`）、`project_docs._trim_revisions` 保 v1、[web/src/components/ApiFailureBanner.tsx](file:///Users/litianyu/cc-projects/ai-v/filmflow/web/src/components/ApiFailureBanner.tsx) + `api.ts` 失败广播 | 一键复核 **13 项**（新增 10 响应策略需真资产下发头、11 原子写 0 裸写 + 版本下限、12 版本链）；`test_atomic_and_response_policy.py` 29 项含 HTTP 层"存 HTML → attachment/octet-stream"；**`server/app` 内 `write_text/write_bytes` 裸写归零**（此前 50 处）；`EXECUTOR_VERSION` 2.11.0→**2.12.0** 后用真实出片复核（见下 golden） |
+| B6 | `63d37c0` | **#4 后半（快照静默旁路）/ §三-4 残余（撤销退不回残缺前置态）** | `delivery._load_run_snapshot_file` 三道锁（快照 run_id 自证 + `doc_snapshot_sha` 自洽 + 文件 sha 对 `run.snapshot_sha` 库内封印，迁移 **4** 新列）；`imported` 分支也走同一读盘校验；`audio.restore_license`/`restore_mix` 让撤销原样回退不跑校验 | 生产库 **39 份真实快照**重算 sha 全自洽、**0 误拦**；4 项新单测（拷别 Run 目录 / 改 docs 段 / 整份替换字节 / 历史 Run 首次补封印）；顺带被新 e2e 抓出并修了 `GET /runs/{id}/report` 未知 Run **500 → 404** |
+| Golden | `8ca3e01` | 老板点头的"15s/40s 原帧 baseline 实跑" | `fixtures/golden/{15s,40s}/baseline_original/`（各 6 张 1920×1080，17MiB，入库让干净机器也能跑原帧回归）+ `docs/reports/golden/*.json` | 各自**两次独立全管线**：15s run 333 生锚 → run 334 复核，40s run 335 生锚 → run 336 复核，**6/6 帧 SSIM=1.000000、pHash 距离 0**；跑在 2.12.0（原子写改造后）上，顺带证明落盘改造没改视觉产出 |
 
-**本轮实测数字（可直接复核，勿引用旧文档）**：`236 passed + 1 skipped`（59.43s）；一键复核 10 步全 ✓；DB 35 项目 / 33 目录 / 2.3GB；`~/.filmflow` 1.4GB；HEAD `fb15d58`。
+**本轮实测数字（可直接复核，勿引用旧文档）**：`275 passed`（unit 250 + integration 18 + BDD 7，48.6s）；一键复核 **13 项全 ✓**；DB 24 项目 / 23 目录 / 2.3GB（残留已按老板点头清理，备份在 `~/filmflow-backup-20261104-pre-cleanup.db`）；HEAD 见 `git log -1`。
+> 注：同一条 `pytest tests -q` 在 B5 之前是 `273 passed + 1 skipped + 1 failed`——那个 skip 是 [server/tests/unit/test_p1_foundations.py:174](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L174)「8787 已被 dev 服务占用则跳过」，取决于当时有没有 F01 在跑，不是代码变化。申报计数时先看这类环境门控。
 
 **还没做（别当成已完成，按此顺序继续）**
 > 编号一律对齐判官报告的条目：`docs/process/judge-review-2026-11-04.md` §三 P1-1…P1-11 与 §六 修复表 #1…#10。
-> 已闭：P1-1（#3 422 信封）✅ B3、P1-2（#4 前半 runId 归属）✅ B4、P1-4（#5 QA 真 LIFO）✅ B4、P0-1（#1）✅ B1、P0-2（#2）✅ B2。
-1. **B5 未动**：
-   - **P1-7 / #7 存储型脚本面没关**：[server/app/api/routes.py:1388](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/api/routes.py#L1388) 的 `artifact_file` 只加 `nosniff` 后 `FileResponse(p)`——**没给 `media_type`**，Starlette 按后缀猜类型，而 [server/app/services/artifacts.py:34](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/artifacts.py#L34) 对未知 type 保留**上传文件的原后缀**，所以真 `text/html` 正文在 `nosniff` 下依旧按 HTML 执行；`:8787` FrameServer（[server/app/engine/executors/pipeline.py:55-68](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/executors/pipeline.py#L55)）把 `/global-assets/*.svg` 与 `/project/**` 无 CSP/nosniff 直出。要做显式 Content-Type 白名单 + `application/octet-stream`+`Content-Disposition: attachment` 兜底，并补**一条存储型 SVG→执行的回归测试**（现在这条线零覆盖）。
-   - **P1-8 / #8 原子写只覆盖 3 个写者且无 fsync**：`pipeline.py:82` 用确定性临时名 `.{i:04d}.png.tmp`（同帧号并发互踩）、`snapshot.py:93`、`preview.py:351` 同样只 `tmp.replace()`；**全仓 `grep -rn "os.replace|fsync" server/app` 为空**。直接写目标路径的站点：`delivery.py:220/457/492/523/547`、`preview.py:898`、`previs.py:87`、`snapshot.py:56/80`、`render_profiles.py:192/196`、`routes.py:398/528/532/537/2105/2183/2671`。统一唯一临时名 + `fsync` + `os.replace` 后**必须再升 `EXECUTOR_VERSION` 并重跑 golden**（当前 2.11.0）。逐项清单见 §6.5 B5-2。
-   - **P1-6 错误边界仍是装饰**：`error.tsx`/`global-error.tsx` 抓不到异步拒绝；`monitor/page.tsx:16-17` 裸 `.then()` 无 catch 仍在，另有 4 处吞异常 catch、约 20 处未保护 `await api(...)`（audio/player/canvas/wizard 等）。
-   - **P1-11 版本链会毁掉原始文案**：`project_docs.py:223` `MAX_REVISIONS_PER_DOC=100` + `:232` 无条件裁掉最旧修订，时间轴防抖自动保存下 100 条只是几分钟打字量，最早的原始文案（FR-20 验收物）被静默删除且 `list_versions` 不标注截断 → 必须保留 v1 + 显式截断标记。
-   - **P1-4 残余（排在 §6.5 B6-1）**：许可撤销走 `audio.save_license(prev)`，`prev` 是历史非法/半残（缺 `authorized`）时抛 409，记录永久卡 `applied`——判官点名的这个子场景 B4 **没覆盖**，需要"撤销可落到无文件/原样写回"的路径 + 用户可见错误。
-2. **B6 未动**：
-   - **P1-5 / #6 「100 场景 60fps」是无效测量**（见 §9 条目 16，那组数字要作废重写）：`scripts/e2e_timeline_100.py:105` 按的是 **"j" = 反向播放**，播放头 0.2s 内归零停止 rAF，之后 ~4.8s 测的是空闲页计数；100 场景还走 `PUT /docs/timeline` 绕开 ops/autosave；`:119-121` 硬编码 `wait_for_timeout(200)` 包住"选择耗时"；`:133` 断言 `or longTaskCount >= 0` 恒真。要用 `k`/正向播放 + 真实 ops 路径重测，要么给有效数据要么把"不虚拟化"改回待办。
-   - **P1-9 / #9 P1-19 只做了一半**：`e2e_takes.py:15 PID=188`、`e2e_audio_v2.py:16 PID=211` 仍写演示项目（判官实测今晚写脏：project 188 timeline v16–18、project 211 timeline v31–35），并遗留越权 `template` id 3「F37 验收模板 1793727884」（清理需老板确认）；要把"跑完 docrevision 不新增演示行"做成一键复核的新步骤，并迁 `verify_r3_*` 到 `scripts/_acceptance.py`。
-   - **P1-10 / #10 P1-23 覆盖面**：`server/app/api/routes.py` 仍有 **31 个 `payload: dict`** 写端点（含 `/projects/import`、`/projects/{id}/audio/upload`，后者落盘无大小/类型校验）；20 个已模型化端点里**只有 2 个有 happy-path 测试**（`POST /projects`、`gate_decide`），判官 #3 的"两头都测"要补齐。
-   - **P1-3 / #4 后半 交付门禁静默旁路**：`imported` 分支不进门禁（`delivery.py:390/399`）、快照缺失宽松返回、`render.profile.json`/`params_snapshot`/`caps_json` 未参与比对、快照文件与 DB `doc_snapshot_sha` 无哈希绑定、`_alignment` 仍回退读当前 `card/alignment.manual.json`（F-DEL-4 判官明写"记录不改"）。B4 只落了 runId 归属 + final 档位漂移。
-   - **#10 文档清扫**：全文一致性（版本/数字/FK 口径/路径）要纳入验收命令，报告数字必须来自同一次实测并附命令。本轮 §0/§0.6/§7/§9/§10 与 `AGENTS.md` 已按 2026-11-04 实测重写，但**没有自动化守卫**，下次改动仍会漂。
-   - **运维**：DB 里 **11 个 `retry_wait` 僵尸作业**（心跳早过期）没有回收策略，启动恢复会一直带着它们。
-3. **老板才能定的**：DB/磁盘审计残留清理（含 8 条 root 已不存在的行、7 个孤儿目录、`~/.filmflow` 4 份 `filmflow-before-*.db`）；FR-40/41 是否开工；15s/40s 原帧 golden（各约 4.3GB / 数十分钟）是否实跑。**不要顺手做 R4。**
-4. **判官的闸门仍然有效**：以上 §六 清单逐条做完并附证据前，不要在 FR-40/41 上开工。
+> **已闭**：#1 删除面（B1）、#2 fps（B2）、#3 422 信封（B3，happy-path 覆盖仍缺）、#4 前半 runId 归属 + 档位漂移 + **后半快照封印**（B4/B6）、#5 QA 真 LIFO + 残缺前置态（B4/B6）、#7 存储型脚本面（B5）、#8 原子写 + 升版 + golden 复跑（B5）、#11 版本链保 v1（B5）、§三-6 异步失败可见（B5，含 `error.tsx` 抓不到的那一整类）。
+1. **还没做的只剩 5 件（按此顺序）**：
+   - **#6 / P1-5 「100 场景 60fps」是无效测量**（§9 条目 16 的那组数字已作废，别引用）：`scripts/e2e_timeline_100.py:105` 按的是 **"j" = 反向播放**，播放头 0.2s 内归零停止 rAF，之后 ~4.8s 测的是空闲页计数；还走 `PUT /docs/timeline` 绕开 ops/autosave；`:119-121` 硬编码 `wait_for_timeout(200)` 包住"选择耗时"；`:133` 断言 `or longTaskCount >= 0` 恒真。要用 `k`/正向播放 + 真实 ops 路径重测，要么给有效数据，要么把"不虚拟化"改回待办。**这是判官 §六 唯一还没动的"结论级"项。**
+   - **#9 / P1-19 只做了一半**：`e2e_takes.py:15 PID=188`、`e2e_audio_v2.py:16 PID=211` 仍写演示项目（判官实测写脏：188 timeline v16–18、211 timeline v31–35，`select count(*) from docrevision where doc_id in (…188,211…)` 现 65 行），`verify_r3_assets/templates/camera/takes/audio_v2` 同；要把"跑完不新增演示 docrevision"做成一键复核的新步骤并迁 `_acceptance`。**已消失的残留**：越权 `template` id 3 已按老板点头经 `DELETE /templates/saved:3` 清除。
+   - **#10 / P1-23 覆盖面**：`routes.py` 仍有 **31 个 `payload: dict`**（含 `/projects/import`、`/projects/{id}/audio/upload` 落盘无大小/类型校验）；20 个已模型化端点里只有 3 个有 happy-path（`POST /projects`、`gate_decide`、`/runs/{id}/report` 404），判官 #3 要的"两头都测"没补齐。
+   - **#4 剩余的小半**：`render.profile.json`/`caps_json`/`params_snapshot` 仍未参与比对。其中 `params_snapshot` 现网**所有 Run 都是空**（`select … where params_snapshot not in ('','{}')` → 0 行），我没写成"已覆盖"；`_alignment` 也仍会回退读当前 `card/alignment.manual.json`（F-DEL-4，判官明写"记录不改"）。
+   - **#10 文档清扫 + 运维债**：全文一致性仍**没有自动化守卫**（本轮重写过一遍，下次照样会漂）；DB 里 **11 个 `retry_wait` 僵尸作业**（心跳早过期）仍无回收策略；CI（P1-20）与干净机器 fresh-clone（P1-21）仍未做——原帧锚已入 git，fresh-clone 现在缺的是风格库/rumor/Chrome/ffmpeg 的 bootstrap 脚本。
+2. **老板已点头并执行完的**：审计残留清理（11 行 it-*／root 已不存在的行 + 7 个孤儿目录 + 4 个今晚的 golden 验证项目，释放 11.6GB；备份 `~/filmflow-backup-20261104-pre-cleanup.db`）、越权 template id 3 清除、15s/40s 原帧 golden 实跑（结果见上表）。**FR-40/41 老板也点了头**，但我按判官闸门的顺序先把上面 5 件做完再开——**不要顺手做 R4**。
 
 ---
 
@@ -63,16 +59,16 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 > [`docs/process/judge-review-2026-11-04.md`](docs/process/judge-review-2026-11-04.md) ——
 > 判定**未完成**：1 个 P0（`DELETE /projects/{id}` 可删到工作区根与 rumor 参考项目）、NTSC 交付路径仍截断 fps、
 > 422 信封打破前端契约、60fps 结论来自空载测量、报告 4 处度量与实测不符。修单与验收口径见该文 §六。
-> **其后状态**：该文 §六 的 **#1/#2/#3 与 #4/#5 前半已由 B1–B4 关闭**（§0.0 有逐项真实证据）；
-> **#6/#7/#8/#9/#10 仍未动**，其中"60fps 结论来自空载测量"意味着 §3.5/§9-16 里的浏览器帧率数字**全部作废**，
-> 在有效重测之前不要引用它作为"不需要虚拟化"的依据。
+> **其后状态**：该文 §六 的 **#1/#2/#3/#4/#5/#7/#8/#11 已由 B1–B6 关闭**（§0.0 有逐项真实证据）；
+> 只剩 **#6（有效重测 100 场景帧率）、#9（P1-19 剩余脚本）、#10（文档一致性守卫）**。
+> #6 未完意味着 §3.5/§9-16 里的浏览器帧率数字**全部作废**，在有效重测之前不要引用它作为「不需要虚拟化」的依据。
 
 > 若要交给专家做整夜自主循环开发（goal 模式），提示词已固化在
 > [`docs/process/expert-overnight-goal-prompt.md`](docs/process/expert-overnight-goal-prompt.md)：
 > 含收敛判据、先证伪再建设的顺序、每轮循环协议、反作弊条款与收尾产物要求。
 
 ```bash
-cd server && uv run pytest tests -q                       # 236 passed + 1 skipped（unit 212 / integration 18 / BDD 7）
+cd server && uv run pytest tests -q                       # 275 passed（unit 250 / integration 18 / BDD 7）
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -98,7 +94,8 @@ uv run --project server python scripts/verify_r3_assets.py          # 资产库/
 uv run --project server python scripts/e2e_assets.py                # 资产库 UI
 uv run --project server python scripts/verify_r3_templates.py       # 模板/场景/系列
 uv run --project server python scripts/e2e_templates.py             # 模板 UI
-uv run --project server python scripts/verify_p1_governance.py   # ★ 一条命令复核本轮全部 P1 门禁（10 步，自建自删）
+uv run --project server python scripts/verify_p1_governance.py   # ★ 一条命令复核本轮全部 P1 门禁（13 项，自建自删）
+uv run --project server python scripts/e2e_error_visibility.py    # B5：异步失败必须可见（真机）
 uv run --project server python scripts/verify_r3_qa.py              # QA 修复建议（自建自删临时项目）
 uv run --project server python scripts/e2e_qa.py                     # QA UI
 ```
@@ -107,8 +104,8 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 
 ### 0.3 当前下一步（按优先级）
 
-1. **两份审查的相对位置**：2026-11-03 专家审查 = Conditional Go（P0 Gate 已全关）；2026-11-04 **判官复核 = 未完成**（1 P0 + 11 P1，见 `docs/process/judge-review-2026-11-04.md`）。判官点名的 **P0-1 删除面、P0-2 NTSC fps、P1-1 422 信封、P1-2 runId 归属、P1-4 QA 撤销 LIFO 已由 B1–B4 修完并有真实证据**（§0.0 表）；其余按 §0.0「还没做」清单继续，**做完前不开 FR-40/41**。
-2. **原 P1 治理 23 项**：02/03/04/05/06/07/08/09/13/14/15/16/17/18/22 已完成；12 ✅（B2 补完，2.11.0）；19/23 部分；10/11/20/21 未完成。**逐行落点与证据见 §0.6。**
+1. **两份审查的相对位置**：2026-11-03 专家审查 = Conditional Go（P0 Gate 已全关）；2026-11-04 **判官复核 = 未完成**（1 P0 + 11 P1，见 `docs/process/judge-review-2026-11-04.md`）。判官点名的 P0/P1 大部分已由 **B1–B6 修完并有真实证据**（§0.0 表）；只剩 §六 的 #6/#9/#10，按 §6.5 顺序继续。老板已点头 FR-40/41，但我先把这三件做完再开。
+2. **原 P1 治理 23 项**：02/03/04/05/06/07/08/09/13/14/15/16/17/18/22 已完成；12 ✅（B2 补完）；10 ✅（B5 异步失败可见，`error.tsx` 抓不到异步拒绝那一类改在 `api()` 层广播）；19/23 部分；11/20/21 未完成。**逐行落点与证据见 §0.6。**
 3. **顺序建议**（每步附证据再申报）：① B5 安全面（Content-Type 白名单 + `:8787` CSP/nosniff + 存储型 SVG 回归测试）→ ② B5 原子写统一 + 升 `EXECUTOR_VERSION` + 重跑 golden → ③ B5 DocRevision 保 v1 + 截断标记 → ④ B6 用正向播放重测 100 场景并诚实重写 §9-16 → ⑤ P1-19 剩余脚本迁 `_acceptance`、把"不写脏演示"做成复核步骤 → ⑥ P1-23 剩余 31 端点 → ⑦ 交付门禁 #4 后半（快照文件与 DB `doc_snapshot_sha` 绑定、`params_snapshot`/`caps_json`/`render.profile.json`）→ ⑧ P1-10 ErrorBoundary 真抓异步拒绝 → ⑨ P1-20/21（CI + fresh-clone bootstrap）→ ⑩ `retry_wait` 僵尸作业过期策略。
 4. **FR-40/41 已满足准入但被判官闸门拦住**：是否开工由老板定；不要顺手做 R4。
 5. R3.0 v1 页面：`/timeline`、`/player`、`/takes`、`/audio`、`/assets`、`/templates`、`/qa`、`/delivery` 已可用；`/timeline` 有 409 冲突保稿（P1-08）。
@@ -118,7 +115,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 - 不要重写 RunEngine 的 caps / 门 / 三类边 / content_hash / 断点续跑；46 节点/93 边不变。
 - 不要新增 DAG 节点；R2.5 的审阅/音频/交付都在服务/页面层。
 - 不要把新项目回退 `legacy_entry`；只有 `meta.imported=true` 可走 v1 harness。
-- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 **2.11.0**）。断言版本时**用下限**（`>= [2,11,0]`），别写死等于某个版本——正常升版会把一键复核打成红。
+- 不要改执行器行为却不升 `EXECUTOR_VERSION`（当前 **2.12.0**）。断言版本时**用下限**（`>= [2,12,0]`），别写死等于某个版本——正常升版会把一键复核打成红。
 - 不要用“页面能点”代替真实产物；完成申报必须附测试、产物路径/哈希、UI 截图/curl。
 - 不要跑 `verify_r2_recovery.py` 时同时使用工作台（它会 kill -9 并重启 dev.sh）。
 - 不要用 `TestClient(app)` 发**会写库**的请求——它连的是生产 `~/.filmflow/filmflow.db`；本轮就用这种方式误写过 rumor-39s（project 1）的 timeline 文档行，已删除复原（过程见 §0.7）。写类验证一律走 `scripts/_acceptance.py` 的临时项目或独立 `FILMFLOW_HOME`。
@@ -145,7 +142,8 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 **先修顺序（已执行完）**：P0-1（S）→ P0-2（S）+ P1-02/03/04（S×3）→ P0-3/P0-5（M）→ P0-4a → P0-4b → P1 治理批次。
 **准入复核命令**（都要贴输出）：`verify_r2_profiles.py`（divergent/档位/SSIM 分窗口）、`verify_r2_incremental.py --project 5s`、连跑两次 `pytest server/tests -q` 后 `GET /api/projects` 计数不变、LAN/Origin/Host 探测（§0.7）、`verify_r3_qa.py`（QA 新语义 + 多步 LIFO 撤销）、`golden_run.py --project 5s --resolution original`。
 
-**审计残留（未清理，需老板点头；2026-11-04 实测口径见 §7.4）**：DB **35 项目 / 33 目录 / 2.3GB / `~/.filmflow` 1.4GB**。project 228–245 由专家审计与 P0-4b 验证产生，246–251 由档位验收重跑产生（三者 `out/frames`+`out/proxy` 已清，各留 ~16MB 证据）；其中 **8 行（228/229/232/233/235/236/237/238）的 root 目录已不存在**，另有 7 个未登记的孤儿目录（`boom-inst-1..4`、`it-engine-236/240/242`）。B1–B4 自己产生的验收残留（23.976 交付验证项目、档位/黄金临时项目）**已走 `DELETE /projects/{id}` 端点 dogfood 清除**，DB 回到 35。清理顺序：先备份 DB、确认无运行 Job，再删记录与目录；**演示项目 202/174/188/211/215/216/223/227 不要动**。
+**审计残留（2026-11-04 老板点头后已清理；当前口径见 §7.4）**：清理前是 DB 35 项目 / 33 目录 / 2.3GB（8 行 root 目录已不存在、7 个未登记孤儿目录、1 条越权 `template` id 3）。清理动作全部走已硬化的端点，库备份在 `~/filmflow-backup-20261104-pre-cleanup.db`：删 11 行 `it-*`／root 已不存在的残留（连带 `it-wizard-*` 目录）、7 个孤儿目录（全空）、`DELETE /templates/saved:3`、以及当晚 4 个 golden-15s/golden-40s 验证项目（**释放 11.6GB**）。**现网 DB 24 项目，全部 root 目录都存在。**
+> 没动的：**演示项目 202/174/188/211/215/216/223/227 与 rumor 基线（1/115）不要动**；188/211 被 `e2e_takes`/`e2e_audio_v2` 写脏的 `docrevision` 历史**也没删**——那是判官 P1-9 的证据，等 P1-19 收尾时一并决定。
 **新门禁会影响老演示项目交付**：P1-13 的 timeline/Run 快照哈希比对，实测生产库中 run 237/253/254（project 188 r3-camera）与 run 266（project 211 r3-audio-v2）当前就处于漂移状态——直接对它们发起交付会被 `E_DELIVERY_GATE` 拦；要交付需按该 Run 重跑 F02/G07，或基于当前文档新建 Run。这是预期行为，不是回归。
 
 **专家报告纠错**：报告称“风格库 76MB 失实 8 倍、mp4 0 字节”是口径误判；mp4 为稀疏文件，逻辑体积约 74.7MiB（mp4 59.8MiB），磁盘分配仅 9.3MiB。完整复核见 `docs/reviews/2026-11-03-expert-review-analysis.md` §2.4。
@@ -168,34 +166,34 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 | 项 | 状态 | 落点 | 证据/复现 |
 |---|---|---|---|
 | P1-01 CSRF/Host/Origin | ✅（并入 P0-1） | 同上 | 同上；未加 token（本机工作台，老板可另行决定） |
-| P1-02/03/04 缓存键 | ✅ | [server/app/engine/runengine.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/runengine.py) `_library_fingerprint/_external_input_hashes/_project_input_hashes/_engine_pack_sha` | `server/tests/unit/test_cache_inputs.py` 6 项；该项当时升到 `EXECUTOR_VERSION=2.9.3` 使旧缓存失效（**现 2.11.0**，一键复核用下限断言） |
+| P1-02/03/04 缓存键 | ✅ | [server/app/engine/runengine.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/runengine.py) `_library_fingerprint/_external_input_hashes/_project_input_hashes/_engine_pack_sha` | `server/tests/unit/test_cache_inputs.py` 6 项；该项当时升到 `EXECUTOR_VERSION=2.9.3` 使旧缓存失效（**现 2.12.0**，一键复核用下限断言） |
 | P1-05 A05 自动批准 | ✅ | `runengine._auto_approve_a05` 需 `imported` 或 `style_decision` | `test_p1_foundations.py`（`session=None` 早退即证明守卫在前） |
-| P1-06 SQLite | ✅ 收尾（B1 补完删除面） | [server/app/db.py:31](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/db.py#L31) WAL + NORMAL + **`foreign_keys=ON`**；[server/app/services/project_cleanup.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/project_cleanup.py) 级联删除（project/run/workflow/doc 四类关联面）+ `DELETE /projects/{id}?confirm=true` | FK 开启钓出 qa.undo 删 profile 行残留 docrevision 的真 bug（已修）；`_acceptance.destroy` 与测试清理全改走级联服务。**判官 P0-1 → B1**：白名单**真子目录** + `.git` 硬拒 + rumor/演示保护需回显 `confirm_name` + 在飞作业守卫 + 先校验后动数据 + 库删单事务；路由级 5 项测试（`test_project_delete_api.py`），当前 `236 passed` 全绿 |
+| P1-06 SQLite | ✅ 收尾（B1 补完删除面） | [server/app/db.py:31](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/db.py#L31) WAL + NORMAL + **`foreign_keys=ON`**；[server/app/services/project_cleanup.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/project_cleanup.py) 级联删除（project/run/workflow/doc 四类关联面）+ `DELETE /projects/{id}?confirm=true` | FK 开启钓出 qa.undo 删 profile 行残留 docrevision 的真 bug（已修）；`_acceptance.destroy` 与测试清理全改走级联服务。**判官 P0-1 → B1**：白名单**真子目录** + `.git` 硬拒 + rumor/演示保护需回显 `confirm_name` + 在飞作业守卫 + 先校验后动数据 + 库删单事务；路由级 5 项测试（`test_project_delete_api.py`），当前 `275 passed` 全绿 |
 | P1-07 迁移框架 | ✅ | [server/app/db.py:75](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/db.py#L75) `MIGRATIONS` + `:82` `apply_migrations` | `server/tests/unit/test_migrations.py` 3 项；生产库连跑两次 `init_db()` 无变化（登记仍 [1,2,3]）；一键复核第 8 步含幂等 |
 | P1-08 时间轴 409 保稿 | ✅ | [web/src/app/timeline/page.tsx](file:///Users/litianyu/cc-projects/ai-v/filmflow/web/src/app/timeline/page.tsx)（`conflict` 态、`data-testid="timeline-conflict"`） | 409 时保留草稿 + 「只看服务端 / 保留本地并重试（对新版本重放）」，冲突期间暂停自动保存；`pnpm --dir web exec tsc --noEmit` 干净 |
 | P1-09 多步写事务 | ✅ 四路故障注入 | [server/tests/unit/test_multi_step_writes.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_multi_step_writes.py)：branch Run 失败→文档倒序回滚（base 用当前版本）；replace 中途失败→已改项目回滚；模板 materialize 失败→delete_project 清半成品；qa extend profile 失败→timeline 补偿（锁定） |
-| P1-10 ErrorBoundary | ⛔ 未做 | `web/src/app/**` 无 `error.tsx` | 需加全局/页面级 boundary + 失败可见 |
-| P1-11 时间轴性能 | ⛔ 未做 | `web/src/app/timeline/page.tsx` 全量 `.map()` | 「100 场景 60fps」是**未实测的声明**；先测再决定虚拟化 |
+| P1-10 失败可见 | ✅（B5 换了一层做） | [web/src/lib/api.ts](file:///Users/litianyu/cc-projects/ai-v/filmflow/web/src/lib/api.ts) 失败广播 + [web/src/components/ApiFailureBanner.tsx](file:///Users/litianyu/cc-projects/ai-v/filmflow/web/src/components/ApiFailureBanner.tsx)（挂在 `layout.tsx`）、`monitor/page.tsx` 本地 catch、`canvas` SSE `onerror` | `error.tsx`/`global-error.tsx` 存在但**抓不到异步拒绝**，所以可见性做在 `api()` 层：任何非 2xx 都进全局条（去重、点名 path+错误码、可关）。真机验收 `scripts/e2e_error_visibility.py`，当场抓出 `GET /runs/{id}/report` 未知 Run 返 500 的真缺陷（已修 404 + 回归测试） |
+| P1-11 时间轴性能 | ⛔ 未做 | `web/src/app/timeline/page.tsx` 全量 `.map()` | 「100 场景 60fps」是**无效测量**（按 `j` 反向播放 + 绕开 ops + 恒真断言，判官 #6/P1-5）；要用正向播放 + 真实 ops 路径重测再决定虚拟化。§9-16 已标注旧数字作废 |
 | P1-12 非整数 fps | ✅（B2 补完端到端） | [server/app/engine/fpscalc.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/fpscalc.py) 唯一口径：`norm_fps`（NTSC 吸附 **24000/1001** 精确有理数）、`frames_for`/`frame_at`/`time_at`/`fps_rational`/**`profile_frames`**（有 duration 就现算，不读持久化 frames）/**`is_delivery_fps`**（交付标准率白名单）；preview、`delivery._render_variant_frames`、`timeline_ops._fps`、`project_docs.build_timeline_doc`、`render_manifest`、`render_profiles`、QA 抽帧全部接线 | `test_fps_math.py` 全套（含吸附/半帧量化/白名单）；**`EXECUTOR_VERSION=2.11.0`**；真实出片 `verify_r2_5_delivery.py --fps 23.976 --duration 2` → **run 333** 两画幅同 48 帧/2.0s、`qc` 全 true、`|d16-d9| ≤ 半帧`；golden 5s 原帧在 2.11.0 重跑 → **run 334** SSIM 1.000000（`docs/reports/golden/5s-original-run334.json`）；F05 时长容差 `max(0.02, 0.5/fps)`。**判官旧结论"NTSC 交付路径仍截断 fps"已作废** |
-| P1-13 交付文档一致性 | ✅（B4 扩面，仍有残余） | [server/app/services/delivery.py:291](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/delivery.py#L291) `_ensure_run_documents_match`、`:275` `_load_run_snapshot_file`（**只读磁盘快照**，缺失/损坏/schema 不符直接拒）、`create_job` 校验 `runId` 归属 + final 档位与快照 `render_profiles` 一致 | 2 项单测 + 生产库 22 个真实快照实测：18 放行 / 4 真实漂移拦截，与哈希比对零分歧、无误拦；run 198 合成漂移确认抛 `E_DELIVERY_GATE`。**B4 新增**：外项目 run → 409（`test_delivery.py::test_delivery_job_rejects_foreign_run`）、档位 width/height/fps 漂移入门禁。**判官 #4 后半仍缺**：`imported` 分支不进门禁、快照文件与 DB `doc_snapshot_sha` 无绑定、`render.profile.json`/`params_snapshot`/`caps_json` 未比对、`_alignment` 仍回退读当前文件 |
+| P1-13 交付文档一致性 | ✅（B4 扩面，仍有残余） | [server/app/services/delivery.py:291](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/delivery.py#L291) `_ensure_run_documents_match`、`:275` `_load_run_snapshot_file`（**只读磁盘快照**，缺失/损坏/schema 不符直接拒）、`create_job` 校验 `runId` 归属 + final 档位与快照 `render_profiles` 一致 | 2 项单测 + 生产库 22 个真实快照实测：18 放行 / 4 真实漂移拦截，与哈希比对零分歧、无误拦；run 198 合成漂移确认抛 `E_DELIVERY_GATE`。**B4 新增**：外项目 run → 409（`test_delivery.py::test_delivery_job_rejects_foreign_run`）、档位 width/height/fps 漂移入门禁。**B6 补完后半**：`_load_run_snapshot_file` 三道锁——快照内 `run_id` 必须是所选 Run、`doc_snapshot_sha` 必须能自洽重算、文件 sha 对 `run.snapshot_sha`（迁移 4 新列；新快照写时即封印，历史 Run 首次通过内容校验时补封印），`imported` 分支也走同一读盘校验并要求有 docs 段。生产库 39 份真实快照重算 sha **全自洽、0 误拦**。**仍缺**：`render.profile.json`/`caps_json`/`params_snapshot` 未比对（`params_snapshot` 现网**所有 Run 都是空**，纳入比对就是假装覆盖）、`_alignment` 仍回退读当前文件 |
 | P1-14 档位验收脚本 | ✅ | `scripts/verify_r2_profiles.py` | run 309 / project 248 全绿：D02 混排不崩；**SSIM 改为分窗口**：稳定段最差 0.998663（≥0.98）、切点/入场 0.5s 窗口最差 0.952097（≥0.90）。旧「0.9987」口径已在 §2.4 修正 |
 | P1-15 资产引用面 | ✅ | [server/app/services/assets.py:298](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/services/assets.py#L298) `walk_refs`、`:342` `scan_usages` | 覆盖 timeline + 其它项目文档 + `Template.content_json` + Run 快照（`include_history`）；同容器 `assetShas` 派生索引不重复计数；HTTP 实测「仅剩模板引用 → `DELETE /assets` 409 `source=template`」。4 项新单测（`test_assets.py`） |
 | P1-16 许可强制 | ✅ | `assets.py:79` `license_gap`、`:95` `asset_license_ok`、`import_asset`、`update_asset` | 全资产种类入库需 `source`+`type`、`expires` 须未过期 ISO；**被引用中不许清空/削弱**；HTTP 9 项实测（§0.6.1B 第 1–2 条） |
-| P1-17 QA 撤销链 | ✅（B4 修真 LIFO） | `qa.py:526` `_require_undo_head`、`:555` `undo_fix`、`_next_seq` | 修复记录带 `undoKind`+`seq`+`afterHash/afterProfileHash/profileExisted`；撤销按**链序号倒序**（两次改成同一个 LUFS 目标时哈希相同，旧实现会放行——现在正确拒绝），mix/license 也纳入守卫；既无 `seq` 又无 `afterHash` 的历史记录一律拒绝自动撤销并提示手工恢复；修掉 `before`/`after` 引用别名（撤销曾等价于空操作）。`test_qa.py` 多步 LIFO / legacy 拒绝 / 修复后手工改动仍守卫。**残余**：许可 `prev` 本身非法时 `save_license` 抛 409，记录卡 `applied`（判官 P1-4 子项未修） |
+| P1-17 QA 撤销链 | ✅（B4 修真 LIFO） | `qa.py:526` `_require_undo_head`、`:555` `undo_fix`、`_next_seq` | 修复记录带 `undoKind`+`seq`+`afterHash/afterProfileHash/profileExisted`；撤销按**链序号倒序**（两次改成同一个 LUFS 目标时哈希相同，旧实现会放行——现在正确拒绝），mix/license 也纳入守卫；既无 `seq` 又无 `afterHash` 的历史记录一律拒绝自动撤销并提示手工恢复；修掉 `before`/`after` 引用别名（撤销曾等价于空操作）。`test_qa.py` 多步 LIFO / legacy 拒绝 / 修复后手工改动仍守卫。**B6 补**：撤销此前走 `save_license`/`save_mix`（校验的是「用户此刻提交」），残缺的历史前置态会抛 409 让记录卡 `applied`；现在走 `audio.restore_license`/`restore_mix` 原样回退（空则删文件），非法状态交给 QA 门禁再报一次（2 项回归测试） |
 | P1-18 许可洗白/预置授权 | ✅ | `qa.py` `_node_suggestions`、`web/src/app/qa/page.tsx` | `fill_license` 改 `kind=confirm`、params 不再含 `authorized`；UI 去掉"自制/CC0"预填并要求输入 YES 显式确认；`apply_fix` 允许 `auto|confirm` 两类 |
-| P1-19 验收脚本硬编码 | 🟡 起步（判官实测为**假污染**） | `scripts/_acceptance.py:32` `destroy`、`:60` `throwaway` | `verify_r3_qa.py` 已完全自包含（不再改写演示 227），6 步全绿且跑完 DB 计数不变；`verify_r2_5_review.py`、`verify_r2_5_delivery.py`（B2 起带唯一项目名后缀）自包含。**判官 P1-9 仍成立**：`e2e_takes.py:15 PID=188`、`e2e_audio_v2.py:16 PID=211` 会写脏演示时间轴（docrevision 188 v16–18 / 211 v31–35）并遗留 `template` id 3；`e2e_assets.py` PID 211、`verify_r3_assets/templates/camera/takes/audio_v2/rumor_regression` 仍硬编码 |
+| P1-19 验收脚本硬编码 | 🟡 起步（判官实测为**假污染**；越权 template id 3 已清） | `scripts/_acceptance.py:32` `destroy`、`:60` `throwaway` | `verify_r3_qa.py` 已完全自包含（不再改写演示 227），6 步全绿且跑完 DB 计数不变；`verify_r2_5_review.py`、`verify_r2_5_delivery.py`（B2 起带唯一项目名后缀）自包含。**判官 P1-9 仍成立**：`e2e_takes.py:15 PID=188`、`e2e_audio_v2.py:16 PID=211` 会写脏演示时间轴（docrevision 188 v16–18 / 211 v31–35）并遗留 `template` id 3；`e2e_assets.py` PID 211、`verify_r3_assets/templates/camera/takes/audio_v2/rumor_regression` 仍硬编码 |
 | P1-20 SDLC/git 现实 | 🟡 部分 | 本轮提交已按 `fix/feat/test/docs(p1-xx)` 细分 | 仍无 CI、无验收日志自动归档；`docs/reports/**` 只覆盖增量与黄金 |
 | P1-21 fresh clone | ⛔ 未验证 | — | 依赖仓库外风格库/rumor-39s/系统 Chrome/ffmpeg/DB 演示项目；需 bootstrap 脚本 + 干净机器实测 |
 | P1-22 env 覆盖崩溃 | ✅ | `server/app/config.py` `workspace_roots_raw`（`AliasChoices` + 解析函数） | 单路径/逗号/JSON 三种写法都可；`test_p1_foundations.py` 覆盖；`.env.example` 已说明 |
-| P1-23 请求模型 | 🟡 两批 | [server/app/api/schemas.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/api/schemas.py)（20 个 `*In` 模型）+ [server/app/main.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/main.py) `RequestValidationError` handler | **20 个高风险写端点**已模型化（`POST /projects`、文档 `PUT/restore`、`timeline/ops`、资产 `POST/PATCH/replace`、QA `fix/undo`、preview still/segment/film、delivery、gate 决议、Run promote、档位、task PUT、音频 license/mix/alignment），非法输入统一 422 **且走 ApiError 信封**（B3：`{code:E_VALIDATION,message,details.errors}`，前端 `api.ts` 同时加数组兜底）。**缺口（诚实版）**：判官 #3 要"每个模型化端点补一条 happy-path"，`test_request_models.py` 现在只有 12 项——422 信封形状 + `POST /projects` happy path（含级联删除闭环）+ `gate_decide` 全批准端到端，**其余端点仍只测拒绝路径**。**还剩 31 个 `payload: dict`**（`grep -c "payload: dict" server/app/api/routes.py`），含 `/projects/{id}/audio/upload`（落盘无大小/类型校验） |
+| P1-23 请求模型 | 🟡 两批 | [server/app/api/schemas.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/api/schemas.py)（20 个 `*In` 模型）+ [server/app/main.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/main.py) `RequestValidationError` handler | **20 个高风险写端点**已模型化（`POST /projects`、文档 `PUT/restore`、`timeline/ops`、资产 `POST/PATCH/replace`、QA `fix/undo`、preview still/segment/film、delivery、gate 决议、Run promote、档位、task PUT、音频 license/mix/alignment），非法输入统一 422 **且走 ApiError 信封**（B3：`{code:E_VALIDATION,message,details.errors}`，前端 `api.ts` 同时加数组兜底）。**缺口（诚实版）**：判官 #3 要"每个模型化端点补一条 happy-path"，`test_request_models.py` 现在 13 项——422 信封形状 + `POST /projects` happy path（含级联删除闭环）+ `gate_decide` 全批准端到端 + 未知 Run 报告 404，**其余端点仍只测拒绝路径**。**还剩 31 个 `payload: dict`**（`grep -c "payload: dict" server/app/api/routes.py`），含 `/projects/{id}/audio/upload`（落盘无大小/类型校验） |
 
 **2026-11-04 提交（判官闸门之后，全部已推 public）**
-`044ff59..280cd7f` 专家整夜自主循环 11 个提交（判官复核后**结论不成立**，见 §0.0/§0.6.1）→ `07f9487` 判官复核报告 → **`7d5b6e4` B1 删除面** → **`9dfdff9` B2 fps 端到端（2.11.0）** → **`dbc208a` B3 422 信封** → **`fb15d58` B4 交付归属 + QA 链序号 = HEAD**。
+`044ff59..280cd7f` 专家整夜自主循环 11 个提交（判官复核后**结论不成立**，见 §0.0/§0.6.1）→ `07f9487` 判官复核报告 → **`7d5b6e4` B1 删除面** → **`9dfdff9` B2 fps 端到端（2.11.0）** → **`dbc208a` B3 422 信封** → **`fb15d58` B4 交付归属 + QA 链序号** → `5c4c727` docs 交接刷新 → **`a324415` B5 安全面/原子写/版本链/失败可见（2.12.0）** → **`63d37c0` B6 快照封印 + 撤销前置态 + 404** → **`8ca3e01` 15s/40s 原帧 golden（现 HEAD）**。
 
 **2026-11-03 提交（`git log --oneline 68627d1..9bc0f95`，全部已推 public）**
 `fc721bd` P1-13+P1-08 · `70f1361` P1-15 · `4a8c7cd` P1-16/18 · `6ff2ce5` P1-17 · `7e5b151` P1-17 补充+P1-19 起步 · `30dd4ce` P1-07 · `3b0203a` P1-23 · `d47cac5` P1-14 · `9bc0f95` docs 口径。更早：`bbb7ebf` P0-1/P0-2/P1-02/03/04 · `34ab6a4` P0-3/P0-5/P0-4a · `a6a28d0` P0-4b。
 
-### 0.6.1A 破坏性语义（判官复核后的 B1–B4 批次，接手必读）
+### 0.6.1A 破坏性语义（判官复核后的 B1–B6 批次，接手必读）
 
 **判官复核后的修复批次（2026-11-04，见 `docs/process/judge-review-2026-11-04.md` §六 #1–#5）**
 
@@ -230,6 +228,12 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 
 12. **交付归属与 QA 撤销链（B4 `fb15d58`）**：`delivery.create_job` 校验 `runId` 必须属于该项目（409 `E_DELIVERY_GATE`，此前可把别的 Run 的 master 与本项目混音打进同一个包）；final 档位（width/height/fps）与 Run 快照 `render_profiles` 漂移也入门禁。QA 修复记录带 `undoKind`+`seq`，撤销按**链序号**倒序（两次改成同一个 LUFS 目标值时哈希相同、只靠内容哈希会放行，现在正确拒绝），mix/license 也纳入守卫；既无 `seq` 又无 `afterHash` 的历史记录不再"默认无守卫"，而是一律拒绝自动撤销并提示手工恢复。`scripts/verify_p1_governance.py` 扩到 **10 步**（新增 3b 帧网格、9 删除面探针；`EXECUTOR_VERSION` 改成**下限断言**，正常升版不再打红）。
 
+13. **文件响应只按白名单内联（B5 `a324415`）**：`security.file_response` 是唯一出口——`INLINE_MEDIA` 之外的后缀一律 `application/octet-stream` + `Content-Disposition: attachment`；`artifact_file`/`assets_file`/`assets_thumb`/交付文件/审片包/take 音频全部改走它。**别再写 `FileResponse(p)`**（不指定 `media_type` 就等于让 Starlette 按后缀猜，HTML/未知类型会被当文档执行）。SVG 特殊：保留 `image/svg+xml`（时间轴要用），约束靠响应 CSP `default-src 'none'; sandbox`。
+
+14. **落盘一律 `atomicwrite.write_atomic`（B5）**：`server/app` 里已无裸 `write_text/write_bytes`。新代码再引入直写会被一键复核第 11 项和 `test_no_bare_writers_left_in_server_app` 直接打红。理由不是洁癖：渲染链上到处是 `path.exists()` 判据，直写被 kill 就是「0 字节帧被当成有效帧编码进片子」。
+
+15. **快照与库内封印（B6 `63d37c0`）**：`run.snapshot_sha`（迁移 4）= `runs/<id>/docs/snapshot.json` 的字节 sha。交付门禁现在要过三道：快照内 `run_id` 就是所选 Run、`doc_snapshot_sha` 能自洽重算、文件 sha 等于库内封印。含义要说准：**历史 Run 是首次通过内容校验时才补封印**，所以它证明「此后没被换过」，不追溯此前；`params_snapshot` 现网全空、没纳入比对。撤销语义也变了：QA 撤销走 `audio.restore_license`/`restore_mix`（原样回退、空则删文件），不再被 `license_ok`/取值范围校验挡死。
+
 ### 0.6.1B 累积破坏性语义（2026-11-03 批次，接手必读）
 
 1. **资产入库必须带许可**：`POST /assets` 缺 `license.source`/`license.type` → 400 `E_ASSET_LICENSE`；`expires` 非 ISO 或已过期同样拒。旧脚本/UI 只给字体填许可的路径已全部改为通用（`scripts/e2e_assets.py` 因此把许可填写移到上传之前）。
@@ -243,12 +247,13 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 
 ### 0.6.2 明确没做/没跑（不要当成已完成）
 
-- ~~40s 增量渲染实跑~~ ✅（run 311，9.69%）；~~15s/40s 原帧 golden baseline~~ 仍**未实跑**（各约 4.3GB / 数十分钟）。
-- **判官 §六 未闭项**（逐条见 §0.0）：#6 有效重测 100 场景帧率（现有 60fps 结论作废）、#7 存储型脚本面（Content-Type 白名单 + `:8787` CSP/nosniff + SVG 执行回归测试）、#8 原子写覆盖 8 个写者 + `fsync` + 唯一临时名 + 升版重跑 golden、#9 P1-19 剩余脚本（`e2e_takes` 188 / `e2e_audio_v2` 211 写脏演示 + `template` id 3 残留待老板确认）、#10 文档一致性自动化守卫。
-- **判官 §三 未闭项**：P1-3 交付门禁后半（`imported` 分支、`doc_snapshot_sha` 绑定、`params_snapshot`/`caps_json`/`render.profile.json` 比对、`_alignment` 回退），P1-4 残余（许可 `prev` 非法时撤销卡死），P1-6 错误边界抓不到异步拒绝，P1-11 `DocRevision` 100 上限会静默删掉 v1。
-- **P1 治理 23 项里仍未完成**：P1-10（ErrorBoundary）、P1-11（时间轴虚拟化 + 实测）、P1-20（CI/归档）、P1-21（干净机器 fresh-clone）；P1-19/P1-23 部分（31 个 `payload: dict`、happy-path 缺口）。
-- **运维**：`retry_wait` 僵尸作业 **11 条**（`select count(*) from job where status='retry_wait'`）没有过期回收策略。
-- DB 审计残留清理（需老板点头）：`foreign_keys=ON` 已开，删除路径也已硬化，剩下的只是"要不要删"的决定。
+- ~~40s 增量渲染实跑~~ ✅（run 311，9.69%）；~~15s/40s 原帧 golden baseline~~ ✅（**2026-11-04 各自生锚 + 二次独立复核**：15s run 333→334、40s run 335→336，6/6 帧 SSIM=1.000000、pHash 距离 0；锚已入 `fixtures/golden/*/baseline_original/`）。
+- **判官 §六 仍未闭**：#6 **有效重测 100 场景帧率**（现有 60fps 结论作废，是唯一还没动的"结论级"项）、#9 P1-19 剩余脚本（`e2e_takes` 188 / `e2e_audio_v2` 211 仍写脏演示）、#10 文档一致性的自动化守卫（本轮重写过一遍，但仍无脚本防漂移）。
+- **已闭（本轮之前列为"没做"的）**：#7 存储型脚本面（Content-Type 白名单 + `:8787` CSP/nosniff + 存 HTML 回归测试）、#8 原子写（`server/app` 内裸写归零 + `EXECUTOR_VERSION=2.12.0` + golden 复跑）、#11/§三-11 版本链保 v1、§三-6 异步失败可见、§三-4 残余（残缺前置态可撤销）、#4 后半（快照 run_id/sha/库内封印三道锁）。
+- **判官 §三 残余（小半）**：`render.profile.json`/`caps_json`/`params_snapshot` 仍未参与比对——其中 `params_snapshot` **现网所有 Run 都是空**（`select … where params_snapshot not in ('','{}')` → 0 行），所以我没把它写成"已覆盖"；`_alignment` 仍回退读当前 `card/alignment.manual.json`（F-DEL-4，判官明写"记录不改"）。
+- **P1 治理 23 项里仍未完成**：P1-11（时间轴虚拟化 + 实测）、P1-20（CI/归档）、P1-21（干净机器 fresh-clone bootstrap；原帧锚已入 git，缺的是风格库/rumor/Chrome/ffmpeg）；P1-19/P1-23 部分（**31 个 `payload: dict`**，20 个模型化端点只有 3 个有 happy-path）。
+- **运维**：`retry_wait` 僵尸作业 **11 条**（`select count(*) from job where status='retry_wait'`）没有过期回收策略；`~/.filmflow/cache` 约 1.2GB 预览缓存可清但没人清。
+- **老板已点头并已执行**：审计残留清理、越权 `template` id 3、15s/40s 原帧 golden。**FR-40/41 也已点头**，但仍按判官闸门顺序先做完 §0.0 的 5 件事。
 - P2 共 35 条、P3 共 26 条（索引见 `docs/reviews/2026-11-03-expert-review-analysis.md` §2.3）——**一条都没系统性清**。
 
 ### 0.6.3 一条命令复核本轮治理（专家推荐先跑这个）
@@ -257,7 +262,7 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 uv run --project server python scripts/verify_p1_governance.py
 ```
 
-`scripts/verify_p1_governance.py` 会对着运行中的服务连查 **10 项**并**自建自删临时项目/模板/资产**
+`scripts/verify_p1_governance.py` 会对着运行中的服务连查 **13 项**并**自建自删临时项目/模板/资产**
 （不改演示数据，跑完 `GET /api/projects` 计数不变）：
 
 1. 安全边界：错误 Host 400、跨源写 403、本机 200（P0-1/P1-01）。
@@ -270,9 +275,12 @@ uv run --project server python scripts/verify_p1_governance.py
 7. QA 多步撤销：抢跑被拒且点名应先撤的 fixId；倒序两级撤回到原状（P1-17/B4 链序号）。
 8. 迁移登记 + 422：`apply_migrations` 对已登记版本返回空；非法请求体 422 **且走 ApiError 信封**、不进服务层（P1-07/P1-23/B3）。
 9. 删除面探针：白名单根/仓库根被拒登记；`rumor` 前缀需回显项目名；`confirm=false` 时不动数据；级联删库 + 清目录（P1-06/B1）。
+10. 文件响应策略：HTML/XML/JS/未知后缀 → `application/octet-stream` + `attachment`；`:8787` 数据根加 CSP sandbox、`/engine` 不受影响；并实测**真资产响应**确实下发了 nosniff+CSP（缺资产就报错，不静默放过）（P1-7/B5）。
+11. 原子写：`server/app` 内 0 处裸 `write_text/write_bytes`；`atomicwrite` 有唯一临时名 + `fsync` + `os.replace`；`EXECUTOR_VERSION >= [2,12,0]`（P1-8/B5）。
+12. 版本链：`/docs/{kind}/versions` 输出 `truncated`/`keptFirst`，裁上限后 v1 仍可恢复（P1-11/B5）。
 
-实测输出（**2026-11-04，HEAD `fb15d58`**）：10 步全 ✓ + `PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）`；跑前需 `./dev.sh`。
-**覆盖盲区（判官 §五-1）**：这条脚本只覆盖它自己的门禁，对 XSS/Content-Type、原子写、DocRevision 截断、错误边界、60fps **零覆盖**——绿色不等于安全。
+实测输出（**2026-11-04，B5/B6 之后**）：**13 项全 ✓** + `PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）`；`EXECUTOR=2.12.0`、迁移登记 `[1, 2, 3, 4]`；跑前先按 §0.7 重启服务（不是 `--reload`）。
+**仍然没覆盖的（判官 §五-1 的同类风险）**：时间轴性能/60fps、P1-19 演示污染、错误边界的真机点击路径——绿色不等于安全。新加的 `scripts/e2e_error_visibility.py` 补的正是第三条，并已经抓到 `GET /runs/{id}/report` 未知 Run 返 500 的真缺陷（已修成 404）。
 
 ### 0.7 运维、复现与本轮踩过的坑
 
@@ -299,7 +307,7 @@ uv run --project server python scripts/verify_p1_governance.py
   ipconfig getifaddr en0   # 局域网 IP:3000/:7860 应连不上
   ```
 
-**B1–B4 期间踩到的坑（2026-11-04，都是"自己绊自己"，别再踩）**
+**B1–B6 期间踩到的坑（2026-11-04，都是自己绊自己，别再踩）**
 
 - **fps 语义**：`frame_at(t, fps)` 是**时间→帧号**，不是"帧号→时间"（我按反的写过断言）；`_tier` **不校验**帧率白名单，非法 fps 只在 `resolve()` 被 `is_delivery_fps` 拦。NTSC 吸附后 `pytest.approx(23.976)` 会红（真值 24000/1001 = 23.976023…），断言要么 `abs=1e-4` 要么用精确有理数。
 - **删除守卫把合法清理拦死**：B1 初版按 `updated_at` 判在飞 → 启动恢复 bump 的 11 条僵尸 `retry_wait` 让测试收尾删不掉；改心跳/`started_at` 窗口后，`test_request_models.py` 的清理仍需 `force=True`（那里确有历史测试 Run/Job）。**先确认阻断来自哪一条，再决定是 relax 判定还是 `force`。**
@@ -307,7 +315,11 @@ uv run --project server python scripts/verify_p1_governance.py
 - **脚本里 import 顺序**：`from app.engine.fpscalc import …` 必须在 `sys.path.insert(0, str(ROOT / "server"))` **之后**，否则 `ModuleNotFoundError: app`。
 - **HTTP 客户端**：验收脚本走代理会 502（本机服务），必须 `trust_env=False`；`with client(...) as c:` 关闭后再调用会炸，把调用挪进 `with`；忘记 `import uuid` 也是同一次修里的事。
 - **`golden_run.py` 的隐性回归**：专家 P1-19 重构把 `build_golden_project` 返回值改成 4 元组，`primary` 变量在另一条路径未定义 → 直接 `NameError` 崩，而**没有任何测试覆盖这个脚本**。凡是"验收脚本"改完必须真跑一次，别只看 pytest 绿。
-- **版本断言**：一键复核里 `EXECUTOR_VERSION` 用**下限**比较（`>= [2,11,0]`），写死等值会在正常升版时变红。
+- **版本断言**：一键复核里 `EXECUTOR_VERSION` 用**下限**比较（`>= [2,12,0]`），写死等值会在正常升版时变红。
+- **`golden_run.py` 的 15s/40s 之前根本跑不完**（今晚才查到）：逐场门禁要求「每个场景都看过」，而脚本写死只标 `S01–S03`；15s 有 4 场、40s 有 5 场 → D03 永远拒批 → 轮询到 900s 超时。这不是磁盘/耗时问题，是脚本 bug，所以旧交接里「原帧 baseline 未实跑（磁盘考量）」的归因是**错的**。现在按 timeline 实际场景逐个标看，且门禁调用失败立刻抛错而不是静默轮询。
+- **测试里造 Run 要跟着 rowid 走**：写死的 `runs/1/docs/snapshot.json` 在被删过行的库上对不上新建 Run 的 id（SQLite 会复用 rowid），于是「快照属于 run 1，不是所选 run 4」把测试自己拦死。夹具必须按真实 `run.id` 建目录；这也说明门禁的报错信息是可诊断的。
+- **测试计数会随环境变**：`test_p1_foundations.py:174` 在有 F01 占着 `:8787` 时会 skip（跨进程不互斥）。同一条 `pytest tests -q` 可以是 `273 passed + 1 skipped + 1 failed` 也可以是 `275 passed`——申报前先看清 skip 门控，别把环境差异写成回归。
+- **`e2e_error_visibility.py` 一跑就抓到真缺陷**：`GET /api/runs/<id>/report` 对不存在的 Run 是 `table_dict(None)` → AttributeError → HTTP 500。加失败可见性的意义不只是 UI，它也把这类「用户只看到 500」的路径逼出来。
 
 ---
 
@@ -335,12 +347,12 @@ uv run --project server python scripts/verify_p1_governance.py
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **236 passed + 1 skipped**（collected 237 = unit 212 / integration 18 / BDD 7；59.43s）；integration 已隔离（独立临时 uvicorn/HOME/workspace） |
+| 测试 | **275 passed**（collected 275 = unit 250 / integration 18 / BDD 7；48.6s）；integration 已隔离（独立临时 uvicorn/HOME/workspace）。注意 [test_p1_foundations.py:174](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L174) 在有 F01 占用 `:8787` 时会 skip，计数会随之变化 |
 | 本轮 P1 治理 | master `68627d1..9bc0f95`（9 提交）；**未打新 tag** |
-| 判官复核 + B1–B4 | `07f9487`（判官报告）→ `7d5b6e4` B1 → `9dfdff9` B2 → `dbc208a` B3 → **`fb15d58` = HEAD**；均已推 public；`044ff59..280cd7f` 是专家整夜 11 提交（结论被推翻） |
+| 判官复核 + B1–B6 | `07f9487`（判官报告）→ `7d5b6e4` B1 → `9dfdff9` B2 → `dbc208a` B3 → `fb15d58` B4 → `5c4c727` docs → `a324415` B5 → `63d37c0` B6 → **`8ca3e01` = HEAD**；均已推 public；`044ff59..280cd7f` 是专家整夜 11 提交（结论被推翻） |
 | 公开仓库 | `git@github.com:leechunwoo0815/filmflow`（master 已同步；公钥已配） |
 | 专家原始报告 | 仅本地 `~/.filmflow/reviews/2026-11-03-expert-review.raw.md`（692 行 / 120KB，sha256 前缀 `03d5dbcb87ad8352af3d4aa6`）；含主机路径与攻击面细节，**不进公开仓库**；仓库侧只放 `docs/reviews/2026-11-03-expert-review-analysis.md`（344 行脱敏复核）与 `docs/process/judge-review-2026-11-04.md` |
-| EXECUTOR_VERSION | **2.11.0**（2.9.3 转场统一+缓存键 → 2.10.0 fps 口径 → 2.11.0 NTSC 吸附/`profile_frames`/交付变体帧网格） |
+| EXECUTOR_VERSION | **2.12.0**（2.9.3 转场统一+缓存键 → 2.10.0 fps 口径 → 2.11.0 NTSC 吸附/`profile_frames`/交付变体帧网格 → **2.12.0 落盘原子化**：唯一临时名 + fsync + `os.replace`）；迁移登记 **[1,2,3,4]**（4 = `run.snapshot_sha`） |
 | UI E2E | 8 场景全绿（约 16s）；FR-31/FR-33/FR-35/FR-36/FR-37/FR-39 冒烟另 11 组 |
 
 ### 1.2 R2.0（已验收，8 FR）
@@ -707,7 +719,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 
 ### 4.6 缓存/锁（必须理解）
 
-- `EXECUTOR_VERSION=2.11.0`；改执行器必须升（缓存键唯一来源 [server/app/engine/cachekey.py:11](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/cachekey.py#L11)）。
+- `EXECUTOR_VERSION=2.12.0`；改执行器必须升（缓存键唯一来源 [server/app/engine/cachekey.py:11](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/engine/cachekey.py#L11)）。
 - `DOC_NODES` 缓存含 `doc_snapshot_sha`；`PROFILE_NODES` 含 `renderProfilesSha`；
   `PROJECT_LOCAL_NODES={D01,D02,E03,E04,E05,F02,F04,G01,G05,G07}` 含 `projectRoot`。
 - **外部输入**：A01 copy、A03 风格库内容指纹、F01 项目根、G01 语音文件以 `_external:*` 进键。
@@ -745,7 +757,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 
 ## 5. 踩坑清单（按优先级，必须看）
 
-1. **EXECUTOR_VERSION**：改任何执行器行为必须升版；当前 **2.11.0**，否则缓存返回旧行为。B2 之所以再升一版，是因为帧网格/帧数现算改变了 F02/G07/交付变体的产出。
+1. **EXECUTOR_VERSION**：改任何执行器行为必须升版；当前 **2.12.0**，否则缓存返回旧行为。2.11.0 是帧网格/帧数现算（B2），2.12.0 是落盘原子化（B5）——两者都改变了产物写入路径，所以都必须升。
 2. **task 快照回退**：B06 同文档缓存命中时不会写 `runs/<id>/docs/task.json`；`_task_path` 必须回退
    只读 `card/task.json`，否则 D01 空场景、D03/D04 失败。
 3. **timeline 持久化**：materialize/首次快照落 timeline doc；编辑 script 不得重建 timeline，
@@ -836,7 +848,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
   失败 `E_QC_*` 阻断并给修复建议；不渲染 9:16、不生成 zip。
 - **DeliveryService**：显式 post-run 作业（API/页面）；非导入项目必须已有 G07 `succeeded/cached`，
   否则 `E_DELIVERY_GATE`；完整包 QC 失败则 Job 失败；manifest 记录 G07 master sha + 全部文件 sha。
-- 代价：G07 QC 最初升到 2.6.6；当前总版本 **2.11.0**；普通 Run 只多一次 ffprobe/ebur128。
+- 代价：G07 QC 最初升到 2.6.6；当前总版本 **2.12.0**；普通 Run 只多一次 ffprobe/ebur128。
 
 ### 6.4 R2.5 DoD（收尾时逐项打勾）
 
@@ -844,25 +856,26 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
 - [x] FR-28 16:9+9:16+SRT+封面+QC+zip；R2.5 5s 26.2s / 40s 190.0s（2.8.0 5s 24.1s）
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
-- [x] 102 tests（R2.5 收口时；**当前 237 collected = unit 212 + integration 18 + BDD 7，236 passed + 1 skipped**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
+- [x] 102 tests（R2.5 收口时；**当前 275 collected = unit 250 + integration 18 + BDD 7，275 passed**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
-### 6.5 下一批（判官闸门优先；FR-40/41 待老板点头，且需先清完 §六）
+### 6.5 下一批（判官 §六 只剩 3 件；FR-40/41 老板已点头，但仍按此顺序做）
 
-1. **两轮审查的相对位置**：2026-11-03 专家 P0 Gate 已关（P0-4b 的 15s/40s 原帧 baseline 仍未实跑）；**2026-11-04 判官复核判"未完成"**，其 P0-1/P0-2 与 P1-1/P1-2/P1-4 主面已由 B1–B4 关闭（§0.0 证据表）。**判官 §六 #6–#10 未闭之前不要开 FR-40/41。**
-2. **执行顺序（B5 → B6，逐项附证据再申报）**：
-   1. **B5-1 安全面（判官 #7）**：`routes.artifact_file` 改显式 Content-Type 白名单，未知类型一律 `application/octet-stream` + `Content-Disposition: attachment`；`services/artifacts.py:34` 不再保留源后缀；`:8787` FrameServer 与 `/global-assets/*.svg` 同源头补 `X-Content-Type-Options: nosniff` + CSP；**新增存储型 SVG→执行的回归测试**（当前零覆盖）。
-   2. **B5-2 原子写（判官 #8）**：现状是**两种半吊子**——① 用 `tmp.write_* + tmp.replace()`（rename 是原子的，但**临时名确定**、且**无 fsync**）：`pipeline.py:82` 的 `.{i:04d}.png.tmp`（同帧号并发互踩）、`snapshot.py:93`、`preview.py:351`；② **直接写目标路径**（半文件可被读到）：`delivery.py:220/457/492/523/547`、`preview.py:898`、`previs.py:87`、`snapshot.py:56/80`、`render_profiles.py:192/196`、`routes.py:398/528/532/537/2105/2183/2671`。全仓 **没有任何 `os.replace`/`fsync`**（`grep -rn "os.replace" server/app` 空）。统一为「pid/随机后缀临时名 + `flush`+`fsync` + `os.replace` + 目录 fsync」，并清理 `.tmp` 残留；**改执行器写行为必须升 `EXECUTOR_VERSION` 并重跑 `golden_run.py`**（判官明写这条硬约束被违反了）。
-   3. **B5-3 版本链（判官 P1-11）**：`project_docs.py:223` `MAX_REVISIONS_PER_DOC=100` 改为**保留 v1**（FR-20 验收物）+ 截断标记进 `list_versions`。
-   4. **B5-4 错误可见性（判官 P1-6）**：`monitor/page.tsx:16-17` 裸 `.then()`、4 处吞异常 catch、约 20 处未保护 `await api(...)`；`error.tsx` 抓不到异步拒绝，需要真正的 catch/重试路径 + 一条 UI 证据。
-   5. **B6-1 撤销残余（判官 P1-4 子项）**：许可 `prev` 非法时 `audio.save_license` 抛 409 导致记录永久 `applied`——撤销要能落到"无文件/原样写回"并给出用户可见错误。
-   6. **B6-2 有效重测 100 场景（判官 #6/P1-11）**：修 `scripts/e2e_timeline_100.py` 的按键（`k` 正向、不是 `j` 反向）、走 ops/autosave 真路径、去掉恒真断言与硬编码 `wait_for_timeout(200)`；要么给有效数据，要么把"不需要虚拟化"改回待办。
-   7. **B6-3 P1-19 收尾（判官 #9）**：`e2e_takes.py`（PID 188）、`e2e_audio_v2.py`（PID 211）、`e2e_assets.py`、`verify_r3_*` 迁 `scripts/_acceptance.py` 自建自删；把"跑完 docrevision 不新增演示行"做成一键复核的新步骤；`template` id 3 残留待老板确认后清。
-   8. **B6-4 交付门禁后半（判官 #4 后半）**：`imported` 分支进门禁、快照文件与 DB `doc_snapshot_sha` 哈希绑定、`render.profile.json`/`params_snapshot`/`caps_json` 纳入比对、`_alignment` 不再回退读当前文件。
-   9. **B6-5 P1-23**：剩余 **31** 个 `payload: dict`（`grep -c "payload: dict" server/app/api/routes.py`），并给已模型化的 20 个端点各补 happy-path。
-   10. **B6-6 文档与运维**：全文一致性守卫脚本（版本/数字/FK/路径）纳入验收；`retry_wait` 僵尸作业（现 11 条）过期回收策略；**P1-20/P1-21** CI（pytest + ruff）与 fresh-clone bootstrap。
-3. 之后 **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**；未开始不虚报。
+1. **两轮审查的相对位置**：2026-11-03 专家 P0 Gate 已关；2026-11-04 判官复核判整夜循环"未完成"，其 §六 #1/#2/#3/#4/#5/#7/#8/#11 与 §三-6/§三-11 已由 **B1–B6 关闭**（§0.0 证据表）。**还没动的是 #6（有效重测 100 场景）、#9（P1-19 剩余脚本）、#10（文档一致性守卫）。**
+2. **已完成（按判官条目）**：
+   - **#7 存储型脚本面** ✅ `a324415`：`security.file_response` 白名单 + `EXECUTABLE_SUFFIXES`/未知后缀 → `octet-stream`+`attachment`；`:8787` 数据根 nosniff+CSP 且拒 HTML/JS，`/engine` 不受影响；HTTP 层存 HTML 回归测试 + `e2e` 实测真资产响应头。
+   - **#8 原子写** ✅ `a324415`：`atomicwrite`（唯一临时名 + 文件/目录 fsync + `os.replace`）；`server/app` 内裸写从 50 处降到 **0**；`EXECUTOR_VERSION` **2.12.0** + 15s/40s 原帧 golden 复跑（SSIM 1.000000）。
+   - **§三-11 版本链** ✅：保 v1 + 最新 99 条，`truncated`/`keptFirst` 进接口。
+   - **§三-6 异步失败可见** ✅：`api()` 广播 → 全局 `ApiFailureBanner`；`monitor` 本地 catch、`canvas` SSE `onerror`；`scripts/e2e_error_visibility.py` 真机验收（顺带抓出并修了 `runs/{id}/report` 的 500→404）。
+   - **#4 后半 / §三-4 残余** ✅ `63d37c0`：快照三道锁 + 迁移 4 封印；`restore_license`/`restore_mix` 让残缺前置态退得回去。
+3. **还剩 3 件（判官 §六）+ 2 件工程债**：
+   1. **#6 / P1-11 有效重测 100 场景**：修 `scripts/e2e_timeline_100.py` 的按键（`k` 正向，不是 `j` 反向）、走 ops/autosave 真路径、去掉恒真断言与硬编码 `wait_for_timeout(200)`；要么给有效数据，要么把"不需要虚拟化"改回待办。**这是唯一还没动的"结论级"项，别的都只是收尾。**
+   2. **#9 / P1-19**：`e2e_takes.py`（PID 188）、`e2e_audio_v2.py`（PID 211）、`e2e_assets.py`、`verify_r3_*` 迁 `scripts/_acceptance.py` 自建自删；把"跑完 docrevision 不新增演示行"做成一键复核的新步骤。
+   3. **#10 / 文档一致性守卫**：写一个脚本核对版本号/测试数/FK 口径/引用路径（版本 `2.12.0`、`275 passed`、迁移 `[1,2,3,4]`），纳入验收；否则下一轮改动照样漂。
+   4. **P1-23**：剩余 **31** 个 `payload: dict`（`grep -c "payload: dict" server/app/api/routes.py`）+ 给已模型化的 20 个端点各补 happy-path（现在 3 个）。
+   5. **运维/工程债**：`retry_wait` 僵尸作业（现 **11 条**）过期回收；**P1-20** CI（pytest + ruff + 一键复核）；**P1-21** fresh-clone bootstrap（原帧锚已入 git，缺风格库/rumor-39s/Chrome/ffmpeg 的接线脚本）。
+4. 之后 **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**——老板已点头，但我按上面顺序做完再开；未开始不虚报。
 4. FR-36/37/39 v1 已完成（§3.6–§3.8、ADR-0010/0011/0012）；其边界见 §9。
 5. **不要提前做 R4**（批量 CSV/多规格矩阵/平台发布/photo 引擎）。
 
@@ -874,13 +887,13 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 
 ```bash
 ./dev.sh                                # 改代码后必须重启；配方见 §0.7
-cd server && uv run pytest tests -q     # 236 passed + 1 skipped；再跑一次，GET /api/projects 计数应不变（现测 35→35）
+cd server && uv run pytest tests -q     # 275 passed；再跑一次，GET /api/projects 计数应不变（现测 24→24）
 uv run pytest tests/unit/test_migrations.py -q          # P1-07 迁移登记处
 uv run pytest tests/unit/test_request_models.py -q      # P1-23 422 信封 + happy-path
 uv run pytest tests/unit/test_fps_math.py -q            # P1-12 帧网格唯一口径（NTSC 吸附/现算帧数/交付率白名单）
 uv run pytest tests/integration/test_project_delete_api.py -q   # P0-1/B1 删除面（路由级，真删目录）
 uv run pytest tests/integration -q                                # 独立临时 uvicorn/HOME/workspace，不碰生产 DB
-uv run --project server python scripts/verify_p1_governance.py   # 本轮 P1 门禁 10 步复核（自建自删）
+uv run --project server python scripts/verify_p1_governance.py   # 本轮 P1 门禁 13 项复核（自建自删）
 cd .. && uv run --project server python scripts/verify_r3_qa.py   # 自建自删临时项目，6 步
 cd .. && uv run --project server python scripts/e2e_ui.py
 uv run --project server python scripts/smoke_m1.py
@@ -925,12 +938,12 @@ curl -s http://127.0.0.1:7860/api/queue
 - 预览缓存：`~/.filmflow/cache/preview/<project>`；交付：项目 `out/deliveries/<runId>`。
 - DB 备份（可删）：`~/.filmflow/` 下 4 份 `filmflow-before-*.db`（40/19/27/27MB）。
 
-### 7.4 项目/磁盘清单（**2026-11-04 实测**，HEAD `fb15d58`）
+### 7.4 项目/磁盘清单（**2026-11-04 清理后实测**）
 
-- **DB 35 个项目**（`select count(*) from project`），其中 **8 行的 root 目录已不存在**：project 228/229/232/233/235/236/237/238（专家审计与被清理的 `it-*` 测试项目遗留）。**清残留请走 `DELETE /projects/{id}`**（B1 后端点已硬化并级联清库+清目录），别只删目录留孤儿行。
-- **`~/cc-projects/ai-v/filmflow-projects` 33 个目录 / 2.3GB**：**26 个已登记** + **7 个孤儿目录**（`boom-inst-1..4` 全空、`it-engine-236/240/242` 空）。大头实测：`rumor-clean-20261102` 628M、`r3-audio-v2-221` 598M、`golden-5s-230` 541M、`r2_5-delivery40-185` 155M、`r3-camera-199` 72M、`r2-verify-5s-244` 53M、`r2-profiles-243` 49M、`r2_5-delivery-216/224` 各 33M、`r2_5-audio-160` 24M、`r2-verify-5s-245` 19M、`r2-profiles-249/250/251` 各 15M（档位重跑残留，frames/proxy 已清）、`golden-5s-217/225/246/247/248` 各 14M，其余 KB 级（含 `FR37模板演示-1`、`r3-demo-20261103-1`、`trace-x`、`一条消息被转发往往不是因为-1`、`it-wizard-235/239/241`）。另有仓库外参考项目 `rumor-39s`（897MB）。
-- **`~/.filmflow` 1.4GB**（判官实测推翻"清回 1.1G"的说法）：`cache` **1.2G**（预览缓存，可清）、`backups` 112M、`filmflow.db` 31M + `-wal` 19M、`filmflow-before-expert-20261103-234205.db` 27M（**只剩这 1 份**，旧文档说的 4 份已不准确）、`logs` 17M、`reviews` 120K（含原始专家报告，本地only）。
-- 演示项目（不要动）：202（时间轴）、174（审片/40s）、188（Take；run 237/253/254 当前 timeline 漂移，交付会被 `E_DELIVERY_GATE` 拦；**判官 P1-9 记录它被 `e2e_takes.py` 写脏过 docrevision v16–18**）、211（音频 v2 + 资产 run 275；run 266 同样漂移；被 `e2e_audio_v2.py` 写脏 timeline v31–35）、215（5s 交付）、216（黄金 5s）、223（FR-36 黄金 run 282，状态 failed，**不作成功证据**）、227（FR-37 模板实例 + FR-39 QA，`verify_r3_qa.py` 不再改写它）。DB 里另有验收遗留 `template` id 3「F37 验收模板 1793727884」——**清理需老板确认**。
+- **DB 24 个项目**（`select count(*) from project`），**每一行的 root 目录都还在**。2026-11-04 老板点头后清过一轮：删 11 行 `it-docs`/`it-import`/`集成测试项目`（8 行 root 早就不存在 + 3 行 `it-wizard-*`）和当晚 4 个 golden-15s/golden-40s 验证项目（释放 **11.6GB**）。**清残留一律走 `DELETE /projects/{id}`**（B1 后端点已硬化并级联清库+清目录），别只删目录留孤儿行；库备份 `~/filmflow-backup-20261104-pre-cleanup.db`（30M）。
+- **`~/cc-projects/ai-v/filmflow-projects` 23 个目录 / 2.3GB**（7 个空孤儿目录 `boom-inst-1..4`、`it-engine-236/240/242` 与 3 个 `it-wizard-*` 已删）。大头实测：`rumor-clean-20261102` 628M、`r3-audio-v2-221` 598M、`golden-5s-230` 541M、`r2_5-delivery40-185` 155M、`r3-camera-199` 72M、`r2-verify-5s-244` 53M、`r2-profiles-243` 49M、`r2_5-delivery-216/224` 各 33M、`r2_5-audio-160` 24M、`r2-verify-5s-245` 19M、`r2-profiles-249/250/251` 各 15M（档位重跑残留，frames/proxy 已清）、`golden-5s-217/225/246/247/248` 各 14M，其余 KB 级（`FR37模板演示-1`、`r3-demo-20261103-1`、`trace-x`、`一条消息被转发往往不是因为-1`）。另有仓库外参考项目 `rumor-39s`（897MB）。
+- **`~/.filmflow`**：`cache` **约 1.2G**（预览缓存，可清但没清）、`backups` 112M、`filmflow.db` 31M + `-wal` 15M、`filmflow-before-expert-20261103-234205.db` 27M（**只有这 1 份**旧备份；旧文档说的 4 份已不准确）、`logs` 17M、`reviews` 120K（含原始专家报告，**仅本地**）。
+- 演示项目（不要动）：202（时间轴）、174（审片/40s）、188（Take；run 237/253/254 当前 timeline 漂移，交付会被 `E_DELIVERY_GATE` 拦；**判官 P1-9 记录它被 `e2e_takes.py` 写脏过 docrevision v16–18，历史行留着作证据**）、211（音频 v2 + 资产 run 275；run 266 同样漂移；被 `e2e_audio_v2.py` 写脏 timeline v31–35）、215（5s 交付）、216（黄金 5s）、223（FR-36 黄金 run 282，状态 failed，**不作成功证据**）、227（FR-37 模板实例 + FR-39 QA）。`template` 表现只剩 id 1/2 两行，越权的 id 3 已按老板点头经 `DELETE /templates/saved:3` 清除（有 `template.delete` 审计）。
 - 风格库：**逻辑约 74.7MiB（示例 mp4 约 59.8MiB），磁盘分配约 9.3MiB**（mp4 是稀疏文件）；库外置不入 git。
 - **磁盘纪律**：40s 项目一轮约 4.3GB（frames 2.7G + proxy 1.4G）。新脚本默认收尾清理（`verify_r2_incremental.py` 的 `finally`、`golden_run.py`）；手工跑其他验收后请删 `out/frames`、`out/proxy` 或直接 `DELETE /projects/{id}`，保留 `film/artifacts/stills/交付包`。
 ---
@@ -941,7 +954,7 @@ curl -s http://127.0.0.1:7860/api/queue
 - 46 节点 / 7 阶段 / 8+8 门 / caps / 三类边 / content_hash 语义不变；边数 93。
 - Chrome 全局串行 1 个（`chrome-queue=1`）；ffmpeg 独占；预览不新开第二个浏览器。
 - 新项目禁止 `legacy_entry`；只有 `meta.imported=true` 可走 v1 harness。
-- 改执行器行为必须升 `EXECUTOR_VERSION`（**2.11.0**）；预览渲染器改动升 `RENDERER_VER`（`preview-1.8.0`）。
+- 改执行器行为必须升 `EXECUTOR_VERSION`（**2.12.0**）；预览渲染器改动升 `RENDERER_VER`（`preview-1.8.0`）。
 - 路径白名单/禁止路径穿越；FrameServer 只服务 `/engine`、`/project` 与 `/global-assets`。
 - 风格库逻辑约 75MiB（mp4 稀疏文件，磁盘分配约 9.3MiB）不入 git；`vendor/fy-code-animation` 只查方法，不 import。
 - R3.0 v1 含 FR-32–38；R3.5 FR-39 已完成；**判官复核（`docs/process/judge-review-2026-11-04.md`）未闭项做完才谈 FR-40/41**；R4 不提前做。
@@ -992,7 +1005,7 @@ curl -s http://127.0.0.1:7860/api/queue
 26. **交付一致性门禁（本轮新增）**：非导入项目交付前要求"当前 timeline 内容哈希 == 所选 Run 快照哈希"，
     否则 `E_DELIVERY_GATE`。演示 188（run 237/253/254）与 211（run 266）当前就处于漂移态，
     直接交付会被拦——这是预期，需重跑 F02/G07 或基于当前文档新建 Run。
-27. **QA 撤销是 LIFO，且按链序号**：修复记录带 `undoKind`+`seq`；`undo_fix` 要求"本步是该 `undoKind` 面上最新的一步"（两次改成同一个值、内容哈希相同时也拒绝抢跑），再二次校验内容哈希仍等于该步结果；多步必须倒序撤销，抢跑会被拒并点名应先撤的 fixId。**既无 `seq` 又无 `afterHash` 的历史记录一律拒绝自动撤销**（提示手工恢复），不再"默认无守卫"。撤销还会删除"修复前不存在"的 profile 文档行。残余：许可 `prev` 本身非法时 `save_license` 抛 409、记录卡 `applied`（见 §6.5 B6-1）。
+27. **QA 撤销是 LIFO，且按链序号**：修复记录带 `undoKind`+`seq`；`undo_fix` 要求"本步是该 `undoKind` 面上最新的一步"（两次改成同一个值、内容哈希相同时也拒绝抢跑），再二次校验内容哈希仍等于该步结果；多步必须倒序撤销，抢跑会被拒并点名应先撤的 fixId。**既无 `seq` 又无 `afterHash` 的历史记录一律拒绝自动撤销**（提示手工恢复），不再"默认无守卫"。撤销还会删除"修复前不存在"的 profile 文档行。**B6 补**：撤销走 `audio.restore_license`/`restore_mix`——原样回退（空则删文件），残缺/越界的历史前置态也退得回去，不再把记录卡死在 `applied`。
 28. **档位 SSIM 口径**：`verify_r2_profiles.py` 现在分窗口断言（稳定段 ≥0.98 / 切点与入场 0.5s 窗口 ≥0.90）。
     draft 只有 12fps，时序量化在窗口内必然可见（实测最低 0.952097）；想回到"全局 ≥0.98"要先解决
     draft 的时间采样口径，别偷偷改回只取稳定段的旧口径（那是 §2.4 记录的证据修正点）。
@@ -1012,24 +1025,24 @@ curl -s http://127.0.0.1:7860/api/queue
 33. **交付门禁仍有静默面**（判官 #4 后半，见 §6.5 B6-4）：`imported` 项目不进门禁、快照文件与 DB `doc_snapshot_sha` 没有哈希绑定
     （复制一份旧 `runs/<id>/docs/snapshot.json` 理论上可绕）、`render.profile.json`/`params_snapshot`/`caps_json` 未参与比对、
     `_alignment` 仍回退读当前 `card/alignment.manual.json`。**别说"交付已完全锁死"。**
-34. **落盘写入不是全原子**：`grep -rn "os.replace" server/app` 为空；只有 3 处用 `tmp.replace()` 且临时名确定、无 fsync，
-    其余 JSON/PNG 直接写目标路径。掉电或 kill -9 可能留下 0 字节文件而被 `.exists()` 判为有效（判官 #8）。
-35. **存储型脚本面未关**：`artifact_file` 走 `FileResponse` 按后缀猜类型、`services/artifacts.py:34` 保留源后缀；
-    `:8787` FrameServer 直出 `/global-assets/*.svg` 与 `/project/**`，无 CSP/nosniff。**这条被提交信息写过"已关"，实际没关。**
-36. **版本链会静默吃历史**：`project_docs.py:232` 只保留最新 100 条修订，最早的原始文案（FR-20 验收物）会被删且不标注截断。
-37. **僵尸作业**：DB 里 11 条 `retry_wait` 的心跳早已过期但不会被回收；删除面已改为只看心跳（不受其影响），
-    但作业队列侧仍缺过期/上限策略（判官 §五 之外的运维债）。
+34. **落盘写入已全原子（B5）**：`server/app` 内裸 `write_text/write_bytes` 归零（此前 50 处），统一走 [server/app/atomicwrite.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/app/atomicwrite.py)：pid+uuid 唯一临时名、文件 `fsync`、`os.replace`、父目录 `fsync`、失败清临时名。升 `EXECUTOR_VERSION=2.12.0` 后用 15s/40s 原帧 golden 复跑证明视觉产出没变。守卫是一键复核第 11 项——再出现裸写就直接红。
+35. **存储型脚本面已关（B5）**：文件响应统一走 `security.file_response`，`INLINE_MEDIA` 白名单之外一律 `application/octet-stream` + `Content-Disposition: attachment`（HTML/XML/JS 不再同源执行）；SVG 保留 `image/svg+xml`（时间轴要用），靠响应上的 `CSP default-src 'none'; sandbox` 断掉脚本能力；`:8787` 的数据根（`/project`、`/global-assets`）拒绝 HTML/JS 并加 nosniff+CSP，**`/engine` 不加 CSP**——引擎页要跑自己的脚本，加了会把出片打挂。
+36. **版本链保 v1（B5）**：`_trim_revisions` 保留 v1 + 最新 99 条；`/docs/{kind}/versions` 输出 `truncated`/`keptFirst`，中间被裁掉的历史如实标注，不再假装链完整。
+37. **僵尸作业（未修）**：DB 里 11 条 `retry_wait` 心跳早已过期但不回收；删除面只看心跳所以不受影响，作业队列侧仍缺过期/上限策略（运维债）。
+38. **快照与库内封印（B6）**：`run.snapshot_sha`（迁移 4）绑 `runs/<id>/docs/snapshot.json` 的字节 sha。含义要说准：拷**别 Run** 的快照目录、手改快照 docs 段落、整体替换快照文件（哪怕 JSON 语义不变、字节变了）都会被拦；但**历史 Run 是首次通过内容校验时才补封印**，所以封印证明的是「此后没被换过」，不追溯此前的历史。`params_snapshot` 现网全空、未纳入比对。
+39. **异步失败可见性做在 `api()` 层（B5）**：`error.tsx` 抓不到 promise 拒绝，所以由 `api()` 广播给全局 `ApiFailureBanner`。副作用是**任何**非 2xx 都会弹条，包括页面已自行处理的冲突；不想要弹窗的调用可传 `silent: true`。真机验收用 `scripts/e2e_error_visibility.py`（它已经抓出并修了一个 500→404 的真缺陷）。
 
 ---
 
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`（或按 §0.7 配方重启）；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **236 passed + 1 skipped（collected 237 = unit 212 / integration 18 / BDD 7，约 59s）**
-- [ ] 连跑两次上面这条，`GET /api/projects` 计数不变（当前 35）——这是 P0-3 的核心验收。
-- [ ] `uv run --project server python scripts/verify_p1_governance.py` → **10 步全 ✓**（含 3b 帧网格、9 删除面；见 §0.6.3）。
+- [ ] `cd server && uv run pytest tests -q` → **275 passed（collected 275 = unit 250 / integration 18 / BDD 7，约 49s）**；有 F01 在跑时 `test_p1_foundations.py:174` 会 skip，计数会变。
+- [ ] 连跑两次上面这条，`GET /api/projects` 计数不变（当前 24）——这是 P0-3 的核心验收。
+- [ ] `uv run --project server python scripts/verify_p1_governance.py` → **13 项全 ✓**（3b 帧网格、9 删除面、10 文件响应策略、11 原子写、12 版本链；见 §0.6.3）。
+- [ ] `uv run --project server python scripts/e2e_error_visibility.py` → 异步失败真的落到界面上（B5/P1-6 的唯一真机证据）。
 - [ ] `e2e_ui.py` 8 场景；`smoke_m1.py` 46/93。
-- [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）；`golden_run.py --project 5s --resolution original` 在 2.11.0 下 SSIM 1.0（run 334 已证）。
+- [ ] Phase 4/5/6/7/8 verifier 全绿（见 §0.2）；原帧 golden **5s/15s/40s 都已实跑**（`--project 5s|15s|40s --resolution original`，15s run 334、40s run 336 各 6 帧 SSIM=1.000000；锚在 `fixtures/golden/*/baseline_original/`）。
 - [ ] R2.5 review/audio/delivery verifier 全绿；NTSC 快跑一条：`verify_r2_5_delivery.py --fps 23.976 --duration 2`（run 333 口径）。
 - [ ] `verify_r3.py`、`verify_r3_camera.py`、`e2e_r3.py`、`verify_r3_assets.py`、`e2e_assets.py` 全绿。
 - [ ] `verify_r3_templates.py`、`e2e_templates.py` 全绿。

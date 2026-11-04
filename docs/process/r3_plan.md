@@ -2,7 +2,7 @@
 
 > 代码：R3.0 v1 前序 `7a0ee2c` / tag `r3.0-audio`；FR-36 `r3.0-assets`；FR-37 `f887424` /
 > tag `r3.0-templates`；FR-39 `3bb81a0` / tag `r3.5-qa`；**当前 `EXECUTOR_VERSION=2.11.0`（2.9.3→2.10.0 fps 口径→2.11.0 NTSC 吸附/现算帧数，判官 B2）、preview `1.8.0`**。
-> 状态以 `HANDOFF.md` §0.0 为准：2026-11-04 判官复核（`docs/process/judge-review-2026-11-04.md`）判定整夜自主循环"完成"不成立，其 P0-1/P0-2 与部分 P1 由 B1–B4 修复（HEAD `fb15d58`）。
+> 状态以 `HANDOFF.md` §0.0 为准：2026-11-04 判官复核（`docs/process/judge-review-2026-11-04.md`）判定整夜自主循环「完成」不成立；其 §六 的 #1/#2/#3/#4/#5/#7/#8/#11 由 **B1–B6** 关闭（`7d5b6e4`/`9dfdff9`/`dbc208a`/`fb15d58`/`a324415`/`63d37c0`），15s/40s 原帧 golden 也已实跑（`8ca3e01`）。**未动的是 #6（有效重测 100 场景）、#9（P1-19 剩余脚本）、#10（文档一致性守卫）。**
 
 > 依据：PRD-002 §7.3；R2.5 已收口（tag `r2_5-onboarding`）。R3.0 v1 已于 2026-11-03 验收。
 > 本文覆盖 FR-32/33/34/35/36/37/38 与 R3.5 FR-39；FR-40/41 与 R4 未开始，不虚报。
@@ -165,7 +165,7 @@ QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
   连续 pytest 生产 DB 不变。
 - **P0-5**：`extend_scene` 同步 timeline + profile（失败补偿回滚）；QA `verified=null/documentVerified=true/requiresRerun=true`；`retry_run` fork 新 Run；撤销同步恢复 profile；报告增加 `pendingRerun`。
 - **P0-4a**：新增 `test_render_smoke.py`，真实 Chrome + ffmpeg + SSIM，断言 1s draft 输出 960×540/12fps/12 帧且帧一致性 ≥0.95。
-- **测试**：完整 `pytest server/tests -q` **236 passed + 1 skipped**（collected 237 = unit 212 + integration 18 + BDD 7，2026-11-04 HEAD `fb15d58` 实测），连跑生产 DB 不变。
+- **测试**：完整 `pytest server/tests -q` **275 passed**（collected 275 = unit 250 + integration 18 + BDD 7；2026-11-04 B5/B6 之后实测），连跑生产 DB 不变。有 F01 占 `:8787` 时 `test_p1_foundations.py:174` 会 skip，计数随之变动。
 - **P0-4b 已补齐**：`verify_r2_incremental.py --project 5s|15s|40s`、`golden_run.py --resolution original`、`docs/reports/` JSON 归档；已实跑 5s 增量和 5s 原帧 golden。15s/40s 原帧 baseline 按需生成，本次未跑 40s。
 - **P1-13 交付门禁**：`run_delivery` 先比对当前 timeline 哈希与所选 Run 快照哈希，漂移即 `E_DELIVERY_GATE` 拒绝出片（2 项单测）。
 - **P1-08 时间轴冲突保稿**：409 `E_DOC_CONFLICT` 保留本地草稿并弹出「只看服务端 / 保留本地并重试」，冲突期间暂停自动保存。
@@ -173,6 +173,7 @@ QA 新 Run 时长增加且尾部场景存在、3s 冒烟绿。
 - **P1-17 补充**：`_timeline_before` 记录 `profileExisted`；撤销时若修复前没有 profile 文档行则删掉新生成的那行，不把残缺默认值固化。
 - **判官 B1/B2（2026-11-04）**：删除面硬化（白名单真子目录 + 不含 .git + rumor/演示保护需回显 confirm_name + 心跳判活 + 先校验后动数据 + 库删单事务 + force 留审计；5 项路由级 + 4 项服务级测试）；fps 端到端补齐（NTSC 十进制吸附精确有理数、profile_frames 现算不信任持久化 frames、delivery/timeline_ops/project_docs 三处 int(fps) 清零、F05 容差按半帧、final 帧率白名单），`EXECUTOR_VERSION=2.11.0`，真实 `--fps 23.976` 出片两画幅同帧网格 PASS。
 - **P1-14 已完成并实跑**：`verify_r2_profiles.py` 排序崩溃已修，SSIM 改为分窗口断言（稳定段 ≥0.98 / 切点与入场 0.5s 窗口 ≥0.90）；run 309 / project 248 全绿：稳定段最差 0.998663、窗口最差 0.952097。旧「0.9987」口径只取稳定段，已在 HANDOFF §2.4 作证据修正。
+- **判官 B5/B6（2026-11-04）**：文件响应白名单（HTML/XML/JS/未知后缀 → octet-stream + attachment，SVG 靠 CSP sandbox，`:8787` 数据根拒 HTML/JS、`/engine` 不受影响）；`app/atomicwrite.py` 统一落盘（唯一临时名 + fsync + `os.replace`），`server/app` 内裸 `write_text/write_bytes` 归零，`EXECUTOR_VERSION` → **2.12.0** 并以 15s/40s 原帧 golden 各两次独立 Run 复核（SSIM=1.000000）；版本链保 v1 + `truncated`/`keptFirst`；异步失败在 `api()` 层广播到全局 `ApiFailureBanner`（新 `scripts/e2e_error_visibility.py` 抓到并修了未知 Run 报告 500→404）；快照三道锁 + 迁移 4 `run.snapshot_sha` 库内封印；撤销走 `restore_license`/`restore_mix` 可退回残缺前置态。一键复核扩到 **13 项**。
 - **P1-23（两批 + B3）**：`api/schemas.py` 现有 20 个 `*In` 模型、20 个高风险写端点强校验（项目/文档/时间轴/资产/QA/preview/交付/门决议/档位/task/音频），非法输入统一 422；修掉两处内部传 dict 调用 `projects_create` 的回归；`test_request_models.py` 12 项（422 信封 + happy-path）。**还剩 31 个 `payload: dict`**。
 - **P1-07 迁移登记处**：`db.MIGRATIONS` + `apply_migrations`（版本升序、幂等、已登记跳过），替换一次性 `_migrate_job_table`/`_record_schema_versions`；3 项单测。
 - **P1-19（已开始）**：新增 `scripts/_acceptance.py` 自建自删项目脚手架；`verify_r3_qa.py` 全量改造为自包含（6 步：两处溢出→连续扩场景→LIFO 撤销与抢跑点名→许可 confirm→missing_asset→asset_license_missing→报告），演示项目 227 不再被改写；其余硬编码脚本按批迁移。
