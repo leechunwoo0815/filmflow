@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from sqlmodel import Session, select
 
-from app.config import Settings
+from app.config import Settings, settings
 from app.db import engine
 from app.engine import runengine
 from app.services import delivery
@@ -219,3 +219,84 @@ def test_doc_revisions_capped_at_100(tmp_path: Path):
             delete_project(session, pid, remove_dir=False)
     import shutil
     shutil.rmtree(root, ignore_errors=True)
+
+
+def test_dir_policy_blocks_workspace_root_and_git():
+    from app.config import settings
+    from app.services.project_cleanup import dir_policy, is_protected
+
+    ws = Path(settings.workspace_roots[0]).resolve()
+    assert dir_policy(ws)[0] is False
+    assert dir_policy(Path(__file__).resolve().parents[3])[0] is False  # 本仓库（含 .git）
+    ok, _ = dir_policy(ws / "filmflow-projects" / "any-proj")
+    assert ok is True
+    assert is_protected("rumor-39s") and is_protected("rumor-clean-20261102")
+    assert is_protected("FR37 模板演示") and not is_protected("一次性验证项目")
+
+
+def test_delete_refuses_while_job_running_and_keeps_rows(tmp_path: Path):
+    """在飞作业存在时必须拒绝删除，且不碰任何库行（判官 P0-1 的"先校验后动数据"）。"""
+    from app.models import Job, Project, Run, Workflow
+    from app.services.project_cleanup import delete_project, plan_delete
+
+    root = tmp_path / "inflight-proj"
+    root.mkdir()
+    with Session(engine) as session:
+        p = Project(name="inflight-proj", root=str(root))
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        wf = Workflow(project_id=p.id, name="main", graph_json={"meta": {}})
+        session.add(wf)
+        session.commit()
+        session.refresh(wf)
+        run = Run(workflow_id=wf.id, status="running")
+        job = Job(kind="run", status="running", payload_json={"projectId": p.id}, run_id=run.id)
+        session.add_all([run, job])
+        session.commit()
+        pid = p.id
+        try:
+            plan = plan_delete(session, pid)
+            assert plan["inflight"], plan
+            with pytest.raises(Exception) as e:
+                delete_project(session, pid, remove_dir=False)
+            assert "在飞" in str(e.value), str(e.value)
+            assert session.get(Project, pid) is not None, "被拒后库行必须还在"
+            assert session.get(Job, job.id) is not None
+            # force 只可越过"在飞作业"这一条，并要留审计痕迹
+            out = delete_project(session, pid, remove_dir=False, force=True)
+            assert out["deleted"] == pid
+            from app.models import AuditLog
+            log = session.exec(select(AuditLog).where(
+                AuditLog.action == "project.delete",
+                AuditLog.target == str(pid),
+                AuditLog.after_json["name"].as_string() == "inflight-proj")
+                .order_by(AuditLog.id.desc())).first()
+            assert log is not None and log.after_json.get("forcedInflight") is True
+        finally:
+            if session.get(Project, pid) is not None:   # 上面 force 删除已生效则无需再清
+                delete_project(session, pid, remove_dir=False, force=True)
+            assert session.get(Project, pid) is None
+
+
+def test_dir_policy_failure_does_not_delete_rows(tmp_path: Path):
+    """目录不合规时，绝不能出现"库已删、目录还在"的半死状态。"""
+    from app.models import Project
+    from app.services.project_cleanup import delete_project
+
+    with Session(engine) as session:
+        p = Project(name="bad-root", root=str(Path(settings.workspace_roots[0]).resolve()))
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        pid = p.id
+        try:
+            with pytest.raises(Exception) as e:
+                delete_project(session, pid, remove_dir=True)
+            assert "白名单根" in str(e.value), str(e.value)
+            assert session.get(Project, pid) is not None, "校验未过时不得删库"
+        finally:
+            row = session.get(Project, pid)
+            if row:
+                session.delete(row)
+                session.commit()

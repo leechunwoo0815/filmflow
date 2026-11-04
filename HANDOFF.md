@@ -159,7 +159,18 @@ uv run --project server python scripts/e2e_qa.py                     # QA UI
 **本轮 9 个提交（`git log --oneline 68627d1..HEAD`，全部已推 public）**
 `fc721bd` P1-13+P1-08 · `70f1361` P1-15 · `4a8c7cd` P1-16/18 · `6ff2ce5` P1-17 · `7e5b151` P1-17 补充+P1-19 起步 · `30dd4ce` P1-07 · `3b0203a` P1-23 · `d47cac5` P1-14 · `9bc0f95` docs 口径。更早：`bbb7ebf` P0-1/P0-2/P1-02/03/04 · `34ab6a4` P0-3/P0-5/P0-4a · `a6a28d0` P0-4b。
 
-### 0.6.1 本轮新增的破坏性语义（接手必读，别按旧直觉写代码）
+### 0.6.1 破坏性语义（接手必读，别按旧直觉写代码）
+
+**判官复核后的修复批次（2026-11-04 上午，见 `docs/process/judge-review-2026-11-04.md`）**
+
+9. **项目删除面（B1 已硬化）**：`server/app/services/project_cleanup.py`
+   - `dir_policy()`：项目根必须是白名单条目的**真子目录**（等于白名单根一律拒），且**不能是含 `.git` 的目录**；`POST /projects` 与 `/projects/import` 登记时就拒（`_require_creatable_project_root`），所以"把仓库根注册成项目再删"这条路被掐死。
+   - `plan_delete()` 先出完整计划（目录可否删、是否保护名单、有无在飞作业），**全部校验通过后才动数据**；库行删除走单事务，失败回滚，不再出现"库没了目录还在"。
+   - 保护名单 `is_protected()`：`rumor*`（回归基线，含 project 1 `rumor-39s`、115 `rumor-clean-20261102`）+ 全部演示项目名；删除必须回显 `confirm_name=<项目名>`，布尔参数不足以自证。
+   - 在飞判定按**心跳/started_at 120s 窗口**（`_job_is_live`），不看被启动恢复反复 bump 的 `updated_at`，也不单独看 `Run.status=="running"`（崩溃残留态）；确需强删用 `force=true`，只越过"在飞作业"这一条，并写进审计 `forcedInflight`。
+   - 路由：`DELETE /projects/{id}?confirm=true[&remove_dir=&confirm_name=&force=]`；`confirm=false` 只回计划。测试：`server/tests/integration/test_project_delete_api.py`（5 项路由级）+ `test_p1_foundations.py`（目录策略矩阵 / 在飞拒绝且不留半死 / force 审计 / 白名单根被拒时库行仍在）。
+
+### 0.6.1 本轮新增的破坏性语义（历史批次，接手必读）
 
 1. **资产入库必须带许可**：`POST /assets` 缺 `license.source`/`license.type` → 400 `E_ASSET_LICENSE`；`expires` 非 ISO 或已过期同样拒。旧脚本/UI 只给字体填许可的路径已全部改为通用（`scripts/e2e_assets.py` 因此把许可填写移到上传之前）。
 2. **许可只可补强不可削弱**：资产被任何 timeline/文档/模板/Run 快照引用时，`PATCH /assets/{id}` 送空 `source`/`type` → 400「资产正被引用，不能清空/削弱许可」。未被引用时可自由改。

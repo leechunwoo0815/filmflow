@@ -19,6 +19,7 @@ FilmFlow 是本地代码动画全生命周期工作台：46 节点 / 7 阶段 / 
 - `rights.json` 是 `filmflow.rights/2`，内容由 Run 快照真实资产引用生成；有许可缺口 → `E_LICENSE_MISSING` 拒交付。
 - 非导入项目交付前要求「当前 timeline 哈希 == 所选 Run 快照哈希」→ 否则 `E_DELIVERY_GATE`（演示 188/211 的部分 Run 当前就漂移）。
 - QA 多步修复必须**倒序撤销**（`afterHash` 链顶判定）；文档级修复 `verified=null` + `documentVerified=true`。
+- 删除项目只走 `DELETE /projects/{id}`：项目根必须是白名单**真子目录**且不含 `.git`（登记时就拒），保护名单（rumor 回归基线 + 演示项目）需回显 `confirm_name`，有在飞作业需 `force=true`；先校验后动数据、库删单事务。
 - 9 个高风险写端点已用 Pydantic 请求模型（非法输入 422）；`/projects/import` 与 drafts materialize 是**直接函数调用** `projects_create(ProjectCreateIn(...))`，别再传 dict。
 
 ## 硬约束（不要违反）

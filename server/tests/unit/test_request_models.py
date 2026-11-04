@@ -176,6 +176,6 @@ def test_gate_decide_full_approve_path_end_to_end(tmp_path):
             assert body.get("decision") == "approved", body
     finally:
         with Session(engine) as s:
-            project_cleanup.delete_project(s, pid, remove_dir=False)
+            project_cleanup.delete_project(s, pid, remove_dir=False, force=True)
     import shutil
     shutil.rmtree(root, ignore_errors=True)

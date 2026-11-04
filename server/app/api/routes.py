@@ -311,10 +311,22 @@ def _require_workspace_root(rp: Path) -> None:
         raise ApiError(ErrorCode.E_VALIDATION, f"项目根必须在白名单内：{settings.workspace_roots}")
 
 
+def _require_creatable_project_root(rp: Path) -> None:
+    """登记项目时的目录策略：必须是白名单真子目录，且不能是 git 仓库根。
+
+    否则 POST /projects 可以登记白名单根本身，再经 DELETE /projects/{id} 递归删掉仓库与全部项目。
+    """
+    from ..services import project_cleanup as cleanup_svc
+    _require_workspace_root(rp)
+    ok, reason = cleanup_svc.dir_policy(rp)
+    if not ok:
+        raise ApiError(ErrorCode.E_VALIDATION, f"不能作为项目根：{reason}", status=400)
+
+
 @router.post("/projects")
 async def projects_create(payload: ProjectCreateIn, session: Session = Depends(get_session)):
     rp = Path(payload.root.strip()).resolve()
-    _require_workspace_root(rp)
+    _require_creatable_project_root(rp)
     if not rp.is_dir():
         raise ApiError(ErrorCode.E_VALIDATION, f"目录不存在：{rp}")
     p = session.exec(select(Project).where(Project.root == str(rp))).first()  # type: ignore[arg-type,union-attr]
@@ -331,16 +343,20 @@ async def projects_create(payload: ProjectCreateIn, session: Session = Depends(g
 
 @router.delete("/projects/{project_id}")
 async def projects_delete(project_id: int, confirm: bool = False, remove_dir: bool = True,
-                          confirm_demo: bool = False,
+                          confirm_name: str = "", force: bool = False,
                           session: Session = Depends(get_session)):
-    """P1-06：删除项目（级联清库 + 目录）。必须显式 confirm=true；演示项目受保护名单拦截。"""
+    """P1-06：删除项目（级联清库 + 目录）。
+
+    confirm=false 时只回删除计划；保护名单（rumor 回归基线、演示项目）必须回显 confirm_name；
+    目录策略不合规时一律拒绝；有在飞作业时需显式 force=true（崩溃遗留作业无法自证已死），
+    全部校验都在动数据之前完成，force 会记入审计。
+    """
+    from ..services import project_cleanup as cleanup_svc
     if not confirm:
-        from ..services import project_cleanup as cleanup_svc
         return {"warning": "这是级联删除，重发请求并带 confirm=true 才会执行",
                 **cleanup_svc.plan_delete(session, project_id)}
-    from ..services.project_cleanup import delete_project
-    return delete_project(session, project_id, remove_dir=remove_dir,
-                          confirm_demo=confirm_demo)
+    return cleanup_svc.delete_project(session, project_id, remove_dir=remove_dir,
+                                      confirm_name=confirm_name, force=force)
 
 
 @router.post("/projects/import")
@@ -348,7 +364,7 @@ async def projects_import(payload: dict, session: Session = Depends(get_session)
     """导入参考项目：读 task.json → workflow + run + 初始状态（T06）。"""
     root = payload.get("root", "").strip()
     rp = Path(root).resolve()
-    _require_workspace_root(rp)
+    _require_creatable_project_root(rp)
     task_p = rp / "card" / "task.json"
     if not task_p.exists():
         raise ApiError(ErrorCode.E_VALIDATION, f"缺少 card/task.json：{rp}")
