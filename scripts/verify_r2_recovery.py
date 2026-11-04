@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import argparse
+import atexit
 import os
 import signal
 import subprocess
@@ -13,6 +15,7 @@ import time
 from pathlib import Path
 
 import httpx
+from _acceptance import Cleanup, add_keep_flag
 
 BASE = "http://127.0.0.1:7860/api"
 REPO = Path(__file__).resolve().parents[1]
@@ -58,6 +61,9 @@ def _restart_api() -> None:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    add_keep_flag(ap)
+    args = ap.parse_args()
     if not _health(3):
         raise SystemExit("API 未就绪：先 ./dev.sh")
     styles = _req("GET", "/styles?chips=可生产&family=print&limit=5")["items"]
@@ -72,6 +78,13 @@ def main() -> int:
         "pick": {"primary": styles[0]["id"], "alternates": [], "reason": "recovery"}}})
     r = _req("POST", f"/drafts/{d['id']}/materialize", {})
     rid, pid = r["run_id"], r["project"]["id"]
+    # §7-3：登记自删。本脚本中途 kill -9 并重启 dev.sh，全局 client `c` 在重启后仍可用
+    # （只是连接池里的死连接会被 httpx 重连），atexit 收尾时用同一个 client 没问题；
+    # 但 Cleanup 内部的 _settle 轮询走的是 client 请求，重启窗口内会失败——Cleanup 对
+    # 单个项目 destroy 失败只打印不吞异常（见 Cleanup.__exit__），不会误删别的项目。
+    clean = Cleanup(c, keep=args.keep)
+    clean.track(pid, root)
+    atexit.register(clean.__exit__, None, None, None)
     print(f"run={rid} project={pid} root={root}", flush=True)
     c.post(f"/runs/{rid}/start")
 

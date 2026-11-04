@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import hashlib
 import json
 import shutil
@@ -16,6 +17,7 @@ import time
 from pathlib import Path
 
 import httpx
+from _acceptance import Cleanup, add_keep_flag
 
 BASE = "http://127.0.0.1:7860/api"
 ROOT = Path(__file__).resolve().parents[1]
@@ -135,6 +137,7 @@ def main() -> int:
                     help="每轮最长秒数；0=按项目时长自动给预算")
     ap.add_argument("--keep-frames", action="store_true")
     ap.add_argument("--archive", action="store_true", default=True)
+    add_keep_flag(ap)
     args = ap.parse_args()
 
     spec = json.loads((FIXTURES / args.project / "spec.json").read_text(encoding="utf-8"))
@@ -154,6 +157,10 @@ def main() -> int:
 
     created = create_project(client, spec, primary)
     rid, pid, wf, root = created["run_id"], created["project"]["id"], created["workflow_id"], created["root"]
+    # §7-3：建完即登记，跑完/失败都自删（--keep 保留现场；--keep-frames 只管帧目录）
+    clean = Cleanup(client, keep=args.keep)
+    clean.track(pid, root)
+    atexit.register(clean.__exit__, None, None, None)
     print(f"run1={rid} project={pid} primary={primary}\nroot={root}", flush=True)
     try:
         t1 = drive(client, rid, pid, "run1", timeout)

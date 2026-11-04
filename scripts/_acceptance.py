@@ -224,11 +224,9 @@ _TEARDOWN_RE = (r"\.delete\(\s*f?[\"']/projects/", r"[\"']DELETE[\"'],\s*f?[\"']
 
 # 已知"建项目但不自删"的存量脚本：改造一个就从这里删一个，**新脚本不许进这个名单**。
 # 实测代价：一晚积了 14 个残留项目 / 约 800MB（其中一个 golden-5s 541MB）。
-TEARDOWN_PENDING = {
-    "verify_r2_5_audio.py", "verify_r2_5_delivery.py", "verify_r2_5_delivery_40s.py",
-    "verify_r2_incremental.py", "verify_r2_preview.py", "verify_r2_profiles.py",
-    "verify_r2_recovery.py", "verify_r3_audio_v2.py", "verify_r3_camera.py",
-}
+# 2026-11-05 §7-3：9 个存量全部接上 Cleanup 自删，棘轮归零——名单保留空集是为了
+# 让"再次出现 offender"时报错而不是静默通过。
+TEARDOWN_PENDING: set[str] = set()
 
 
 def audit_script_teardown(scripts_dir) -> list[str]:

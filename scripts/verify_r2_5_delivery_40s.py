@@ -1,6 +1,7 @@
 """R2.5 FR-28 40s 实测：全链 → G07 master QC → 9 文件/QC/zip/双版本。"""
 from __future__ import annotations
 
+import atexit
 import base64
 import json
 import subprocess
@@ -11,6 +12,7 @@ import zipfile
 from pathlib import Path
 
 import httpx
+from _acceptance import Cleanup, add_keep_flag
 from PIL import Image
 
 BASE = "http://127.0.0.1:7860/api"
@@ -63,6 +65,7 @@ def main() -> int:
     ap.add_argument("--project", type=int, help="复用已有项目（跳过建项目/跑链）")
     ap.add_argument("--run", type=int, help="复用已有 Run")
     ap.add_argument("--root", help="复用项目的根目录")
+    add_keep_flag(ap)
     args = ap.parse_args()
     if httpx.get(f"{BASE}/health", timeout=3, trust_env=False).status_code != 200:
         raise SystemExit("API 未就绪")
@@ -95,6 +98,10 @@ def main() -> int:
             "pick": {"primary": styles[0]["id"], "alternates": [], "reason": "delivery40"}}})
         m = req("POST", f"/drafts/{d['id']}/materialize", {}).json()
         rid, pid = m["run_id"], m["project"]["id"]
+        # §7-3：只登记**自建**项目（--project 复用路径不动别人的项目）
+        clean = Cleanup(c, keep=args.keep)
+        clean.track(pid, root)
+        atexit.register(clean.__exit__, None, None, None)
         print("run", rid, "project", pid, "root", root, flush=True)
         v = req("POST", f"/projects/{pid}/audio/upload", {
             "filename": "voice.wav", "data": b64(voice), "kind": "voice", "name": "voice"}).json()["take"]

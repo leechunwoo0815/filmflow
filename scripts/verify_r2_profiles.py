@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import argparse
+import atexit
 import json
 import re
 import sqlite3
@@ -14,6 +16,7 @@ import time
 from pathlib import Path
 
 import httpx
+from _acceptance import Cleanup, add_keep_flag
 from PIL import Image
 
 BASE = "http://127.0.0.1:7860/api"
@@ -120,6 +123,9 @@ def _f02_state(run_id: int) -> dict:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    add_keep_flag(ap)
+    args = ap.parse_args()
     if httpx.get(f"{BASE}/health", timeout=3, trust_env=False).status_code != 200:
         raise SystemExit("API 未就绪：先 ./dev.sh")
     styles = _req("GET", "/styles?chips=可生产&family=print&limit=5")["items"]
@@ -136,6 +142,10 @@ def main() -> int:
         "brief": {"title": "风从纸上起"}}})
     r = _req("POST", f"/drafts/{d['id']}/materialize", {})
     rid, pid = r["run_id"], r["project"]["id"]
+    # §7-3：建完即登记，跑完/失败都自删（--keep 保留现场）
+    clean = Cleanup(c, keep=args.keep)
+    clean.track(pid, root)
+    atexit.register(clean.__exit__, None, None, None)
     print(f"run={rid} project={pid} root={root}", flush=True)
     c.post(f"/runs/{rid}/start")
     _drive(rid, pid)

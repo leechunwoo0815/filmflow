@@ -3,7 +3,9 @@
     --fps 23.976 --duration 2   # 判官 P0-2：NTSC 真实出片端到端（两画幅必须同帧网格）
 """
 from __future__ import annotations
+
 import argparse
+import atexit
 import base64
 import json
 import subprocess
@@ -14,6 +16,7 @@ import zipfile
 from pathlib import Path
 
 import httpx
+from _acceptance import Cleanup, add_keep_flag
 from PIL import Image
 
 BASE = "http://127.0.0.1:7860/api"
@@ -61,6 +64,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fps", default="24", help='交付帧率：24/25/30 或 NTSC "23.976"/"24000/1001"')
     ap.add_argument("--duration", type=float, default=5.0)
+    add_keep_flag(ap)
     args = ap.parse_args()
     import sys as _sys
     _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
@@ -86,6 +90,10 @@ def main() -> int:
         "pick": {"primary": styles[0]["id"], "alternates": [], "reason": "delivery"}}})
     m = req("POST", f"/drafts/{d['id']}/materialize", {}).json()
     rid, pid = m["run_id"], m["project"]["id"]
+    # §7-3：建完即登记，跑完/失败都自删（--keep 保留现场）
+    clean = Cleanup(c, keep=args.keep)
+    clean.track(pid, root)
+    atexit.register(clean.__exit__, None, None, None)
     print("run", rid, "project", pid, "root", root, flush=True)
     v = req("POST", f"/projects/{pid}/audio/upload", {
         "filename": "voice.wav", "data": b64(voice), "kind": "voice", "name": "voice"}).json()["take"]

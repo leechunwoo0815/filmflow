@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
 import httpx
 from playwright.sync_api import sync_playwright
 
-from _acceptance import Cleanup, create
+from _acceptance import throwaway
 from app.config import detect_chrome
 
 BASE = "http://127.0.0.1:7860/api"
@@ -46,10 +46,10 @@ def main() -> int:
 
     c = httpx.Client(base_url=BASE, timeout=60, trust_env=False)
     summary: dict = {}
-    with Cleanup(c, keep=args.keep) as clean:
-        proj = create(c, "b9-ui", "这是 B9 UI 验收项目。两句话够了。")
+    # 自建入口用 throwaway（判据 token + 异常安全自删）；本脚本是纯 UI 冒烟，不需要 --keep
+    del args
+    with throwaway(c, "b9-ui", "这是 B9 UI 验收项目。两句话够了。") as proj:
         pid = proj["id"]
-        clean.track(pid, proj["root"])
         # 派生 timeline 的场景只有 ~2s，加一个字就会 E_SCENE_READ_OVERFLOW（headless 里
         # window.confirm 被自动 dismiss，409 后永远不重试，autosave 版本就推不动）。
         # 播种 6s 场景 + 初始文案，让"追加短句"落在读时预算内。
@@ -63,7 +63,6 @@ def main() -> int:
                   json={"content": content, "base_version": tl["version"],
                         "author": "b9-ui-seed"})
         assert r.status_code == 200, r.text
-        pid = pid
         print(f"project={pid}（已播种 6s 场景）", flush=True)
         v0 = c.get(f"/projects/{pid}/docs/timeline").json()["version"]
 

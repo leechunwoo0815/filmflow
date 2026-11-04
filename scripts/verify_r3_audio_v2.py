@@ -1,6 +1,8 @@
 """FR-35 v2 验收：场景 Take 拼接 + 处理 + 拍点 + −14 LUFS + Stems + G07。"""
 from __future__ import annotations
 
+import argparse
+import atexit
 import base64
 import json
 import shutil
@@ -10,6 +12,7 @@ import time
 from pathlib import Path
 
 import httpx
+from _acceptance import Cleanup, add_keep_flag
 
 BASE = "http://127.0.0.1:7860/api"
 c = httpx.Client(base_url=BASE, timeout=240, trust_env=False)
@@ -43,6 +46,9 @@ def pending(rid: int) -> set[str]:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    add_keep_flag(ap)
+    args = ap.parse_args()
     if c.get("/health", timeout=3).status_code != 200:
         raise SystemExit("API 未就绪")
     styles = req("GET", "/styles?chips=可生产&family=print&limit=3").json()["items"]
@@ -55,6 +61,10 @@ def main() -> int:
         "pick": {"primary": styles[0]["id"], "alternates": [], "reason": "audio-v2"}}})
     m = req("POST", f"/drafts/{d['id']}/materialize", {}).json()
     pid, rid = m["project"]["id"], m["run_id"]
+    # §7-3：建完即登记，跑完/失败都自删（--keep 保留现场）
+    clean = Cleanup(c, keep=args.keep)
+    clean.track(pid, root)
+    atexit.register(clean.__exit__, None, None, None)
     tl = req("GET", f"/projects/{pid}/docs/timeline").json()["content"]
     script = req("GET", f"/projects/{pid}/docs/script").json()["content"]
     scenes = tl["scenes"]

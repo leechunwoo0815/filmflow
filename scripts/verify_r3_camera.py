@@ -1,6 +1,8 @@
 """R3.0 FR-34：时间轴改字/相机/转场 → D01/E03/F04，预览与 final 同刻 SSIM。"""
 from __future__ import annotations
 
+import argparse
+import atexit
 import json
 import re
 import subprocess
@@ -9,6 +11,7 @@ import time
 from pathlib import Path
 
 import httpx
+from _acceptance import Cleanup, add_keep_flag
 
 BASE = "http://127.0.0.1:7860/api"
 c = httpx.Client(base_url=BASE, timeout=240, trust_env=False)
@@ -47,6 +50,9 @@ def ssim(a: Path, b: Path) -> float:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    add_keep_flag(ap)
+    args = ap.parse_args()
     styles = req("GET", "/styles?chips=可生产&family=print&limit=5").json()["items"]
     d = req("POST", "/drafts", {"name": "r3-camera", "step": 1}).json()
     root = ROOT / f"r3-camera-{d['id']}"
@@ -57,6 +63,10 @@ def main() -> int:
         "pick": {"primary": styles[0]["id"], "alternates": [], "reason": "r3-camera"}}})
     m = req("POST", f"/drafts/{d['id']}/materialize", {}).json()
     pid, rid = m["project"]["id"], m["run_id"]
+    # §7-3：建完即登记，跑完/失败都自删（--keep 保留现场）
+    clean = Cleanup(c, keep=args.keep)
+    clean.track(pid, root)
+    atexit.register(clean.__exit__, None, None, None)
     tl = req("GET", f"/projects/{pid}/docs/timeline").json()
     version = tl["version"]
     assert len(tl["content"]["scenes"]) == 5

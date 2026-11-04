@@ -1,5 +1,8 @@
 """R2.5 FR-27 验收：Take/波形/手动对齐/许可/G05 混音/Stems/G06/G07。"""
 from __future__ import annotations
+
+import argparse
+import atexit
 import base64
 import json
 import subprocess
@@ -8,6 +11,7 @@ import time
 from pathlib import Path
 
 import httpx
+from _acceptance import Cleanup, add_keep_flag
 
 BASE = "http://127.0.0.1:7860/api"
 c = httpx.Client(base_url=BASE, timeout=240)
@@ -45,6 +49,9 @@ def ffprobe_dur(path: Path) -> float:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    add_keep_flag(ap)
+    args = ap.parse_args()
     if httpx.get(f"{BASE}/health", timeout=3, trust_env=False).status_code != 200:
         raise SystemExit("API 未就绪")
     voice = Path("/tmp/voice.wav")
@@ -65,6 +72,10 @@ def main() -> int:
         "pick": {"primary": styles[0]["id"], "alternates": [], "reason": "audio"}}})
     m = req("POST", f"/drafts/{d['id']}/materialize", {}).json()
     rid, pid = m["run_id"], m["project"]["id"]
+    # §7-3：建完即登记，跑完/失败/被杀外的任何退出路径都自删（--keep 保留现场）
+    clean = Cleanup(c, keep=args.keep)
+    clean.track(pid, root)
+    atexit.register(clean.__exit__, None, None, None)
     print("run", rid, "project", pid, "root", root, flush=True)
     v = req("POST", f"/projects/{pid}/audio/upload", {
         "filename": "voice.wav", "data": b64(voice), "kind": "voice", "name": "voice"}).json()["take"]

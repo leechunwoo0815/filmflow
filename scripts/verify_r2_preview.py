@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+import argparse
+import atexit
 import concurrent.futures
 import io
 import json
@@ -24,6 +26,7 @@ import time
 from pathlib import Path
 
 import httpx
+from _acceptance import Cleanup, add_keep_flag
 from PIL import Image
 
 BASE = "http://127.0.0.1:7860/api"
@@ -130,6 +133,9 @@ def _wait_job(job_id: str, timeout: float = 90) -> tuple[dict, float]:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    add_keep_flag(ap)
+    args = ap.parse_args()
     if httpx.get(f"{BASE}/health", timeout=3, trust_env=False).status_code != 200:
         raise SystemExit("API 未就绪：先 ./dev.sh")
     styles = _req("GET", "/styles?chips=可生产&family=print&limit=5")["items"]
@@ -148,6 +154,10 @@ def main() -> int:
     r = _req("POST", f"/drafts/{d['id']}/materialize", {})
     rid, pid, wf = r["run_id"], r["project"]["id"], r["workflow_id"]
     proj = Path(r["project"]["root"])
+    # §7-3：建完即登记，跑完/失败都自删（--keep 保留现场）
+    clean = Cleanup(c, keep=args.keep)
+    clean.track(pid, proj)
+    atexit.register(clean.__exit__, None, None, None)
     print(f"run1={rid} project={pid} root={proj}", flush=True)
     c.post(f"/runs/{rid}/start")
     _decision_loop(rid, pid)
