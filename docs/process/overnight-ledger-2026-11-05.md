@@ -74,3 +74,32 @@ draft 46/10 目录 1.5GB→47 draft/11 目录 1.6G + retry_wait 7。
 提交：本条 + 任务书 12 处修正 + HANDOFF 两处（见下一条 git log）
 
 遗留/待决策：不变（任务书 §8 五个决策点仍待老板点头）。
+
+---
+
+### 轮 1 · A1 黄金报告防覆写 · 2026-11-06 00:3x
+
+改了什么：`scripts/golden_run.py` 归档段（原 :319-326）——归档名加 UTC 时间戳
+（`{project}-{resolution}-run{rid}-{YYYYMMDDTHHMMSSZ}.json`）、同名/同秒重跑**绝不覆写**（后缀 -2/-3 递进）、
+新增并维护 `docs/reports/golden/index.json`（schema `filmflow.golden-index/1`，每条
+project/resolution/runId/at/executorVersion/ssimMin/status/reportFile；**首次落盘自动回填既有 9 份历史归档**）；
+归档写盘改 `write_atomic`（原为裸 `write_text`）。
+
+实测：
+- 真跑 `uv run --project server python scripts/golden_run.py --project 5s --resolution original`
+  → **SSIM=1.000000 ×6 / pHashDist=0**（run 336，EXECUTOR=2.15.0 · Chrome 156.0.8078.80 · ffmpeg 9.0.2 ·
+  font=a3041811…），`archived report: …/5s-original-run336-20261105T162717Z.json`，
+  `golden index: …/index.json（10 条）`，跑完自删、DB 12→**11** 恒定。
+- **旧文件仍在**：`5s-original-run336.json`（11-05 23:37 那份）mtime 未变；新档是独立时间戳文件——覆写问题闭环。
+- `cd server && uv run pytest tests -q` ×2 → **360 passed + 1 skipped**（188.98s/182.33s；
+  skip= `test_p1_foundations.py:234` 8787 门控，dev 在跑所致——**A8 将去除**，两轮数字一致）
+- `verify_p1_governance.py` → **16 项全 ✓ PASS**；`check_docs_consistency.py` → **PASS**
+- ruff：server **339** / 仓库根 **405**（不高于基线）；`cd web && npx tsc --noEmit` → 0 错
+
+真渲染证据：有——run 336，SSIM [1.0×6]，报告 `docs/reports/golden/5s-original-run336-20261105T162717Z.json`。
+
+没验的：`--update` 分支下归档路径未实跑（代码同一分支，`--update` 判据在台账里注明）。
+
+提交：见下一条 git log（fix(a1)）
+
+遗留/待决策：无

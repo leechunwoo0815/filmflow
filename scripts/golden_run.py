@@ -316,13 +316,48 @@ def main() -> int:
     (root / "out" / "golden_report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     if args.archive:
+        from app.atomicwrite import write_atomic
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        # A1（2026-11-06）：清库后 run id 会回落，旧命名 `-run{rid}.json` 被同名覆写
+        # （11-04 的 5s-original-run336.json 原件就是这么没的，证据可混淆）。归档名
+        # 一律带 UTC 时间戳、绝不覆写；index.json 是归档台账（首次落盘时回填既有文件）。
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        index_path = REPORT_DIR / "index.json"
+        if index_path.exists():
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+        else:
+            index = {"schema": "filmflow.golden-index/1", "items": []}
+            known = {it.get("reportFile") for it in index["items"]}
+            for old in sorted(REPORT_DIR.glob("*-run*.json")):
+                if old.name in known:
+                    continue
+                try:
+                    o = json.loads(old.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                ssims_old = (o.get("summary") or {}).get("ssim") or []
+                index["items"].append({
+                    "project": o.get("project"), "resolution": o.get("resolution"),
+                    "runId": o.get("runId"), "at": o.get("generatedAt"),
+                    "executorVersion": (o.get("environment") or {}).get("executorVersion"),
+                    "ssimMin": min(ssims_old) if ssims_old else None,
+                    "status": o.get("status"), "reportFile": old.name})
         for rr in resolution_reports:
-            archived = REPORT_DIR / f"{args.project}-{rr['resolution']}-run{rid}.json"
-            archived.write_text(json.dumps({**report, "resolution": rr["resolution"],
-                                            "summary": rr}, ensure_ascii=False, indent=1),
-                                encoding="utf-8")
+            archived = REPORT_DIR / f"{args.project}-{rr['resolution']}-run{rid}-{stamp}.json"
+            n = 2
+            while archived.exists():      # 同一秒重跑也不覆写
+                archived = REPORT_DIR / f"{args.project}-{rr['resolution']}-run{rid}-{stamp}-{n}.json"
+                n += 1
+            write_atomic(archived, json.dumps({**report, "resolution": rr["resolution"],
+                                               "summary": rr}, ensure_ascii=False, indent=1).encode("utf-8"))
+            index["items"].append({
+                "project": args.project, "resolution": rr["resolution"], "runId": rid,
+                "at": report["generatedAt"], "executorVersion": env["executorVersion"],
+                "ssimMin": min(rr["ssim"]) if rr.get("ssim") else None,
+                "status": report["status"], "reportFile": archived.name})
             print(f"  archived report: {archived}", flush=True)
+        write_atomic(index_path, json.dumps(index, ensure_ascii=False, indent=1).encode("utf-8"))
+        print(f"  golden index: {index_path}（{len(index['items'])} 条）", flush=True)
     print(f"{'UPDATED' if args.update else 'PASS'}: {args.project} "
           f"resolutions={','.join(resolutions)} report={root / 'out' / 'golden_report.json'}")
     if not args.keep:

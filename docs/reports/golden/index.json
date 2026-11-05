@@ -1,0 +1,105 @@
+{
+ "schema": "filmflow.golden-index/1",
+ "items": [
+  {
+   "project": "15s",
+   "resolution": "original",
+   "runId": 333,
+   "at": "2026-11-04T07:44:38Z",
+   "executorVersion": null,
+   "ssimMin": 1.0,
+   "status": "updated",
+   "reportFile": "15s-original-run333.json"
+  },
+  {
+   "project": "15s",
+   "resolution": "original",
+   "runId": 334,
+   "at": "2026-11-04T07:47:01Z",
+   "executorVersion": null,
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "15s-original-run334.json"
+  },
+  {
+   "project": "40s",
+   "resolution": "original",
+   "runId": 335,
+   "at": "2026-11-04T07:52:06Z",
+   "executorVersion": null,
+   "ssimMin": 1.0,
+   "status": "updated",
+   "reportFile": "40s-original-run335.json"
+  },
+  {
+   "project": "40s",
+   "resolution": "original",
+   "runId": 336,
+   "at": "2026-11-04T07:56:49Z",
+   "executorVersion": null,
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "40s-original-run336.json"
+  },
+  {
+   "project": "5s",
+   "resolution": "original",
+   "runId": 306,
+   "at": "2026-11-03T10:26:16Z",
+   "executorVersion": null,
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "5s-original-run306.json"
+  },
+  {
+   "project": "5s",
+   "resolution": "original",
+   "runId": 312,
+   "at": "2026-11-03T16:13:09Z",
+   "executorVersion": null,
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "5s-original-run312.json"
+  },
+  {
+   "project": "5s",
+   "resolution": "original",
+   "runId": 334,
+   "at": "2026-11-04T06:02:47Z",
+   "executorVersion": null,
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "5s-original-run334.json"
+  },
+  {
+   "project": "5s",
+   "resolution": "original",
+   "runId": 335,
+   "at": "2026-11-04T16:16:16Z",
+   "executorVersion": "2.13.0",
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "5s-original-run335.json"
+  },
+  {
+   "project": "5s",
+   "resolution": "original",
+   "runId": 336,
+   "at": "2026-11-05T15:37:10Z",
+   "executorVersion": "2.15.0",
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "5s-original-run336.json"
+  },
+  {
+   "project": "5s",
+   "resolution": "original",
+   "runId": 336,
+   "at": "2026-11-05T16:27:17Z",
+   "executorVersion": "2.15.0",
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "5s-original-run336-20261105T162717Z.json"
+  }
+ ]
+}
