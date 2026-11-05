@@ -242,8 +242,11 @@ def test_frameserver_writes_frames_atomically(tmp_path: Path):
     srv.start()
     try:
         body = ("data:image/png;base64," + png).encode()
+        # P2-32：帧上传在数据面，必须带本进程 token（同进程测试直接读 settings）
+        from app.config import settings as _settings
         req = urllib.request.Request(
-            "http://127.0.0.1:8787/frame?i=7", data=body, method="POST")
+            f"http://127.0.0.1:8787/frame?i=7&tok={_settings.frame_token}",
+            data=body, method="POST")
         with urllib.request.urlopen(req, timeout=5) as r:
             assert r.status == 204
         f = root / "out" / "frames" / "0007.png"

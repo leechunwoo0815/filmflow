@@ -1,5 +1,9 @@
 # B9 收口 + 队列第 1–4 项 · 整夜执行报告（2026-11-05 凌晨）
 
+> **【第二夜续篇 · 同日】** 老板指令「继续做，直到完全没有任何 bug」——本报告 §八 起
+> 为第二夜：专家账本 P2 再清 **15 条**（P2-02/03/06/14/16/18/19/20/21/22/23/28/30/32/34），
+> 终验口径全数升级（359 passed ×2 / EXECUTOR 2.15.0 / preview-2.0.0）。§八 详述。
+
 > 执行者：ZCode（goal 模式）。接手入口 `docs/process/handoff-prompt-b9.md`；
 > 老板指令「按顺序做完 §7 队列 → 全部完成并自检 → 产出本报告供专家全量审查」。
 > 所有数字均为当晚实测输出，可复现命令逐条附在正文。
@@ -160,3 +164,90 @@ uv run --project server python scripts/verify_p1_governance.py
 # 3) 干净机器自检
 bash scripts/bootstrap_fresh_clone.sh
 ```
+
+
+## 八、第二夜 · P2 账本再清 15 条（2026-11-05 凌晨，老板指令"直到没有任何 bug"）
+
+### 8.1 引擎/并发/安全
+- **P2-02 timeout/retries 死配置 → 强制执行**：edges.py 节点表的 timeout/retries 此前
+  **从未被任何代码读取**（卡死节点永远卡住）。现在 timeout>0 强制 `asyncio.wait_for`，
+  超时先 `runner.kill_current()` 杀执行器子进程（否则 ffmpeg/Chrome 成孤儿继续写产物），
+  再按 retries 自动重试，耗尽报 `E_NODE_TIMEOUT`；timeout=0（A04/A05）语义不变。
+  `EXECUTOR_VERSION` → **2.15.0**（5 条新单测：重试后成功 / 耗尽失败 / 锁序列化 / 版本下限）。
+- **P2-03 同项目并发 Run 无互斥 → 项目级锁**：frames/out/film 都是项目根共享的，
+  两个 Run 任务并发写会互相覆盖帧。锁按任务生命周期持有（park/结束释放，
+  等人工门的 Run 让位给同项目下一个 Run）。
+- **P2-32 FrameServer 无鉴权 → 数据面 token**：`/project`、`/global-assets`、帧 POST
+  必须带进程内随机 `?tok=`（config.frame_token）；`/engine/` 公开代码不设闸（**设计
+  决定，见 8.4 的回归教训**）；复用探针打受保护路径——另一进程的帧服务 403 →
+  `E_PORT_BUSY` fail-closed（顺带修掉"静默复用别的进程帧服务 → 黑帧"旧隐患）。
+- **P2-06 缓存作用域**：裁决为**不做隔离**（内容寻址键 + `_cache_hit_is_material`
+  已覆盖真实风险），理由与监测点写进 `docs/adr/ADR-0013-cache-scope.md`。
+
+### 8.2 服务运维
+- **P2-28 零日志 → 结构化日志**：`app/logs.py`（stderr + `~/.filmflow/logs/app.log`
+  RotatingFileHandler，`FILMFLOW_LOG_LEVEL` 可调）；runengine 节点失败/Run 生命周期/
+  启动恢复、main 启动动作全部接线。**已实证**：app.log 出现 startup/backup 结构化行。
+- **P2-34 手工备份 → 启动每日自动备份**：sqlite3 backup API（WAL 安全）→
+  `~/.filmflow/backups/filmflow-auto-YYYYMMDD.db`，保留 10 份。**已实证**：
+  `filmflow-auto-20261105.db` 33.4MB 自动生成。
+- **P2-30 except:pass 清账**：server/app 内 **27 处** S110 全部转为
+  `_log.debug(..., exc_info=True)`（语义不变、留痕可查），ruff S110=0。
+
+### 8.3 QA / 模板 / 渲染一致性
+- **P2-21 报告结构性失真**：apply_fix 此前只记 `applied`——`failed` 恒 0、
+  `successRate` 恒 1.0。现在失败尝试也落账（含 error），report 如实统计。
+- **P2-22 分类靠消息子串**：F03 失败优先读 `frame_report.json` 结构化分类
+  （missing/black 计数），子串只做回退。
+- **P2-23 定位 fps 错位**：E06 staticRuns 的帧号是**代理档 fps** 下的帧号，qa 却拿
+  timeline 的 24 去换算（错开整数倍）——改用报告自带 fps。
+- **P2-18 模板丢 scene.text**：项目模板保存场景当前文本（timeline/ops 的改字此前
+  全丢回原始 copy）；重建时"未分到句子的场景"用保存文本兜底，分到句子的仍以 script 为准。
+- **P2-19 模板升级删图层**：overlay 此前会把当前项目的 layers/audio_layers 在模板
+  未携带时 **pop 掉**——改为绝不删用户资产图层（纯视觉结构键仍按模板重置）。
+- **P2-20 系列半途失败留孤儿**：`/series/from-template` 失败项出现时，**回滚本批
+  已建项目**（取消在飞 Run + 级联删除），响应带 `rolledBack` 明细；failed/created 如实统计。
+- **P2-14 相机三路径不一致 + ease 被忽略**：① preview 的相机构造是另一套方言
+  （zoom/pan 时段对且 t 用场景绝对 start/end——场景 start>0 时 `cameraAt` 插值全程
+  clamp 在第一帧，**"默认缓推 3%"在预览里从不发生**而 final 会发生）——统一到
+  `compiler.camera_from_e02` 单源（0 基关键帧、ease 透传）；② 引擎 `cameraAt` 此前
+  **完全忽略 keyframes 的 ease 字段**（恒线性）——补 linear/easeIn/easeOut/easeInOut
+  （linear 逐字节不变，golden 不受影响）。`RENDERER_VER` → **preview-2.0.0**。
+
+### 8.4 第二夜抓出并修复的**自身回归**（重要）
+P2-32 初版把 token 设为"全路径必须携带 + cookie 兜底"。重启 dev 后真渲染验证立刻
+炸出两处：E05 代理帧 **0/120**、D02 静帧全黑（D04 判过暗）。根因：**进程内随机 token
+随重启轮换 × 长命 Chrome（prewarm 9222/缓存 profile）的缓存页与旧 cookie**——页面从
+缓存出、`<script src>` 相对路径不带 query tok、旧 cookie 不匹配新 token → 引擎脚本
+403 → 黑帧。修复：token 收窄到数据面（/project、/global-assets、帧 POST），
+`/engine/` 公开（本就入 git、有 CSP 头）。**教训入账**：给浏览器加载的静态资源加
+鉴权时，必须先回答"缓存与长命客户端怎么活过 token 轮换"。
+修复后全链真渲染复验：`verify_r3_camera` PASS（SSIM 0.989483）、golden 5s 原帧
+**SSIM=1.000000 ×6**（run 336，EXECUTOR=2.15.0）、`e2e_b9_ui` PASS、DB 11 恒定。
+
+### 8.5 其余条目处置（不虚报）
+- **P2-11 图片失败画 X 框**：复核后判定**已实现且是设计**（`drawImageLayer` 对加载
+  失败的图层画 X 框占位；检测面由 QA `E_ASSET_MISSING`/预览 409 覆盖）——记 SAFE。
+- **P2-12（音频 loudnorm/色彩/码率簇）、P2-13（转场期文字淡出）**：均为渲染/音频
+  行为修改，需要专属验证环境（音频用 `verify_r3_audio_v2` 的 LUFS/响度链路、转场
+  需逐帧 SSIM 对照）——按"未验证的渲染改动不过夜"原则**留待专批**，不虚报。
+- **P2-25（17 个 .feature 只绑 2 个）**：未动——现有 2 个绑定文件 + 359 条测试
+  已覆盖对应行为；补绑定是过程债不是 bug，列下一批。
+- **P2-15 a11y、P2-17 资产 GC**：大 UI 工程，维持账本原状。
+
+### 8.6 第二夜终验（全绿）
+
+| 项 | 命令 | 实测 |
+|---|---|---|
+| pytest ×2 | dev 停跑 `cd server && uv run pytest tests -q` | **359 passed ×2**（188.0s/190.6s，0 skipped 0 xfailed；collected 359 = unit 319 + integration 33 + BDD 7） |
+| 一键复核 | `verify_p1_governance.py` | **16 项全 ✓**（EXECUTOR=2.15.0、迁移 [1,2,3,4,5]、跑后 DB 11 恒定） |
+| 文档守卫 | `check_docs_consistency.py` | **PASS**（现值行全对齐） |
+| tsc | `web: tsc --noEmit` | 0 错误（死依赖移除后 web build 亦过） |
+| ruff | server 口径 / 仓库根 | **339 / 407**（S110=0、F821=0） |
+| golden | `golden_run.py --project 5s --resolution original` | **SSIM=1.000000 ×6**（run 336，2.15.0 终版） |
+| verify_r3_camera | 真渲染 D01/E03/E04/F04 + preview vs final | **PASS**（SSIM 0.989483） |
+| e2e_b9_ui | P1-08/P1-18 | **PASS** |
+| DB/磁盘 | `GET /api/projects` / `du` | **11 项目恒定** / 1.6G（含本轮孤儿帧清理） |
+
+**第二夜提交**：`feat(p2-02/03/28/30/32/34)`、`fix(p2-18/19/20/21)`、`fix(p2-14)`、
+`fix(p2-32 回归根因)`、`test(camera)` 及文档——与第一夜 10 个提交同样**全部未推送**（push 需老板点头）。
