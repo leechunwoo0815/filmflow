@@ -226,26 +226,24 @@ def test_frameserver_writes_frames_atomically(tmp_path: Path):
 
     from app.engine.executors.pipeline import FrameServer
 
-    # 8787 全局单例且跨进程不互斥：dev 服务在跑时会静默复用它的 root，帧会写进别家项目
-    probe = socket.socket()
-    busy = probe.connect_ex(("127.0.0.1", 8787)) == 0
-    probe.close()
-    if busy:
-        pytest.skip("8787 已被 dev 服务占用（跨进程不互斥）；停 dev 后覆盖此测试")
-
     root = tmp_path / "proj"
     (root / "out").mkdir(parents=True)
     png = b64.b64encode(b"\x89PNG\r\n\x1a\ntest").decode()
-    # 8787 若被占用会复用既有服务（写别的 root）——先探测，占用则跳过断言 root 归属
+    # A8（2026-11-06）：帧端口自 2.14.0 起可配置——绑空闲端口，测试不再依赖 8787
+    # 是否被 dev 占用（旧实现写死 8787 + skip 门控，dev 在跑就丢覆盖率）；空闲端口
+    # 也保证 start() 不会走 reuse 探针静默复用别家 root。
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
     srv = FrameServer(str(root))
-    srv.port = 8787
+    srv.port = port
     srv.start()
     try:
         body = ("data:image/png;base64," + png).encode()
         # P2-32：帧上传在数据面，必须带本进程 token（同进程测试直接读 settings）
         from app.config import settings as _settings
         req = urllib.request.Request(
-            f"http://127.0.0.1:8787/frame?i=7&tok={_settings.frame_token}",
+            f"http://127.0.0.1:{port}/frame?i=7&tok={_settings.frame_token}",
             data=body, method="POST")
         with urllib.request.urlopen(req, timeout=5) as r:
             assert r.status == 204

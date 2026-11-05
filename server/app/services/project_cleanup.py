@@ -22,6 +22,9 @@ from ..models import AuditLog, Job, Project, ProjectDoc, Run, Workflow
 
 # 回归与演示资产：删掉就毁掉可复核基线，必须回显名字才能删
 _PROTECTED_PREFIXES = ("rumor",)
+# A5（2026-11-06）裁定：golden-5s 保留——golden_run 仍按 `golden-5s-*` 命名自建自删，
+# 按名保护能防其它脚本误碰在跑/残留的黄金项目；不是陈旧名单（216/223 那两个 id
+# 才是，已从 _acceptance.DEMO_PROJECTS 移除）。
 _PROTECTED_NAMES = {"一条消息被转发往往不是因为-1", "FR37 模板演示", "FR37模板演示-1",
                     "r3-demo-20261103", "r3-demo-20261103-1", "trace-x",
                     "r3-camera", "r3-audio-v2", "r2_5-delivery", "r2_5-delivery40",

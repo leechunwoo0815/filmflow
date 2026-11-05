@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import shutil
+import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -457,6 +459,35 @@ def check_no_demo_writes(c: httpx.Client) -> None:
        f"写状态脚本全部自建、闸门实测拒绝演示 id 与不存在 id、.acceptance 无残留")
 
 
+def check_lint_ratchet() -> None:
+    """A3（2026-11-06）：BLE001 曾从 72 涨到 75 无人看守——两口径的总数与黑名单
+    规则（BLE001/S110/F821）全部入棘轮，对照 docs/reports/lint-baseline.json，
+    **只许降不许涨**；上调基线必须先修代码并在台账给理由（审查方复核点）。"""
+
+    def counts(cwd: Path) -> dict:
+        proc = subprocess.run([str(ROOT / "server" / ".venv" / "bin" / "ruff"), "check", ".",
+                               "--output-format", "json"],
+                              cwd=str(cwd), capture_output=True, text=True, check=False)
+        items = json.loads(proc.stdout or "[]")
+        agg: dict = {"total": len(items)}
+        for it in items:
+            agg[it["code"]] = agg.get(it["code"], 0) + 1
+        return agg
+
+    parts = []
+    for label, cwd in (("serverCwd", ROOT / "server"), ("repoRootCwd", ROOT)):
+        cur = counts(cwd)
+        limits = json.loads((ROOT / "docs" / "reports" / "lint-baseline.json")
+                            .read_text(encoding="utf-8"))[label]
+        for key, limit in sorted(limits.items()):
+            got = cur.get(key, 0)
+            assert got <= limit, f"{label}.{key}={got} > 棘轮 {limit}——涨了就修代码，不许抬基线"
+        parts.append(f"{label} total={cur['total']}/{limits['total']}"
+                     f" BLE001={cur.get('BLE001', 0)}/{limits['BLE001']}"
+                     f" S110={cur.get('S110', 0)}/{limits['S110']} F821={cur.get('F821', 0)}")
+    ok("17 lint 棘轮", "；".join(parts) + "（对照 lint-baseline.json，只许降）")
+
+
 def main() -> int:
     with httpx.Client(base_url=BASE, headers=HEADERS, timeout=120, trust_env=False) as c:
         if c.get("/health").status_code != 200:
@@ -480,6 +511,7 @@ def main() -> int:
         check_migrations_and_validation(c)
         check_delete_surface(c)
         check_atomic_writes()
+        check_lint_ratchet()
         check_typed_write_bodies(c)
         check_script_teardown()
         check_no_demo_writes(c)      # 放在最后：.acceptance 残留检查要求前面的自建项目都已回收

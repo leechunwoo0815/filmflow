@@ -149,9 +149,13 @@ def add_keep_flag(parser) -> None:
 
 # ---------- 演示项目污染闸门（判官 P1-9 / §六 #9） ----------
 
-DEMO_PROJECTS = {202: "r3-demo-20261103", 174: "r2_5-delivery40", 188: "r3-camera",
-                 211: "r3-audio-v2", 215: "r2_5-delivery", 216: "golden-5s",
-                 223: "golden-5s", 227: "FR37 模板演示"}
+# 现网 11 个演示/参考项目（与 HANDOFF §7.4 逐个同步；2026-11-06 A5 复核）。
+# 216/223 曾在列——golden_run 验证残留、2026-11-05 §7-3 已删，id 名单只留活项目。
+# 静态扫描只匹配 \d{2,4} 的三种写法，id 1/4（单位数）不会被误报；运行时闸门按真 id 全护。
+DEMO_PROJECTS = {1: "rumor-39s", 4: "trace", 115: "rumor-clean-20261102",
+                 151: "r2_5-audio", 174: "r2_5-delivery40", 188: "r3-camera",
+                 202: "r3-demo-20261103", 206: "r2_5-delivery", 211: "r3-audio-v2",
+                 215: "r2_5-delivery", 227: "FR37 模板演示"}
 
 # 按设计可以碰非自建项目的脚本（新增豁免必须写理由，这里是唯一登记处）：
 #   cleanup_projects          —— 审计残留清理工具本身

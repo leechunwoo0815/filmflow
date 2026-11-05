@@ -18,7 +18,7 @@
 
 1. `cd server && uv run pytest tests -q` 全绿，**连跑两次**数字一致，且 0 skipped / 0 xfailed（有就必须写明理由）；
    跑完生产库计数不变（`conftest` 的守卫会自动判）。
-2. `uv run --project server python scripts/verify_p1_governance.py` → 全项 ✓（现在 16 项，你新增守卫就更多）。
+2. `uv run --project server python scripts/verify_p1_governance.py` → 全项 ✓（现在 17 项，你新增守卫就更多）。
 3. `uv run --project server python scripts/check_docs_consistency.py` → PASS。
 4. `cd web && npx tsc --noEmit` 干净；`cd server && uv run ruff check .` **不高于 339**、仓库根 `uv run --project server ruff check .` **不高于 405**（只许降）。
 5. 每个 Wave 的每条任务都有：**代码落点（file:line）+ 可复现实测输出 + 提交哈希**，写进台账 `docs/process/overnight-ledger-2026-11-05.md`（格式见 §6）。
@@ -58,15 +58,15 @@ cd /Users/litianyu/cc-projects/ai-v/filmflow
 git log --oneline -6 && git status --porcelain          # 应为 clean，HEAD=df5fbbb 或其后
 ./dev.sh                                                # 用工具的后台执行方式启动；别 nohup + 退出 shell（会被回收）
 curl -s http://127.0.0.1:7860/api/health
-cd server && uv run pytest tests -q                     # 基线：361 passed（0 skip 0 xfail；dev 在跑时是 360+1skip——test_p1_foundations.py:234 的 8787 门控，见台账轮 0 与任务 A8）
+cd server && uv run pytest tests -q                     # 基线：364 passed（0 skip 0 xfail；A8 已去除 8787 门控，dev 在跑同样 0 skip）
 uv run --project server python scripts/verify_p1_governance.py    # 基线：16 项全 ✓
 uv run --project server python scripts/check_docs_consistency.py  # 基线：PASS
 ```
 
 **基线数字（2026-11-05 深夜，审查方实测/复核）**：
-- pytest **361 collected**（unit 321 / integration 33 / BDD 7）；第二夜自述 **361 passed ×2**（214.5s / 188.1s，0 skip 0 xfail）。
-- 治理 **16 项全 ✓**；文档守卫 **PASS**（EXECUTOR=2.15.0 · 迁移 [1,2,3,4,5] · DB=11 项目 · 裸 dict 写端点 0）。
-- ruff：**339**（`cd server` 口径）/ **405**（仓库根口径）；S110 剩 **1** 处（`server/tests/unit/test_multi_step_writes.py:50`）；BLE001 **75**（无棘轮）。
+- pytest **364 collected**（unit 324 / integration 33 / BDD 7；361→364 是 A5 把污染闸门测试按 DEMO_PROJECTS 现网 11 项目重新参数化 +3）；整夜 R2 **364 passed ×2**（188.7s / 186.2s，0 skip 0 xfail，dev 在跑）。
+- 治理 **17 项全 ✓**（第 17 项＝A3 lint 棘轮）；文档守卫 **PASS**（EXECUTOR=2.15.0 · 迁移 [1,2,3,4,5] · DB=11 项目 · 裸 dict 写端点 0）。
+- ruff：**339**（`cd server` 口径）/ **405**（仓库根口径）——已入棘轮（治理第 17 项 + `docs/reports/lint-baseline.json`：BLE001 65/75、S110 1/1、F821 0，**只许降不许涨**）。
 - DB：11 项目 / 47 draft（僵尸 0）/ 44 run / `retry_wait` **7** 条（整夜交接时是 12，其中 5 条已在深夜 dev 重启时按 72h 心跳被 `jobs.expire_parked` 自然收走——策略按设计工作，这正是 A7 要真实演练的机制；剩余 7 条全属 rumor-39s 与演示 188，是"等人工门"的正常态，**不许删**）；磁盘 1.6G；`~/.filmflow` 1.5G；自动备份 `filmflow-auto-20261105.db` 33.4MB。
 - **25 个提交在本地未推送**（`origin/master` 停在 `8266f11`；此后一律以 `git rev-list --count origin/master..HEAD` 实时值为准）。
 - 已知环境陷阱：本机 shell/dev 进程带 `NO_PROXY=…,[::1],::1`；全仓 httpx 客户端已补 `trust_env=False`（`dab7fe4`），

@@ -103,3 +103,38 @@ project/resolution/runId/at/executorVersion/ssimMin/status/reportFile；**首次
 提交：见下一条 git log（fix(a1)）
 
 遗留/待决策：无
+
+---
+
+### 轮 2 · A8+A3+A5 测试门控去除 / lint 棘轮 / 守卫名单同步 · 2026-11-06 01:0x
+
+改了什么：
+- **A8** `server/tests/unit/test_p1_foundations.py:236-241`——`test_frameserver_writes_frames_atomically`
+  弃用写死 8787 + skip 门控，改绑空闲端口（帧端口 2.14.0 起可配置）；dev 在跑也 0 skipped。
+- **A3** `scripts/verify_p1_governance.py` 新增 `check_lint_ratchet()`（第 17 项）+ 新基线
+  `docs/reports/lint-baseline.json`（schema `filmflow.lint-baseline/1`）：两口径 total/BLE001/S110/F821
+  逐项断言 `current <= baseline`，**只许降不许涨**，上调必须先修代码并在台账给理由。
+- **A5** `scripts/_acceptance.py` `DEMO_PROJECTS` **补全为现网 11 个**（1/4/115/151/206 原先漏登记，
+  216/223 已删移除）；`project_cleanup._PROTECTED_NAMES` 的 `golden-5s` **保留**并注释理由
+  （golden_run 仍按 `golden-5s-*` 自建自删，按名保护防误碰）；HANDOFF §7.4 目录数刷为
+  11 目录 1.6G（2026-11-06 复测）。
+- 文档现值刷新（361→364 / 16 项→17 项）：HANDOFF §0.0 实测行、§0.6.3、§6、§9、接手检查表；
+  AGENTS 进度行 + 快速命令；任务书 §0 DoD-2 与 §2 基线。
+
+实测（命令含 cwd）：
+- `cd server && uv run pytest tests -q` ×2 → **364 passed ×2，0 skipped 0 xfailed**（188.71s / 186.20s，
+  **dev 在跑**——A8 生效；361→364 = A5 把污染闸门测试按 11 项目重新参数化 +3）
+- 定向：`pytest tests/unit/test_p1_foundations.py tests/unit/test_acceptance_pollution.py -q` → 42 passed
+- `uv run --project server python scripts/verify_p1_governance.py` → **17 项全 ✓ PASS**，
+  第 17 项输出：`serverCwd total=339/339 BLE001=65/65 S110=1/1 F821=0；repoRootCwd total=405/405 BLE001=75/75 S110=1/1 F821=0`
+- `check_docs_consistency.py` → **PASS**（collected=364 · governance=17 步 · DB=11）
+- ruff 两口径 339/405（= 棘轮基线，未涨）；`cd web && npx tsc --noEmit` → 0
+- 治理第 14 项（零演示污染）在 DEMO_PROJECTS 扩容后仍 PASS——静态扫描无新增命中
+
+真渲染证据：无（本轮无渲染路径改动；A1 的 golden 仍是最新渲染证据）。
+
+没验的：无。
+
+提交：见下一条 git log（feat(a3/a5/a8)）
+
+遗留/待决策：无
