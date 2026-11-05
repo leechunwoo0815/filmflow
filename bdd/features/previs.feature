@@ -1,3 +1,4 @@
+# @unbound（P2-25/ADR-0014：preview 单测 + e2e 冒烟覆盖）
 # language: zh-CN
 功能: F05 预演渲染器（Previs）
   只服务「tokens 完整但没有封面」的条目；复用引擎生产 shader；绝不伪装预览。

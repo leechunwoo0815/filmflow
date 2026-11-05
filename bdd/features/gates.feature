@@ -1,3 +1,4 @@
+# @unbound（P2-25/ADR-0014：待真绑（优先级 1，ADR-0014））
 # language: zh-CN
 功能: F09 审批门与失效
   门绑定输入 content_hash；驳回阻断；重批相同内容不产生新失效。

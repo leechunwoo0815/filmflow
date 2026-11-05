@@ -1,3 +1,4 @@
+# @unbound（P2-25/ADR-0014：caps 语义单测覆盖）
 # language: zh-CN
 功能: F08 能力（caps）、锁与队列
   caps 随门批准单调递增；节点执行前按 auth/minCap 校验；Chrome 全局串行。

@@ -1,3 +1,4 @@
+# @unbound（P2-25/ADR-0014：BDD style-indexing 兄弟文件 + verify_r3_templates 覆盖）
 # language: zh-CN
 功能: F03 风格发现与筛选
   341 条全部可搜、可浏览、可达；首屏只出 12 张推荐，不铺全库。

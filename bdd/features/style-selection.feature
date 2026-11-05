@@ -1,3 +1,4 @@
+# @unbound（P2-25/ADR-0014：同上（ADR-0014））
 # language: zh-CN
 功能: F04 风格对比与主选（A05 门）
   对比防误选；残缺与无引擎不可主选；确认产生 style_decision 并预估失效。

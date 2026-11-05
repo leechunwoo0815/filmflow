@@ -1,3 +1,4 @@
+# @unbound（P2-25/ADR-0014：verify_r3_audio_v2 + verify_r2_5_delivery_40s 全覆盖）
 # language: zh-CN
 功能: F14 音频与交付
   上传 → whisper 词级对齐 → 音乐 → 混音 → 响度 QA → 打包。

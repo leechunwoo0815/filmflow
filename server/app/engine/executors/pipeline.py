@@ -8,6 +8,7 @@ _log = _get_log("pipeline")
 import asyncio
 import json
 import threading
+import uuid
 from pathlib import Path
 from urllib.parse import quote
 
@@ -812,7 +813,10 @@ async def _chrome_render_argv(ctx, url: str, debug_port: int | None = None) -> l
         from ...errors import ApiError, ErrorCode
         raise ApiError(ErrorCode.E_ENV_MISSING, "未找到 Chrome")
     argv = [chrome, "--headless=new", "--disable-gpu", "--enable-unsafe-swiftshader",
-            f"--user-data-dir=/tmp/ff-{ctx['node_id']}-{ctx['run_id']}", "--window-size=1920,1080", "--hide-scrollbars"]
+            # D#4：profile 目录带随机后缀（可预测路径上的会话数据不留被猜中的固定位置）；
+            # jobs.py:290 的回收判据只匹配前缀 "/tmp/ff-"，不受影响
+            f"--user-data-dir=/tmp/ff-{ctx['node_id']}-{ctx['run_id']}-{uuid.uuid4().hex[:8]}",
+            "--window-size=1920,1080", "--hide-scrollbars"]
     if debug_port:
         argv += [f"--remote-debugging-port={debug_port}", "--remote-debugging-address=127.0.0.1"]
     return argv + [url]

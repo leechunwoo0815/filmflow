@@ -1,3 +1,4 @@
+# @unbound（P2-25/ADR-0014：待真绑（优先级 2，ADR-0014））
 # language: zh-CN
 功能: F10 缓存与失效传播
   缓存键 = sha256(executorVersion | params | inputs.artifactSha | caps)；审批时间/人不进键；边类型决定失效语义。

@@ -1,3 +1,4 @@
+# @unbound（P2-25/ADR-0014：golden + 渲染级 E2E + verify_r2_5 全覆盖）
 # language: zh-CN
 功能: F13 渲染编码流水线
   F01 端口服务 → F02 串行逐帧 → F03 完整性 → F04 编码 → F05 成片 QA。

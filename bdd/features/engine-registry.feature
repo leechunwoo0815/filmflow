@@ -1,3 +1,4 @@
+# @unbound（P2-25/ADR-0014：C01/Contract v2 校验测试覆盖）
 # language: zh-CN
 功能: F06 引擎包注册与可用性门
   引擎按语义族分包；App 不生成引擎代码；fixture 校验通过才 available。
