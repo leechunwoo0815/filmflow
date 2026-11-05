@@ -20,7 +20,7 @@ from _acceptance import Cleanup, add_keep_flag
 from PIL import Image
 
 BASE = "http://127.0.0.1:7860/api"
-c = httpx.Client(base_url=BASE, timeout=240)
+c = httpx.Client(base_url=BASE, timeout=240, trust_env=False)
 ROOT = Path.home() / "cc-projects" / "ai-v" / "filmflow-projects"
 
 

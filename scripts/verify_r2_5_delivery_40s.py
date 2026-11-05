@@ -148,8 +148,8 @@ def main() -> int:
             data = json.loads(req("GET", f"/artifacts/{a['id']}/file").content)
             if "lufs" in data:
                 qc_master = data
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"warning: G07 qc 产物 {a['id']} 解析失败：{e}", flush=True)
     print("G07 qc", qc_master, flush=True)
     run_wall = (time.time() - run_t0) if run_t0 else 0.0
 

@@ -189,7 +189,12 @@ def ensure_frame_server(ctx) -> FrameServer:
 async def f01(ctx):
     fs = ensure_frame_server(ctx)
     import httpx
-    r = await httpx.AsyncClient().get(f"http://127.0.0.1:{fs.port}/engine/riso/entry/film.html", timeout=5)
+    # trust_env=False：NO_PROXY 带 IPv6 条目（[::1],::1——dev 进程环境实况）时，
+    # httpx 解析代理环境变量直接抛 InvalidURL("Invalid port: ':1]'")（2026-11-05
+    # 专家复核实测），F01 因此整链必挂。仅本机 127.0.0.1 永无代理语义，全仓其余
+    # client 均已显式关闭，此处补齐。
+    r = await httpx.AsyncClient(trust_env=False).get(
+        f"http://127.0.0.1:{fs.port}/engine/riso/entry/film.html", timeout=5)
     _artifact_json(ctx, "frame_server.json", {"port": fs.port, "engine_ok": r.status_code == 200})
 
 

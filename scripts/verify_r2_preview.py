@@ -31,7 +31,7 @@ from PIL import Image
 
 BASE = "http://127.0.0.1:7860/api"
 DB = Path.home() / ".filmflow" / "filmflow.db"
-c = httpx.Client(base_url=BASE, timeout=240)
+c = httpx.Client(base_url=BASE, timeout=240, trust_env=False)
 
 
 def _req(method: str, path: str, payload: dict | None = None):

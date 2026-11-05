@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "server"))
 from app.engine.fpscalc import frames_for, norm_fps  # noqa: E402
 FIXTURES = ROOT / "fixtures" / "golden"
 REPORT_DIR = ROOT / "docs" / "reports" / "golden"
-c = httpx.Client(base_url=BASE, timeout=240)
+c = httpx.Client(base_url=BASE, timeout=240, trust_env=False)
 SENT_RE = re.compile(r"(?<=[。！？；!?;])")
 
 
@@ -87,8 +87,8 @@ def _pick_style(spec: dict) -> str:
             s = _req("GET", f"/styles/{primary}")
             if s.get("available") and s.get("tokens_status") == "complete":
                 return primary
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"warning: primary {primary} 获取失败：{e}", flush=True)
     family = spec.get("style_family") or "print"
     items = _req("GET", f"/styles?chips=可生产&family={family}&limit=5")["items"]
     if not items:

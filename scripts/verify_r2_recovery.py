@@ -19,8 +19,8 @@ from _acceptance import Cleanup, add_keep_flag
 
 BASE = "http://127.0.0.1:7860/api"
 REPO = Path(__file__).resolve().parents[1]
-c = httpx.Client(base_url=BASE, timeout=60)
-LOCAL = httpx.Client(base_url=BASE, timeout=5)
+c = httpx.Client(base_url=BASE, timeout=60, trust_env=False)
+LOCAL = httpx.Client(base_url=BASE, timeout=5, trust_env=False)
 
 
 def _req(method: str, path: str, payload: dict | None = None):

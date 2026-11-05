@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 
 BASE = "http://127.0.0.1:7860/api"
-c = httpx.Client(base_url=BASE, timeout=60)
+c = httpx.Client(base_url=BASE, timeout=60, trust_env=False)
 
 
 def rumor_root() -> str:
