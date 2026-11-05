@@ -372,3 +372,26 @@ def test_rights_lists_run_assets_and_flags_license_gaps(env):
     assert len(gaps) == 2
     assert any("bare" in g or "缺少许可" in g for g in gaps)
     assert any("资产记录已不存在" in g for g in gaps)
+
+
+def test_delete_asset_blocked_by_inflight_job(env):
+    """B5/P2-17：在飞作业 payload 引用该资产 → 409；心跳过期（僵尸）→ 放行。"""
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import Job
+
+    session, proj, root = env
+    data = _png()
+    asset, _dedup = assets.import_asset(session, "project", root, "inflight.png", data,
+                                        name="在飞图", license=LIC)
+    job = Job(kind="run", status="running", payload_json={"assetSha": asset.sha256},
+              heartbeat_at=datetime.now(UTC))
+    session.add(job)
+    session.commit()
+    with pytest.raises(ApiError, match="在飞作业"):
+        assets.delete_asset(session, asset.id)
+    job.heartbeat_at = datetime.now(UTC) - timedelta(seconds=600)
+    session.add(job)
+    session.commit()
+    r = assets.delete_asset(session, asset.id)
+    assert r["deleted"] == asset.id and r["inflightJobs"] == []

@@ -63,6 +63,8 @@ def test_exempt_list_is_small_and_named():
         "drive_run.py",                     # 运维驱动器（参数指定项目）
         "probe_profile_ssim_offset.py",     # 只读探针
         "smoke_m1.py",                      # 导入 rumor-39s 证明 46 节点画布
+        "cleanup_assets.py",                # B5：资产孤儿清理（删文件/死行，不建项目不写演示）
+        "e2e_ui.py",                        # B7：UI 驱动器，自建=向导 UI 本身，收尾自删
     }
 
 

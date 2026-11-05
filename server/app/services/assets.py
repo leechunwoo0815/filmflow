@@ -63,8 +63,9 @@ def _find(session: Session, scope: str, project_id: int | None, sha: str) -> Ass
 
 def _decode(data_b64: str) -> bytes:
     try:
+        import binascii
         raw = base64.b64decode((data_b64 or "").split(",", 1)[-1], validate=True)
-    except Exception:
+    except (binascii.Error, ValueError):
         raise ApiError(ErrorCode.E_VALIDATION, "资产 base64 无效")
     if not raw:
         raise ApiError(ErrorCode.E_VALIDATION, "资产为空")
@@ -118,8 +119,8 @@ def _image_meta(path: Path, ext: str) -> dict:
             return {"width": int(float(str(width).rstrip("px") or 0)) or None,
                     "height": int(float(str(height).rstrip("px") or 0)) or None,
                     "format": "SVG"}
-        except Exception:
-            return {"format": "SVG"}
+        except (ET.ParseError, ValueError, OSError):
+            return {"format": "SVG"}   # 解析不了的 SVG：按无尺寸处理，不让导入炸掉
     from PIL import Image
     with Image.open(path) as img:
         return {"width": img.width, "height": img.height, "format": img.format or ext[1:].upper()}
@@ -482,6 +483,35 @@ def update_asset(session: Session, asset_id: int, payload: dict) -> Asset:
     return asset
 
 
+def _inflight_jobs_using(session: Session, sha: str) -> list[int]:
+    """B5/P2-17：正在执行、且 payload 里引用该资产的作业 id。
+
+    判活口径同 project_cleanup：只看心跳/开始时间的 120s 窗口（僵尸行不锁删除）。
+    **retry_wait 不算在飞**——那是「等人工门」的正常态，可以停几天；恢复时本来
+    就会重新走 E_ASSET_MISSING 检查，不该阻止用户在等门期间整理资产。
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from ..models import Job
+    now = datetime.now(UTC)
+    live: list[int] = []
+    for job in session.exec(select(Job).where(
+            Job.status.in_(("queued", "leased", "running")))).all():  # type: ignore[attr-defined]
+        # 无心跳的僵尸行（生产库真实存在）：created_at 兜底判龄，老行不算在飞
+        stamp = job.heartbeat_at or job.started_at or job.created_at
+        if stamp is None:
+            live.append(int(job.id))
+            continue
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=UTC)
+        if now - stamp > timedelta(seconds=120):
+            continue
+        payload_text = json.dumps(job.payload_json or {}, ensure_ascii=False)
+        if sha in payload_text:
+            live.append(int(job.id))
+    return live
+
+
 def delete_asset(session: Session, asset_id: int, force: bool = False) -> dict:
     asset = get_asset(session, asset_id)
     usages = scan_usages(session, sha=asset.sha256,
@@ -492,12 +522,19 @@ def delete_asset(session: Session, asset_id: int, force: bool = False) -> dict:
         raise ApiError(ErrorCode.E_ASSET_IN_USE,
                        f"资产被 {len(sites)} 处引用，不能删除",
                        status=409, details={"usages": sites, "refCount": len(sites)})
+    # B5/P2-17：在飞守卫——渲染进行到一半时把文件删了，Run 会 E_ASSET_MISSING 中断
+    inflight = _inflight_jobs_using(session, asset.sha256)
+    if inflight and not force:
+        raise ApiError(ErrorCode.E_ASSET_IN_USE,
+                       f"资产被在飞作业引用（job {inflight}），等它结束或先取消",
+                       status=409, details={"inflightJobs": inflight})
     for p in (Path(asset.path), _thumb_path(asset)):
         if p:
             p.unlink(missing_ok=True)
     session.delete(asset)
     session.commit()
-    return {"deleted": asset_id, "usages": sites, "forced": bool(force)}
+    return {"deleted": asset_id, "usages": sites, "forced": bool(force),
+            "inflightJobs": inflight}
 
 
 def replace_doc_refs(doc: dict, old_sha: str, new_sha: str) -> list[str]:

@@ -20,9 +20,11 @@ def fill_sticky(page, selector: str, text: str, attempts: int = 8) -> None:
     """Next dev 水合竞态防护：fill 后校验 React state 回写，未粘住则重试。"""
     for i in range(attempts):
         page.fill(selector, text)
-        page.wait_for_timeout(500)
-        if page.locator(selector).input_value() == text:
+        try:   # B7/P2-26：条件等待替代固定 500ms
+            expect(page.locator(selector)).to_have_value(text, timeout=1500)
             return
+        except AssertionError:
+            continue
     raise RuntimeError(f"fill 未粘住（水合未完成？）: {selector}")
 
 
@@ -31,7 +33,10 @@ def type_sticky(page, selector: str, text: str) -> None:
     page.click(selector)
     page.fill(selector, "")
     page.keyboard.type(text, delay=6)
-    page.wait_for_timeout(500)
+    try:   # B7/P2-26
+        expect(page.locator(selector)).to_have_value(text, timeout=2000)
+    except AssertionError:
+        pass
 
 
 def main() -> int:
@@ -64,7 +69,7 @@ def _run() -> int:
         # 2. 向导第 1 步：文案
         page.get_by_role("link", name="＋ 新建项目向导").click()
         page.wait_for_selector('[data-testid="copy-input"]')
-        page.wait_for_timeout(1000)
+        expect(page.locator('[data-testid="copy-input"]')).to_be_enabled(timeout=10000)
         type_sticky(page, '[data-testid="copy-input"]', "一条消息被转发，往往不是因为它真实。真相经得起第二次查看，而谣言跑出一条街。")
         try:
             page.get_by_role("button", name="下一步").click(timeout=8000)
@@ -82,26 +87,25 @@ def _run() -> int:
 
         # 4. 第 3 步：风格选择器
         page.wait_for_selector('[data-testid="style-picker"]')
-        for _i in range(12):   # 轮询 60s：推荐/索引异步加载
-            if page.locator('[data-testid^="style-card-"]').count() > 0:
-                break
-            page.wait_for_timeout(5000)
-        assert page.locator('[data-testid^="style-card-"]').count() > 0, "风格卡片 60s 未加载"
+        page.wait_for_selector('[data-testid^="style-card-"]', timeout=60000)
         # 搜索「水墨」（同义词）
         type_sticky(page, '[data-testid="style-search"]', "水墨")
-        page.wait_for_timeout(800)
+        # 搜索有防抖：等"命中数 ≥10"这一条件本身，而不是首卡可见（旧列表也会可见）
+        page.wait_for_function(
+            "document.querySelectorAll('[data-testid^=\\'style-card-Z\\']').length >= 10",
+            timeout=10000)
         z_cards = page.locator('[data-testid^="style-card-Z"]')
         assert z_cards.count() >= 10, f"「水墨」同义词命中 Z 集不足：{z_cards.count()}"
         print(f"✓ 4. 搜索「水墨」命中 Z 集 {z_cards.count()} 条", flush=True)
         # 清空 → chips 可生产 → 点第一张卡 → 设为主风格
         type_sticky(page, '[data-testid="style-search"]', "")
-        page.wait_for_timeout(600)
+        page.wait_for_load_state("networkidle")   # B7：等搜索清空的重取完成
         page.get_by_role("button", name="可生产", exact=True).click()
-        page.wait_for_timeout(600)
+        page.wait_for_load_state("networkidle")   # B7：等 chips 过滤的重取完成
         first_card = page.locator('[data-testid^="style-card-"]').first
         first_card.click()
         page.locator("aside").get_by_role("button", name="设为主风格").click()
-        page.wait_for_timeout(300)
+        expect(page.get_by_role("button", name="已选主风格")).to_be_visible(timeout=8000)
         page.get_by_role("button", name="已选主风格").click()
         page.wait_for_selector("text=④ 声音方案", timeout=20000)
         print("✓ 5. 设为主风格（可生产集合）", flush=True)
@@ -126,12 +130,15 @@ def _run() -> int:
         page.wait_for_selector(".react-flow__node", timeout=60000)
         nodes = page.locator(".react-flow__node").count()
         assert nodes == 46, f"画布节点数 {nodes} ≠ 46"
-        print(f"✓ 6. 生成工作流 → 画布 46 节点", flush=True)
+        # B7 顺带：记录本 run 创建的项目，收尾自删（此前每次跑都泄漏一个向导项目）
+        import re as _re
+        _m = _re.search(r"[?&](?:project|projectId)=(\d+)", page.url)
+        created_pid = int(_m.group(1)) if _m else None
+        print(f"✓ 6. 生成工作流 → 画布 46 节点（project={created_pid}）", flush=True)
 
         # 6. 语言切换（i18n 脚手架）
         page.get_by_role("button", name="EN", exact=True).click()
-        page.wait_for_timeout(400)
-        expect(page.get_by_role("link", name="← Projects")).to_be_visible()
+        expect(page.get_by_role("link", name="← Projects")).to_be_visible(timeout=8000)
         print("✓ 7b. 画布 46 节点（EN 界面）", flush=True)
         print("✓ 7. 语言切换 EN 生效", flush=True)
 
@@ -139,12 +146,20 @@ def _run() -> int:
         page.evaluate("localStorage.removeItem('ff.lang')")   # 复位中文（导入按钮为中文文案）
         page.goto(WEB, wait_until="domcontentloaded", timeout=60000)
         page.wait_for_selector("text=导入项目", timeout=30000)
-        page.wait_for_timeout(1500)   # 水合（输入框默认值即 rumor 路径，无需填写）
+        page.wait_for_load_state("networkidle")   # B7：等水合与默认值拉取（enabled≠handler 已挂）
+        expect(page.get_by_role("button", name="导入 rumor-39s")).to_be_enabled(timeout=15000)
         page.get_by_role("button", name="导入 rumor-39s").click()
         page.wait_for_selector(".react-flow__node", timeout=60000)
         assert page.locator(".react-flow__node").count() == 46
         print("✓ 8. 导入 rumor-39s → 46 节点画布", flush=True)
 
+        if created_pid:
+            import httpx as _hx
+            _api = _hx.Client(base_url="http://127.0.0.1:7860/api", timeout=60, trust_env=False,
+                              headers={"Origin": "http://127.0.0.1:3000"})
+            _r = _api.delete(f"/projects/{created_pid}", params={"confirm": "true"})
+            _api.close()
+            print(f"  已自删向导项目 {created_pid}（{_r.status_code}）——不再泄漏", flush=True)
         browser.close()
     print(f"\nUI E2E 全部通过（{time.time()-t0:.0f}s）", flush=True)
     return 0

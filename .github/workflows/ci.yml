@@ -24,8 +24,10 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.13"
-      - name: ruff (server 口径，含 scripts/)
-        run: uv run --project server ruff check server scripts
+      - name: lint 棘轮（三口径，与治理第 17 项同源）
+        # 原 `ruff check server scripts` 裸跑在存量上必然红（B8 实测 387）；
+        # 棘轮=对照 lint-baseline.json 只许降不许涨，首跑即绿且有守卫意义
+        run: uv run --project server python scripts/lint_ratchet.py
       - name: pnpm install
         uses: pnpm/action-setup@v4
         with:

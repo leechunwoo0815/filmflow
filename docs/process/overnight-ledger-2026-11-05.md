@@ -344,3 +344,44 @@ processed take 段已覆盖其执行路径（PASS）。
 提交：见下一条 git log（feat(b3)）
 
 遗留/待决策：无
+
+---
+
+### 轮 8 · B5 资产在飞守卫+GC / B7 e2e 条件等待 / B8 ci_local / B9 fresh-clone 实测 · 2026-11-06 04:4x
+
+改了什么：
+- **B5** `assets.py`：`_inflight_jobs_using()`（执行中作业 payload 引用该资产 → 409；
+  判活同 project_cleanup 120s 心跳窗；**retry_wait 不算在飞**——等人工门是正常态，
+  恢复时自有 E_ASSET_MISSING 检查；无心跳僵尸行用 created_at 兜底判龄——全量套件
+  两次红才定位到生产库 job 1/2 无心跳僵尸）；delete_asset 接线。新脚本
+  `cleanup_assets.py`（默认报告孤儿文件/死行，--confirm 才删、库行删除先备份）。
+- **B7** `e2e_ui.py`：10 处固定 wait_for_timeout **全部条件化**（expect to_have_value/
+  to_be_enabled/networkidle/wait_for_function 计数条件）；顺带抓出并修 **e2e_ui 每跑
+  一次泄漏一个向导项目**（228/229 两个泄漏已清）——收尾自删 created_pid。
+- **B8** 新 `scripts/lint_ratchet.py`（三口径棘轮独立脚本：serverCwd/repoRootCwd/
+  **ciScope=`ruff check server scripts`**）——**实测发现 ci.yml 的 lint 步是死的**
+  （裸 `ruff check server scripts` 在 387 存量上必然红，首推必挂），ci.yml 改跑
+  棘轮；治理第 17 项改为同源调用；新 `scripts/ci_local.sh`（CI 四步本地等价）。
+- **B9** fresh-clone 实测：`git clone → bootstrap → clone 内跑测试`。
+
+实测（命令含 cwd）：
+- **B9**：`/tmp/filmflow-fresh` clone（HEAD 40202e3）→ `bootstrap_fresh_clone.sh` →
+  **READY exit=0**（uv/ffmpeg/py3.13/Chrome/风格库 341+doctor/rumor/golden 锚/~/.filmflow
+  全 ✓）；clone 内 `pytest tests/unit tests/bdd` → **344 passed**（主仓 345，差 1 =
+  未提交的 B5 测试，提交后即齐）——P1-21 从"未实测"转**真闭**
+- **B7**：`e2e_ui.py` 8 场景全过、**6.6s**（旧固定等待 ~15s → **2.3x**）、
+  `wait_for_timeout` 剩 **0** 处、向导项目自删实证（project=228 → 已自删 200 → DB 11）
+- **B8**：`bash scripts/ci_local.sh` → 四步全过（棘轮三口径 / unit+bdd **345 passed** /
+  tsc / 守卫）
+- `cd server && uv run pytest tests -q` ×2 → **378 passed ×2**（180.69s/180.65s，0 skip）
+- 治理 **17 项全 ✓**；守卫 **PASS**；ruff **321/386**（PLW1510 全量 check=False 显式化 +
+  SVG/base64 盲捕收窄，基线下调锁定）；tsc 0；DB 11 恒定
+
+真渲染证据：无（本轮无渲染路径改动；最新为轮 7 的 harness + golden 2.17.0）。
+
+没验的：cleanup_assets 的 --confirm 分支未真删（当前 0 孤儿 0 死行，没有可删对象——
+报告模式已实证；首次出现孤儿时跑 --confirm 即为验收）。
+
+提交：见下一条 git log（feat(b5/b7/b8/b9)）
+
+遗留/待决策：无

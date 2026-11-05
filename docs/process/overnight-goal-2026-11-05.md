@@ -64,7 +64,7 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 ```
 
 **基线数字（2026-11-05 深夜，审查方实测/复核）**：
-- pytest **377 collected**（unit 337 / integration 33 / BDD 7；361→364 是 A5 把污染闸门测试按 DEMO_PROJECTS 现网 11 项目重新参数化 +3）；整夜 R2 **364 passed ×2**（189.8s / 185.9s，0 skip 0 xfail，dev 在跑）。
+- pytest **378 collected**（unit 338 / integration 33 / BDD 7；361→364 是 A5 把污染闸门测试按 DEMO_PROJECTS 现网 11 项目重新参数化 +3）；整夜 R2 **364 passed ×2**（189.8s / 185.9s，0 skip 0 xfail，dev 在跑）。
 - 治理 **17 项全 ✓**（第 17 项＝A3 lint 棘轮）；文档守卫 **PASS**（EXECUTOR=2.16.0 · 迁移 [1,2,3,4,5] · DB=11 项目 · 裸 dict 写端点 0）。
 - ruff：**339**（`cd server` 口径）/ **405**（仓库根口径）——已入棘轮（治理第 17 项 + `docs/reports/lint-baseline.json`：BLE001 65/75、S110 1/1、F821 0，**只许降不许涨**）。
 - DB：11 项目 / 47 draft（僵尸 0）/ 44 run / `retry_wait` **7** 条（整夜交接时是 12，其中 5 条已在深夜 dev 重启时按 72h 心跳被 `jobs.expire_parked` 自然收走——策略按设计工作，这正是 A7 要真实演练的机制；剩余 7 条全属 rumor-39s 与演示 188，是"等人工门"的正常态，**不许删**）；磁盘 1.6G；`~/.filmflow` 1.5G；自动备份 `filmflow-auto-20261105.db` 33.4MB。

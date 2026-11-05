@@ -164,7 +164,12 @@ DEMO_PROJECTS = {1: "rumor-39s", 4: "trace", 115: "rumor-clean-20261102",
 #   probe_profile_ssim_offset —— 只读探针
 #   smoke_m1                  —— 导入 rumor-39s 证明 46 节点画布；参考片不是演示项目
 POLLUTION_EXEMPT = {"cleanup_projects.py", "verify_rumor_regression.py", "drive_run.py",
-                    "probe_profile_ssim_offset.py", "smoke_m1.py"}
+                    "probe_profile_ssim_offset.py", "smoke_m1.py",
+                    # B5：资产孤儿清理工具（删文件/死行，不建项目不写演示）
+                    "cleanup_assets.py",
+                    # B7：UI 驱动器——自建入口是向导 UI 本身（5 步 materialize 走界面），
+                    # 项目在收尾自删（created_pid → DELETE），不走 API 故 SELFBUILT_TOKENS 看不见
+                    "e2e_ui.py"}
 
 # 自建入口：命中任意一个就说明项目/状态是本脚本造的
 SELFBUILT_TOKENS = ("require_scratch_project", "scratch_project", "throwaway(",
