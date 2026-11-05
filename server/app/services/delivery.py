@@ -663,14 +663,27 @@ def create_job(session: Session, project: Project, run_id: int | None = None,
     # P2-05：同一 Run 不允许两个在飞交付作业——并发会 rmtree/重建同一个
     # out/deliveries/<runId> 目录，产出交错损坏。已有 queued/leased/running/retry_wait
     # 的 delivery 作业时直接 409，不重复入队。
-    live = session.exec(select(Job).where(
-        Job.kind == "delivery", Job.run_id == run_id,
-        Job.status.in_(("queued", "leased", "running", "retry_wait")))).all()  # type: ignore[arg-type]
-    if live:
-        raise ApiError(ErrorCode.E_DELIVERY_GATE,
-                       f"Run {run_id} 已有在飞的交付作业 job {live[0].id}（{live[0].status}），"
-                       "等它结束或先取消", status=409)
-    job = jobs_svc.create_job(session, "delivery", jobs_svc.PRIORITY["delivery"],
-                              {"projectId": project.id, "runId": run_id, "profile": profile},
-                              run_id=run_id)
-    return job
+    # C6（专家 §7）：check-then-act 在真并发下会双双通过检查 → flock 按 run_id
+    # 串行化「检查+入队」（跨线程/跨进程）。
+    import fcntl
+
+    from ..config import settings
+    lock_dir = Path(settings.home) / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    f = open(lock_dir / f"delivery-{run_id}.lock", "a")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        live = session.exec(select(Job).where(
+            Job.kind == "delivery", Job.run_id == run_id,
+            Job.status.in_(("queued", "leased", "running", "retry_wait")))).all()  # type: ignore[attr-defined]
+        if live:
+            raise ApiError(ErrorCode.E_DELIVERY_GATE,
+                           f"Run {run_id} 已有在飞的交付作业 job {live[0].id}（{live[0].status}），"
+                           "等它结束或先取消", status=409)
+        job = jobs_svc.create_job(session, "delivery", jobs_svc.PRIORITY["delivery"],
+                                  {"projectId": project.id, "runId": run_id, "profile": profile},
+                                  run_id=run_id)
+        return job
+    finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()

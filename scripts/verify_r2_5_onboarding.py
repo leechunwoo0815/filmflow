@@ -14,7 +14,7 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "server"))
 
-from app.config import settings  # noqa: E402
+from app.config import settings
 
 BASE = "http://127.0.0.1:7860/api"
 c = httpx.Client(base_url=BASE, timeout=240, trust_env=False)

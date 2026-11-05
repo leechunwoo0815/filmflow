@@ -6,7 +6,6 @@ P1-19：自包含——默认用 fixtures/golden/15s 的规格自建项目（不
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
@@ -15,7 +14,7 @@ import httpx
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from golden_run import build_golden_project  # noqa: E402
+from golden_run import build_golden_project
 
 BASE = "http://127.0.0.1:7860/api"
 c = httpx.Client(base_url=BASE, timeout=240, trust_env=False)

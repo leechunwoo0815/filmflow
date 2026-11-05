@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import sys
-import uuid
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -127,8 +126,6 @@ def test_gate_decide_full_approve_path_end_to_end(tmp_path):
     本次 gate_decide 后半段残留 payload.get() 就是只测 422/404 漏掉的——
     任何模型化端点改完必须有一条 happy-path 断言。
     """
-    import json as _json
-    from pathlib import Path as _Path
 
     from app.engine import edges as edges_mod
     from app.models import NodeRun, Project, Run, Workflow

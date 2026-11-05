@@ -1,21 +1,21 @@
 {
  "schema": "filmflow.lint-baseline/1",
  "createdAt": "2026-11-06T00:45:00Z",
- "note": "lint 棘轮（整夜任务书 A3）：verify_p1_governance 第 17 项逐项断言 current <= baseline，只许降不许涨；上调基线必须先修代码并在台账给理由。口径：serverCwd = `cd server && uv run ruff check .`；repoRootCwd = 仓库根同一命令（scripts/ 不继承 server 的 line-length=110，两口径本就不同）。实测口径见 overnight-ledger 轮 2。 2026-11-06 B1 轮下调：I001 --fix 清掉 5 个文件的潜在导入排序存量（339→322 / 405→388），基线随之只降不升。 2026-11-06 B8 增第三口径 ciScope（=ci.yml 的 `ruff check server scripts`，server 配置罩 scripts）——原 CI lint 步裸跑在存量上必然红，改跑本棘轮脚本。 2026-11-06 B5/B8 轮下调：PLW1510 全量 check=False 显式化 + SVG/base64 盲捕收窄 + governance 残留清理（322→321 / 388→386 / 387→379）。",
+ "note": "lint 棘轮（整夜任务书 A3）：verify_p1_governance 第 17 项逐项断言 current <= baseline，只许降不许涨；上调基线必须先修代码并在台账给理由。口径：serverCwd = `cd server && uv run ruff check .`；repoRootCwd = 仓库根同一命令（scripts/ 不继承 server 的 line-length=110，两口径本就不同）。实测口径见 overnight-ledger 轮 2。 2026-11-06 B1 轮下调：I001 --fix 清掉 5 个文件的潜在导入排序存量（339→322 / 405→388），基线随之只降不升。 2026-11-06 B8 增第三口径 ciScope（=ci.yml 的 `ruff check server scripts`，server 配置罩 scripts）——原 CI lint 步裸跑在存量上必然红，改跑本棘轮脚本。 2026-11-06 B5/B8 轮下调：PLW1510 全量 check=False 显式化 + SVG/base64 盲捕收窄 + governance 残留清理（322→321 / 388→386 / 387→379）。 2026-11-06 R9 下调：ruff --fix（safe）清光全仓可自动修复项（I001/C401/RUF100/F401 等），余量 314/364/360 为 idiom 类（B008=FastAPI Depends 惯用法、BLE001 待逐批），棘轮照钉。",
  "serverCwd": {
-  "total": 321,
+  "total": 314,
   "BLE001": 65,
   "S110": 1,
   "F821": 0
  },
  "repoRootCwd": {
-  "total": 386,
+  "total": 364,
   "BLE001": 75,
   "S110": 1,
   "F821": 0
  },
  "ciScope": {
-  "total": 379,
+  "total": 360,
   "BLE001": 77,
   "S110": 1,
   "F821": 0

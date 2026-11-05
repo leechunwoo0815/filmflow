@@ -17,7 +17,7 @@ import sys
 from pathlib import Path, PureWindowsPath
 
 if hasattr(sys.stdout, 'reconfigure'): sys.stdout.reconfigure(encoding='utf-8')
-ID = re.compile(r'^([A-Z]+\d+)(?:[_\s]|$)', re.I)
+ID = re.compile(r'^([A-Z]+\d+)(?:[_\s]|$)', re.IGNORECASE)
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INDEX = SKILL_ROOT/'adapters'/'style-index.json'
 CONFIG_FILE = SKILL_ROOT/'adapters'/'style-library.config.json'

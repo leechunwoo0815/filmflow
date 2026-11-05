@@ -1,6 +1,10 @@
 """Validate task structure, timing, phase boundaries and measured-evidence claims. Never renders."""
-import argparse, hashlib, json, math
+import argparse
+import hashlib
+import json
+import math
 from pathlib import Path
+
 
 def validate(d):
     errors=[]

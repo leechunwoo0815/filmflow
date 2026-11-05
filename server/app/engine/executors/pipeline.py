@@ -71,7 +71,7 @@ class FrameServer:
                 fragment 的 URL 键控 → 缓存页 + 新 hash 照样拿到新 token）。
                 """
                 p = u.path
-                return p.startswith("/project/") or p.startswith("/global-assets/")
+                return p.startswith(("/project/", "/global-assets/"))
 
             def _authorized(self, u) -> bool:
                 import hmac
@@ -167,7 +167,7 @@ class FrameServer:
                         raise OSError
                 self.httpd = None  # 标记复用
                 return
-            except Exception:
+            except Exception:   # noqa: BLE001 -- 探测的任何失败（连接/超时/非 200）都按 fail-closed 处理
                 from ...errors import ApiError, ErrorCode
                 raise ApiError(ErrorCode.E_PORT_BUSY, f"{self.port} 被占用且不可复用")
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
@@ -340,7 +340,7 @@ def _make_contact_sheet(ctx, items: list[tuple[str, float, str, str]]) -> dict:
     draw = ImageDraw.Draw(sheet)
     try:
         font = ImageFont.load_default(size=20)
-    except Exception:
+    except Exception:   # noqa: BLE001 -- 老版 PIL 不支持 size 参数，回退默认字号
         font = ImageFont.load_default()
     for i, (sid, t, path, _sha) in enumerate(picks):
         img = Image.open(path).convert("RGB")
@@ -561,8 +561,8 @@ async def d04(ctx):
             seen.setdefault(pname, set()).add(str(meta["scene"]))
         if pname == "review" and meta.get("scene"):
             current_review.setdefault(str(meta["scene"]), []).append(r.sha256)
-    for scene in current_review:
-        current_review[scene].sort()
+    for entries in current_review.values():
+        entries.sort()
     if not ctx.get("run_imported"):
         task = (_upstream_json(ctx, ["B06"]).get("B06") or {})
         scenes = [s.get("id") for s in (task.get("scenes") or []) if s.get("id")]
@@ -1092,9 +1092,18 @@ async def f03(ctx):
             if sid and sid in stats:
                 stats[sid]["missing"] += 1
             continue
+        try:
+            img = Image.open(p)
+            g = np.asarray(img.convert("L"), dtype=float)
+        except Exception:
+            # C4（专家 §7）：截断/半张帧——P2-04 的原子写让 F03 永远看不到半张帧，
+            # 但手工拷贝/外力可能造出存在却坏掉的文件：按缺失计（触发重脏/报缺失），
+            # 绝不当成有效帧跳过，也不裸崩。
+            missing.append(i)
+            if sid and sid in stats:
+                stats[sid]["missing"] += 1
+            continue
         n_checked += 1
-        img = Image.open(p)
-        g = np.asarray(img.convert("L"), dtype=float)
         if float(g.mean()) < 8:
             black.append(i)
             if sid and sid in stats:

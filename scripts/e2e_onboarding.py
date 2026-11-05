@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
 
-from playwright.sync_api import expect, sync_playwright  # noqa: E402
+from playwright.sync_api import expect, sync_playwright
 
 WEB = "http://localhost:3000"
 COPY = "很多工作不是难，是重复。把重复交给工具，人才有时间思考。"

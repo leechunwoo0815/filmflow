@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-from .fpscalc import FPS_TOL, frames_for, norm_fps, profile_frames
+from .fpscalc import FPS_TOL, norm_fps, profile_frames
 from .scene.canonical import content_hash
 
 MANIFEST_SCHEMA = "filmflow.render/1"

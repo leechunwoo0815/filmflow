@@ -1,6 +1,13 @@
-﻿import copy, importlib.util, json, os, shutil, tempfile, unittest
+﻿import copy
+import importlib.util
+import json
+import os
+import shutil
+import tempfile
+import unittest
 from contextlib import contextmanager
 from pathlib import Path
+
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ.get('FY_SKILL_TEST_TMPDIR',str(Path(tempfile.gettempdir())/'fy-code-animation-tests')))
 TMP.mkdir(parents=True,exist_ok=True)

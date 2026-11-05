@@ -395,3 +395,22 @@ def test_delete_asset_blocked_by_inflight_job(env):
     session.commit()
     r = assets.delete_asset(session, asset.id)
     assert r["deleted"] == asset.id and r["inflightJobs"] == []
+
+
+def test_corrupt_assets_import_graceful(env):
+    """C5（专家 §7）：截断 PNG / 伪装 SVG / 0 字节 WAV / 非法 TTF——导入 4xx 优雅拒，不许 500。"""
+    session, proj, root = env
+    with pytest.raises(ApiError):
+        assets.import_asset(session, "project", root, "bad.png", "XHg4OVBOR1xyXG5ceDFhXG50cmFzaA==",
+                            name="坏PNG", license=LIC)
+    # 伪装 SVG：裁定为**优雅降级**——按 SVG 收下但解析不出尺寸（_image_meta 窄化
+    # except 返回 {"format": "SVG"}），服务面另有 CSP/nosniff 兜底，不许 500
+    imported = assets.import_asset(session, "project", root, "evil.svg",
+                                   "PGh0bWw+PC9odG1sPg==", name="坏SVG", license=LIC)
+    asset_row = imported[0] if isinstance(imported, tuple) else imported
+    assert asset_row.meta_json.get("format") == "SVG", asset_row.meta_json
+    with pytest.raises(ApiError):
+        assets.import_asset(session, "project", root, "empty.wav", "", name="空WAV", license=LIC)
+    with pytest.raises(ApiError):
+        assets.import_asset(session, "project", root, "fake.ttf", "XHgwMFx4MDFceDAybm90LWEtZm9udA==",
+                            name="坏字体", license=LIC)

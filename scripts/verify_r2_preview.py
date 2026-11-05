@@ -282,7 +282,7 @@ def main() -> int:
     assert done["status"] == "succeeded" and elapsed <= 20, "5s 片段必须 ≤20s"
     mp4 = c.get(f"/preview/jobs/{job_id}/file")
     assert mp4.status_code == 200 and len(mp4.content) > 100_000, "片段文件缺失"
-    seg_path = proj / "out/preview" / f"segment_S01_0.0_5.0_draft.mp4"
+    seg_path = proj / "out/preview" / "segment_S01_0.0_5.0_draft.mp4"
     meta = _ffprobe_video(seg_path)
     print(f"segment meta={meta}", flush=True)
     assert meta["width"] == 960 and meta["height"] == 540 and meta["fps"] == 12.0

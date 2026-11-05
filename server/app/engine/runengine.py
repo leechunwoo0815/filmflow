@@ -475,7 +475,7 @@ async def execute_node(run_id: int, node_id: str) -> dict:
                     if node_id == "A04":
                         _auto_approve_a05(session, run, wf, states, project_root)
                     break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     await runner.kill_current()
                     if retries_left > 0:
                         retries_left -= 1

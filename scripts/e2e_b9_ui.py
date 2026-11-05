@@ -17,10 +17,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
 import httpx
-from playwright.sync_api import sync_playwright
-
 from _acceptance import throwaway
 from app.config import detect_chrome
+from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:7860/api"
 WEB = "http://127.0.0.1:3000"

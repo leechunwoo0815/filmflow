@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from app.engine import runengine
 from app.engine.cachekey import EXECUTOR_VERSION
 
@@ -123,7 +121,7 @@ def test_delete_project_clears_run_lock(monkeypatch):
 
 async def test_node_timeout_kills_child_and_retries(monkeypatch):
     """P2-02：第一次超时 → 杀子进程 → 自动重试 → 第二次成功。"""
-    from app.engine.runengine import N, execute_node
+    from app.engine.runengine import N
     from app.engine.runner import ProcessRunner
 
     calls = {"n": 0, "killed": 0}
@@ -178,7 +176,7 @@ async def test_node_timeout_kills_child_and_retries(monkeypatch):
 
 async def test_node_timeout_exhausted_retries_fails(monkeypatch):
     """P2-02：retries 耗尽 → 节点 failed，message 带 E_NODE_TIMEOUT。"""
-    from app.engine.runengine import N, execute_node
+    from app.engine.runengine import N
 
     calls = {"n": 0}
 

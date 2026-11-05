@@ -25,7 +25,8 @@ BASE = "http://127.0.0.1:7860/api"
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "server"))
 
-from app.engine.fpscalc import frames_for, norm_fps  # noqa: E402
+from app.engine.fpscalc import frames_for, norm_fps
+
 FIXTURES = ROOT / "fixtures" / "golden"
 REPORT_DIR = ROOT / "docs" / "reports" / "golden"
 c = httpx.Client(base_url=BASE, timeout=240, trust_env=False)

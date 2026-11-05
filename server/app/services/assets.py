@@ -164,30 +164,29 @@ def _video_meta(path: Path) -> dict:
 
 
 def _font_meta(path: Path) -> dict:
+    # C5：TTFont 解析本身失败（非法字体文件）→ 异常上抛，import_asset 转 4xx 可诊断错误；
+    # 只有 OS/2 权重这类"能解析但缺表"的情况按缺省降级
+    from fontTools.ttLib import TTFont
+    font = TTFont(str(path), fontNumber=0, lazy=True)
+    names = font.get("name")
+    family = subfamily = ""
+    if names:
+        for rec in names.names:
+            if rec.nameID == 1 and not family:
+                family = str(rec.toUnicode() or "")
+            elif rec.nameID == 2 and not subfamily:
+                subfamily = str(rec.toUnicode() or "")
+    weight = 400
     try:
-        from fontTools.ttLib import TTFont
-        font = TTFont(str(path), fontNumber=0, lazy=True)
-        names = font.get("name")
-        family = subfamily = ""
-        if names:
-            for rec in names.names:
-                if rec.nameID == 1 and not family:
-                    family = str(rec.toUnicode() or "")
-                elif rec.nameID == 2 and not subfamily:
-                    subfamily = str(rec.toUnicode() or "")
-        weight = 400
-        try:
-            weight = int(font.get("OS/2").usWeightClass)
-        except Exception:
-            _log.debug("swallowed exception in _font_meta (except Exception:)", exc_info=True)
-        cmap = set()
-        if "cmap" in font:
-            for table in font["cmap"].tables:
-                cmap.update(table.cmap.keys())
-        return {"family": family or path.stem, "subfamily": subfamily,
-                "weight": weight, "glyphCount": len(cmap)}
-    except Exception as e:
-        return {"family": path.stem, "error": str(e)[:200]}
+        weight = int(font.get("OS/2").usWeightClass)
+    except Exception:
+        _log.debug("swallowed exception in _font_meta (except Exception:)", exc_info=True)
+    cmap = set()
+    if "cmap" in font:
+        for table in font["cmap"].tables:
+            cmap.update(table.cmap.keys())
+    return {"family": family or path.stem, "subfamily": subfamily,
+            "weight": weight, "glyphCount": len(cmap)}
 
 
 def _make_thumb(path: Path, out: Path, kind: str, ext: str) -> str:
@@ -252,19 +251,29 @@ def import_asset(session: Session, scope: str, project_root: str | Path | None,
     root = asset_root(scope, project_root)
     rel = _rel_path(sha, ext)
     path = root / rel
+    if not raw:
+        raise ApiError(ErrorCode.E_VALIDATION, "资产为空文件（0 字节）——请检查来源")
     if not path.exists():
         write_atomic(path, raw)
     meta = {"name": (name or Path(filename).stem)[:120], "original": Path(filename).name,
             "ext": ext, "mime": mimetypes.guess_type(str(path))[0] or "application/octet-stream",
             "sha256": sha}
-    if real_kind == "image":
-        meta.update(_image_meta(path, ext))
-    elif real_kind == "audio":
-        meta.update(_audio_meta(path))
-    elif real_kind == "video":
-        meta.update(_video_meta(path))
-    elif real_kind == "font":
-        meta.update(_font_meta(path))
+    # C5（专家 §7）：损坏文件（截断 PNG/假字体/坏容器）在元数据探测处就地转 4xx，
+    # 绝不让 PIL/mutagen 的原始异常冒成 500
+    try:
+        if real_kind == "image":
+            meta.update(_image_meta(path, ext))
+        elif real_kind == "audio":
+            meta.update(_audio_meta(path))
+        elif real_kind == "video":
+            meta.update(_video_meta(path))
+        elif real_kind == "font":
+            meta.update(_font_meta(path))
+    except ApiError:
+        raise
+    except Exception as e:
+        raise ApiError(ErrorCode.E_VALIDATION,
+                       f"资产文件损坏或不是有效的 {real_kind}：{e}") from e
     thumb = _make_thumb(path, path.with_name(f"{sha}.thumb.jpg"), real_kind, ext)
     if thumb:
         meta["thumb"] = f"{sha[:2]}/{thumb}"

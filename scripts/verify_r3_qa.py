@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from _acceptance import throwaway  # noqa: E402
+from _acceptance import throwaway
 
 BASE = "http://127.0.0.1:7860/api"
 COPY = "第一句话要读完其实不容易。第二句话同样需要更多时间才能读完。"
@@ -41,7 +41,7 @@ def main() -> int:
         raise SystemExit("API 未就绪")
     with throwaway(c, "qa-verify", COPY) as proj:
         pid = proj["id"]
-        qa = lambda: req("GET", pid, "/qa")  # noqa: E731
+        qa = lambda: req("GET", pid, "/qa")
         tl_doc = req("GET", pid, "/docs/timeline")
         scenes = tl_doc["content"]["scenes"]
         assert len(scenes) >= 2, scenes

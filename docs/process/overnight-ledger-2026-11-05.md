@@ -385,3 +385,39 @@ processed take 段已覆盖其执行路径（PASS）。
 提交：见下一条 git log（feat(b5/b7/b8/b9)）
 
 遗留/待决策：无
+
+---
+
+### 轮 9 · Wave C 七条补齐（含两个真 bug）+ lint 全仓 --fix 一次性清底 · 2026-11-06 05:4x
+
+改了什么：
+- **C1** `_safe_join` 符号链接越界测试（白名单根内 symlink 指向根外必须拒）。
+- **C2** 无体 POST token 层：裁定**不做**（仅本机绑定 + Host/Origin 校验 + 写端点全模型化
+  已覆盖；理由入 HANDOFF §8，未来引入则补测）——按任务书"不做就写清理由"。
+- **C3** 并发双客户端真并行保存 doc：base_version CAS 冲突→409→重读重试，40 保存零丢失、
+  版本链连续（**save_doc 本就有乐观并发**，此前无测试钉住）。
+- **C4** 截断 PNG：f03 帧扫描对"存在但坏"的文件**按缺失计**（触发重脏/报缺失），
+  不裸崩不当有效帧——pipeline try/except 包住 PIL open。
+- **C5** 坏资产四件套 → **揪出两个真 bug 并修**：①损坏文件的元数据探测让 PIL/原始异常
+  冒成 500 → import_asset 统一转 4xx 可诊断错误；②空文件（0 字节）被静默收下 → 明确拒。
+  伪装 SVG 按既有裁定**优雅降级**（收下+无尺寸+CSP 服务面），断言其不 500。
+- **C6** delivery 幂等：create_job 的防重是 check-then-act，真并发会双入队 → **flock 按
+  run_id 串行化检查+入队**；真并发两请求实测只落 1 个作业。
+- **C7** QA 统计口径：failed/applied/verified 混合数据 → successRate=2/3、
+  verificationRate=1/2（failed 不冒充 verified）钉死。
+- **lint 一次性清底**：`ruff --fix`（safe）清光全仓可自动修复项；**基线一次性下调
+  322→314 / 388→364 / 387→360**（余量为 B008=FastAPI Depends 惯用法等 idiom 类，
+  棘轮照钉防涨）；pipeline 四处顺手真修（PIE810 元组、两处 noqa 带理由、PLC0206 items()）。
+
+实测（命令含 cwd）：
+- `pytest tests/unit/test_expert_gaps.py tests/unit/test_assets.py -q` → **20 passed**
+- `cd server && uv run pytest tests -q` ×2 → **384 passed ×2**（183.07s/179.47s，0 skip）
+- 治理 **17 项全 ✓**；守卫 **PASS**（collected=384 · DB=11）；棘轮 **314/364/360** 全 ✓；tsc 0
+
+真渲染证据：无（本轮无渲染路径改动；最新为轮 7 的 golden 2.17.0 + harness）。
+
+没验的：C6 的跨进程并发（flock 语义即跨进程；进程内真并行已实测）。
+
+提交：见下一条 git log（test(wave-c)）
+
+遗留/待决策：无
