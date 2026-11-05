@@ -35,8 +35,10 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 7860
     frame_port: int = 8787          # F01 帧服务（规格硬约束 8787）
-    # P2-32：帧服务进程内随机 token（引擎 URL 以 ?tok= 携带）。绑定 127.0.0.1 之外
-    # 再加一道口令：本机其它用户的进程、以及"端口被别的进程占了"的场景都无法冒用。
+    # P2-32：帧服务进程内随机 token。绑定 127.0.0.1 之外再加一道口令：本机其它
+    # 用户的进程、以及"端口被别的进程占了"的场景都无法冒用。A2（2026-11-06）：
+    # 凭据从 ?tok= 改为 X-FilmFlow-Token header（引擎页经 #fragment 携带）——
+    # token 不再进任何 URL/访问日志，也不会被持久化进 artifact JSON。
     frame_token: str = Field(default_factory=lambda: __import__("secrets").token_urlsafe(24))
 
     home: Path = Path.home() / ".filmflow"

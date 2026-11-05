@@ -1,0 +1,215 @@
+{
+ "schema": "filmflow.golden-report/3",
+ "project": "5s",
+ "runId": 336,
+ "primary": "H2",
+ "profile": {
+  "width": 1920,
+  "height": 1080,
+  "fps": 24,
+  "duration": 5.0
+ },
+ "frames": 120,
+ "sceneCount": 2,
+ "resolutions": [
+  {
+   "resolution": "original",
+   "baselineDir": "fixtures/golden/5s/baseline_original",
+   "times": [
+    0.417,
+    1.25,
+    2.083,
+    2.917,
+    3.75,
+    4.583
+   ],
+   "phash": [
+    "9f1dd0e0e0e08f1f",
+    "9f1dc6c2e0e03d1d",
+    "9f1cc4c6e0e08f3d",
+    "bf33c4ccc8c03e33",
+    "bf33c4ccc8c03e33",
+    "bf33c4ccc8c03e33"
+   ],
+   "ssim": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sourceSha256": [
+    "7672302f75db4845f96be42dce0458ff21aa997807f47c1f98daf79181f9f09c",
+    "7078df1ca1d31a3a36811ab3e1ea598a4640ee5bd03f1b0d8a2ed6e4149325ce",
+    "27e4887697d6bbd2acc6b1c056a258288fffc1796f155c49e294e2e348296b94",
+    "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a",
+    "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a",
+    "e0caf61637ab033654dd380b35b0a2d4a3fe6000721c4af39f9bcc808a99a97a"
+   ],
+   "details": [
+    {
+     "frame": 0,
+     "time": 0.417,
+     "index": 10,
+     "ssim": 1.0,
+     "phash": "9f1dd0e0e0e08f1f",
+     "phashDistance": 0,
+     "sourceSha256": "7672302f75db4845f96be42dce0458ff21aa997807f47c1f98daf79181f9f09c"
+    },
+    {
+     "frame": 1,
+     "time": 1.25,
+     "index": 30,
+     "ssim": 1.0,
+     "phash": "9f1dc6c2e0e03d1d",
+     "phashDistance": 0,
+     "sourceSha256": "7078df1ca1d31a3a36811ab3e1ea598a4640ee5bd03f1b0d8a2ed6e4149325ce"
+    },
+    {
+     "frame": 2,
+     "time": 2.083,
+     "index": 50,
+     "ssim": 1.0,
+     "phash": "9f1cc4c6e0e08f3d",
+     "phashDistance": 0,
+     "sourceSha256": "27e4887697d6bbd2acc6b1c056a258288fffc1796f155c49e294e2e348296b94"
+    },
+    {
+     "frame": 3,
+     "time": 2.917,
+     "index": 70,
+     "ssim": 1.0,
+     "phash": "bf33c4ccc8c03e33",
+     "phashDistance": 0,
+     "sourceSha256": "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a"
+    },
+    {
+     "frame": 4,
+     "time": 3.75,
+     "index": 90,
+     "ssim": 1.0,
+     "phash": "bf33c4ccc8c03e33",
+     "phashDistance": 0,
+     "sourceSha256": "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a"
+    },
+    {
+     "frame": 5,
+     "time": 4.583,
+     "index": 110,
+     "ssim": 1.0,
+     "phash": "bf33c4ccc8c03e33",
+     "phashDistance": 0,
+     "sourceSha256": "e0caf61637ab033654dd380b35b0a2d4a3fe6000721c4af39f9bcc808a99a97a"
+    }
+   ]
+  }
+ ],
+ "update": false,
+ "updateReason": "",
+ "status": "pass",
+ "environment": {
+  "executorVersion": "2.15.0",
+  "os": "Darwin 27.2.0 (arm64)",
+  "python": "3.13.2",
+  "chrome": "Google Chrome 156.0.8078.80",
+  "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+  "styleLibrary": "/Users/litianyu/Documents/fy-style-library/代码动画_341种风格提示词",
+  "styleLibraryStatsSha256": "8902bdf277a34c7722b01e5bb066dd7439ca08617e1f230804d6d02a08cea973"
+ },
+ "generatedAt": "2026-11-05T18:13:46Z",
+ "resolution": "original",
+ "summary": {
+  "resolution": "original",
+  "baselineDir": "fixtures/golden/5s/baseline_original",
+  "times": [
+   0.417,
+   1.25,
+   2.083,
+   2.917,
+   3.75,
+   4.583
+  ],
+  "phash": [
+   "9f1dd0e0e0e08f1f",
+   "9f1dc6c2e0e03d1d",
+   "9f1cc4c6e0e08f3d",
+   "bf33c4ccc8c03e33",
+   "bf33c4ccc8c03e33",
+   "bf33c4ccc8c03e33"
+  ],
+  "ssim": [
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "sourceSha256": [
+   "7672302f75db4845f96be42dce0458ff21aa997807f47c1f98daf79181f9f09c",
+   "7078df1ca1d31a3a36811ab3e1ea598a4640ee5bd03f1b0d8a2ed6e4149325ce",
+   "27e4887697d6bbd2acc6b1c056a258288fffc1796f155c49e294e2e348296b94",
+   "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a",
+   "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a",
+   "e0caf61637ab033654dd380b35b0a2d4a3fe6000721c4af39f9bcc808a99a97a"
+  ],
+  "details": [
+   {
+    "frame": 0,
+    "time": 0.417,
+    "index": 10,
+    "ssim": 1.0,
+    "phash": "9f1dd0e0e0e08f1f",
+    "phashDistance": 0,
+    "sourceSha256": "7672302f75db4845f96be42dce0458ff21aa997807f47c1f98daf79181f9f09c"
+   },
+   {
+    "frame": 1,
+    "time": 1.25,
+    "index": 30,
+    "ssim": 1.0,
+    "phash": "9f1dc6c2e0e03d1d",
+    "phashDistance": 0,
+    "sourceSha256": "7078df1ca1d31a3a36811ab3e1ea598a4640ee5bd03f1b0d8a2ed6e4149325ce"
+   },
+   {
+    "frame": 2,
+    "time": 2.083,
+    "index": 50,
+    "ssim": 1.0,
+    "phash": "9f1cc4c6e0e08f3d",
+    "phashDistance": 0,
+    "sourceSha256": "27e4887697d6bbd2acc6b1c056a258288fffc1796f155c49e294e2e348296b94"
+   },
+   {
+    "frame": 3,
+    "time": 2.917,
+    "index": 70,
+    "ssim": 1.0,
+    "phash": "bf33c4ccc8c03e33",
+    "phashDistance": 0,
+    "sourceSha256": "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a"
+   },
+   {
+    "frame": 4,
+    "time": 3.75,
+    "index": 90,
+    "ssim": 1.0,
+    "phash": "bf33c4ccc8c03e33",
+    "phashDistance": 0,
+    "sourceSha256": "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a"
+   },
+   {
+    "frame": 5,
+    "time": 4.583,
+    "index": 110,
+    "ssim": 1.0,
+    "phash": "bf33c4ccc8c03e33",
+    "phashDistance": 0,
+    "sourceSha256": "e0caf61637ab033654dd380b35b0a2d4a3fe6000721c4af39f9bcc808a99a97a"
+   }
+  ]
+ }
+}

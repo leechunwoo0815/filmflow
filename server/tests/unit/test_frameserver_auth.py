@@ -1,10 +1,12 @@
-"""P2-32：FrameServer token 只护数据面（/project、/global-assets、帧 POST）。
+"""P2-32/A2：FrameServer token 只护数据面（/project、/global-assets、帧 POST）。
 
 /engine/ 的页面与脚本是入库的公开引擎代码（另有 CSP 头），不设闸——进程内随机
 token 随重启轮换，长命 Chrome 的缓存页/旧 cookie 会让相对路径的引擎脚本 403 →
 静帧全黑（2026-11-05 实测的 D04 过暗回归，见 Handler._needs_token 注释）。
-数据面 URL 全部由服务端构造（?tok=），不受 Chrome 缓存影响。
-复用探针打受保护路径：另一进程的帧服务 403 → E_PORT_BUSY fail-closed。
+A2（2026-11-06）：数据面凭据从 `?tok=`（会进访问日志/浏览器历史，且会被持久化进
+artifact JSON）改为 **X-FilmFlow-Token header**；引擎页用 URL #fragment 携带
+token（fragment 不进任何 HTTP 请求）。query 里的 tok 一律不再被接受。
+复用探针打 /engine/ 公开面并带 header：另一进程的帧服务 403 → E_PORT_BUSY fail-closed。
 """
 from __future__ import annotations
 
@@ -46,25 +48,30 @@ def test_engine_assets_are_public(fs):
     assert r.status_code == 200, "引擎代码不设 token 闸（缓存页/旧 cookie 不再致 403）"
 
 
-def test_project_files_require_token(fs):
-    r = httpx.get(f"{_base(fs)}/project/hello.txt", timeout=5, trust_env=False)
-    assert r.status_code == 403
-    r = httpx.get(f"{_base(fs)}/project/hello.txt", params={"tok": "wrong"}, timeout=5,
-                  trust_env=False)
-    assert r.status_code == 403
-    r = httpx.head(f"{_base(fs)}/project/hello.txt", timeout=5, trust_env=False)
-    assert r.status_code == 403, "HEAD 也必须过闸"
-    r = httpx.get(f"{_base(fs)}/project/hello.txt", params={"tok": settings.frame_token},
-                  timeout=5, trust_env=False)
-    assert r.status_code == 200 and r.text == "ok"
+def test_project_files_require_token_header(fs):
+    url = f"{_base(fs)}/project/hello.txt"
+    no_h = httpx.get(url, timeout=5, trust_env=False)
+    assert no_h.status_code == 403, "无 header 必须拒绝"
+    wrong = httpx.get(url, headers={"X-FilmFlow-Token": "wrong"}, timeout=5, trust_env=False)
+    assert wrong.status_code == 403, "错 token 必须拒绝"
+    stale_query = httpx.get(url, params={"tok": settings.frame_token}, timeout=5, trust_env=False)
+    assert stale_query.status_code == 403, \
+        "A2 回归钉：query ?tok= 一律不再被接受（凭据不许再进 URL/日志）"
+    head = httpx.head(url, headers={"X-FilmFlow-Token": settings.frame_token},
+                      timeout=5, trust_env=False)
+    assert head.status_code == 200, "HEAD 也必须过闸（带 header）"
+    ok = httpx.get(url, headers={"X-FilmFlow-Token": settings.frame_token},
+                   timeout=5, trust_env=False)
+    assert ok.status_code == 200 and ok.text == "ok"
 
 
 def test_frame_posts_require_token(fs):
     png = "data:image/png;base64," + base64.b64encode(b"\x89PNG-fake").decode()
     r = httpx.post(f"{_base(fs)}/frame", params={"i": "0"}, content=png.encode(),
                    timeout=5, trust_env=False)
-    assert r.status_code == 403
-    r = httpx.post(f"{_base(fs)}/frame", params={"i": "0", "tok": settings.frame_token},
-                   content=png.encode(), timeout=5, trust_env=False)
+    assert r.status_code == 403, "无 header 的帧上传必须拒绝"
+    r = httpx.post(f"{_base(fs)}/frame", params={"i": "0"}, content=png.encode(),
+                   headers={"X-FilmFlow-Token": settings.frame_token},
+                   timeout=5, trust_env=False)
     assert r.status_code == 204
     assert (fs.project_root / "out" / "frames" / "0000.png").exists()

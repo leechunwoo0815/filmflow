@@ -18,13 +18,23 @@
 <script src="../assets/scene-render.js"></script>
 <script>
 const q = new URLSearchParams(location.search);
-const TOK = new URLSearchParams(location.search).get('tok') || '';
-const FFU = (p) => (TOK ? p + (p.includes('?') ? '&' : '?') + 'tok=' + encodeURIComponent(TOK) : p);
+// A2（2026-11-06）：token 只走 #fragment（不进任何 HTTP 请求/日志，缓存键不含
+// fragment → 缓存页照样读到轮换后的新 token）；数据面 fetch 一律带
+// X-FilmFlow-Token header（?tok= 已废除）。embed css 用 fetch+<style> 注入
+// （<link> 带不了 header；css 是 data:URL 自包含的）。
+const TOK = new URLSearchParams(location.hash.slice(1)).get('tok') || '';
+const FH = () => (TOK ? { 'X-FilmFlow-Token': TOK } : {});
 
 const EMBED = q.get('embed');
 if (EMBED) {
-  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = EMBED;
-  document.head.appendChild(l);
+  fetch(EMBED, { headers: FH() }).then((r) => {
+    if (!r.ok) throw new Error('embed ' + r.status);
+    return r.text();
+  }).then((css) => {
+    const s = document.createElement('style');
+    s.textContent = css;
+    document.head.appendChild(s);
+  }).catch(() => { /* 字体注入失败：回退系统字体，行为同旧 link 403 */ });
 }
 const MODE = q.get('mode') || 'render';
 const BINDING = q.get('binding') || '';
@@ -41,7 +51,7 @@ function title(s) { document.title = s; }
 function fail(e) {
   title('FILM_ERR ' + (e && e.message ? e.message : e));
   // 让 F02 立即结束等待，再由缺帧检查报错（不要挂 1800s）；预览绝不写 DONE
-  if (MODE !== 'preview') fetch(FFU('/done'), { method: 'POST' }).catch(() => {});
+  if (MODE !== 'preview') fetch('/done', { method: 'POST', headers: FH() }).catch(() => {});
 }
 
 function allText(programs) {
@@ -62,7 +72,7 @@ function allText(programs) {
 }
 
 async function loadJSON(url) {
-  const r = await fetch(url, { cache: 'no-store' });
+  const r = await fetch(url, { cache: 'no-store', headers: FH() });
   if (!r.ok) throw new Error('fetch ' + url + ' ' + r.status);
   return await r.json();
 }
@@ -174,11 +184,11 @@ async function boot() {
       ctx.clearRect(0, 0, out.width, out.height);
       ctx.drawImage(canvas, 0, 0, out.width, out.height);
       const data = out.toDataURL('image/png');
-      const r = await fetch(FFU('/pframe?i=' + i), { method: 'POST', body: data });
+      const r = await fetch('/pframe?i=' + i, { method: 'POST', body: data, headers: FH() });
       if (!r.ok) throw new Error('pframe ' + i + ' ' + r.status);
       if (i % Math.max(1, Math.round(pfps)) === 0) title('PROXY ' + i + '/' + total);
     }
-    await fetch(FFU('/done'), { method: 'POST' });
+    await fetch('/done', { method: 'POST', headers: FH() });
     title('PROXY_DONE');
     return;
   }
@@ -187,12 +197,12 @@ async function boot() {
   for (let i = START; i < end; i++) {
     const canvas = SCENE_RENDER.renderFrameAt(programs, trs, i / FPS, { W, H });
     const data = canvas.toDataURL('image/png');
-    const r = await fetch(FFU('/frame?i=' + i), { method: 'POST', body: data });
+    const r = await fetch('/frame?i=' + i, { method: 'POST', body: data, headers: FH() });
     if (!r.ok) throw new Error('frame ' + i + ' ' + r.status);
     if (i % 12 === 0) title('FRAME ' + i + '/' + total);
   }
   // 每次调用都发 DONE：F02 以 DONE 作为本段渲染结束信号（短片不再等 1800s）
-  await fetch(FFU('/done'), { method: 'POST' });
+  await fetch('/done', { method: 'POST', headers: FH() });
   title('DONE');
 }
 

@@ -5,12 +5,30 @@
 <title>Riso film</title>
 <script>
 (function () {
-  var q = new URLSearchParams(location.search);
-  var e = q.get('embed');
-  var l = document.createElement('link');
-  l.rel = 'stylesheet';
-  l.href = e || '../fonts/noto-sans-sc/embed.css';
-  document.head.appendChild(l);
+  // A2（2026-11-06）：token 只走 #fragment（fragment 不进任何 HTTP 请求/日志，
+  // Chrome 缓存按无 fragment 的 URL 键控 → 缓存页照样从新 hash 读到轮换后的新
+  // token）；embed css 用 fetch + <style> 注入（<link> 带不了 header；css 是
+  // data:URL 自包含的，注入即生效）。无 embed 参数时回退引擎公开面默认字体
+  // （/engine/ 不设 token 闸）。
+  var TOK = new URLSearchParams(location.hash.slice(1)).get('tok') || '';
+  var FH = function () { return TOK ? { 'X-FilmFlow-Token': TOK } : {}; };
+  window.__FFH = FH;
+  var e = new URLSearchParams(location.search).get('embed');
+  if (e) {
+    fetch(e, { headers: FH() }).then(function (r) {
+      if (!r.ok) throw new Error('embed ' + r.status);
+      return r.text();
+    }).then(function (css) {
+      var s = document.createElement('style');
+      s.textContent = css;
+      document.head.appendChild(s);
+    }).catch(function () { /* 字体注入失败：回退系统字体，行为同旧 link 403 */ });
+  } else {
+    var l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = '../fonts/noto-sans-sc/embed.css';
+    document.head.appendChild(l);
+  }
 })();
 </script>
 <style>
@@ -26,8 +44,9 @@ const FONT = '"Noto Sans SC"';
 const CROSS = { x: 1768, y: 128 };
 
 const qs = new URLSearchParams(location.search);
-const TOK = new URLSearchParams(location.search).get('tok') || '';
-const FFU = (p) => (TOK ? p + (p.includes('?') ? '&' : '?') + 'tok=' + encodeURIComponent(TOK) : p);
+// A2：token 从 #fragment 读，数据面 fetch 带 X-FilmFlow-Token（?tok= 已废除）
+const TOK = new URLSearchParams(location.hash.slice(1)).get('tok') || '';
+const FH = window.__FFH || (() => (TOK ? { 'X-FilmFlow-Token': TOK } : {}));
 const MODE = qs.get('mode') || '';
 const T0 = parseFloat(qs.get('t') || '0');
 
@@ -978,11 +997,11 @@ async function renderMode() {
   for (let i = start; i < Math.min(end, FRAMES); i++) {
     drawAt(i / FPS);
     const data = gl.canvas.toDataURL('image/png');
-    const r = await fetch(FFU('/frame?i=' + i), { method: 'POST', body: data });
+    const r = await fetch('/frame?i=' + i, { method: 'POST', body: data, headers: FH() });
     if (!r.ok) { document.title = 'ERR frame ' + i; return; }
     if (i % 24 === 0) document.title = 'FRAME ' + i + '/' + FRAMES;
   }
-  if (end >= FRAMES) await fetch(FFU('/done'), { method: 'POST' });
+  if (end >= FRAMES) await fetch('/done', { method: 'POST', headers: FH() });
   document.title = 'DONE';
 }
 async function proxyMode() {
@@ -995,11 +1014,11 @@ async function proxyMode() {
     drawAt((i * step) / FPS);
     pcx.drawImage(gl.canvas, 0, 0, 480, 270);
     const data = pc.toDataURL('image/png');
-    const r = await fetch(FFU('/pframe?i=' + i), { method: 'POST', body: data });
+    const r = await fetch('/pframe?i=' + i, { method: 'POST', body: data, headers: FH() });
     if (!r.ok) { document.title = 'ERR pframe ' + i; return; }
     if (i % 12 === 0) document.title = 'PROXY ' + i + '/' + total;
   }
-  await fetch(FFU('/done'), { method: 'POST' });
+  await fetch('/done', { method: 'POST', headers: FH() });
   document.title = 'PROXY_DONE';
 }
 

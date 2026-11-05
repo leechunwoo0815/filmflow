@@ -181,3 +181,53 @@ project/resolution/runId/at/executorVersion/ssimMin/status/reportFile；**首次
 提交：见下一条 git log（feat(a4/a6/a7)）
 
 遗留/待决策：无
+
+---
+
+### 轮 4 · A2 帧服务凭据 header 化（?tok= 废除）+ 黑帧回归当场抓出当场修 · 2026-11-06 02:2x
+
+改了什么：
+- **服务端** `pipeline.py`：`_authorized` 改读 `X-FilmFlow-Token` header（**query tok 一律不再接受**，
+  有回归钉测试）；复用探针改带 header（URL 不再携带凭据）；`_engine_url` 的 embed 参数改传
+  **相对路径**（token-free）且 token 改走 **URL `#fragment`**（fragment 不进任何 HTTP 请求/日志/
+  服务器记录；Chrome 缓存按无 fragment 的 URL 键控 → 缓存页照样从新 hash 读到轮换后的新 token——
+  这正是 P2-32 的 8.4 教训要求的缓存存活性）；`_project_url` 不再把 token 拼进 URL
+  （**顺带修掉"token 被持久化进 artifact JSON"的旧泄漏**）。
+- **引擎侧 4 个入口页全部改造**（侦察时只看到 2 个，真渲染抓出第 4 个——见下）：
+  `film.html`/`film_spec.html`/`still_spec.html`/`still.html`——TOK 从 `#fragment` 读、
+  fetch 带 `FH()` header、embed css 改 **fetch+`<style>` 注入**（`<link>` 带不了 header；
+  embed.css 是 data:URL 自包含的，注入即生效）；`previs.html` 纯内联 payload 无取数，豁免。
+- **测试**：`test_frameserver_auth.py` 重写为 header 语义（含"query tok 必须 403"的回归钉）；
+  `test_p1_foundations` 帧上传改 header。
+- config.py 注释同步。
+
+**黑帧回归（任务书预警的那次）当场抓出当场修**：改造后首轮全量 pytest，渲染级 E2E 立即
+`D04 静帧过暗 lum_mean=17.9 < 40`。隔离探针复现 + 留存现场：静帧内容是引擎错误屏
+`E_PROGRAM_INVALID — Unexpected token '<'`（fetch 拿到 403 的 HTML）——根因：D02 走的是
+**第四个入口页 `still_spec.html`**（侦察时漏掉），未改造仍按旧方式取数。补改后全绿。
+证据：`/tmp/a2-stills/S01_0.896_draft.png`（错误屏现场照）。
+
+实测（命令含 cwd）：
+- `cd server && uv run pytest tests -q` ×2 → **368 passed ×2**（197.25s/197.99s，0 skip，dev 在跑）
+- **真渲染双验**（dedup 修复后复跑）：`golden_run.py --project 5s --resolution original` →
+  **SSIM=1.000000 ×6 / pHashDist=0**（run 336，归档 `5s-original-run336-20261105T181346Z.json`，
+  index 12 条，自删，DB 11 恒定）；`verify_r3_camera.py` → **PASS**
+  （D01 文本 override / E03 相机 3 帧 / E04 4 种转场 / preview vs final SSIM 0.989483——
+  与 P2-32 修复后基线逐字一致）
+- **日志无 token 实证**：临时 FrameServer + 带 header 取 `/project/a.txt` →
+  `127.0.0.1 - - "GET /project/a.txt HTTP/1.1" 200`，响应 `ok`，
+  `token 出现在日志: False`；代码面 `grep -rn "tok=" server/app engines/riso` → **0 处 URL 构造**
+  （只剩注释）；"token 进 artifact" 的旧泄漏同轮关闭
+- 治理 **17 项全 ✓**（第 14 项还抓掉了我第一轮探针留下的 `.acceptance/a2probe-1` 孤儿目录——已清）；
+  守卫 PASS；ruff **339/405**；tsc 0
+- EXECUTOR/RENDERER **均不升**：URL/凭据管道改动，产出逐字节等价（golden SSIM 1.0 ×6 双轮实证），
+  同 trust_env 产出等价裁决
+
+真渲染证据：golden run 336 SSIM [1.0×6]（报告 `docs/reports/golden/5s-original-run336-20261105T181346Z.json`）
++ verify_r3_camera PASS（SSIM 0.989483）。
+
+没验的：`previs.html`（纯内联 payload，无 fetch）未做浏览器级验证——它不发起任何数据请求，豁免。
+
+提交：见下一条 git log（feat(a2)）
+
+遗留/待决策：无

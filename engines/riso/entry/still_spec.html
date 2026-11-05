@@ -17,10 +17,22 @@
 <script src="../assets/scene-render.js"></script>
 <script>
 const q = new URLSearchParams(location.search);
+// A2（2026-11-06）：token 只走 #fragment（不进任何 HTTP 请求/日志，缓存键不含
+// fragment → 缓存页照样读到轮换后的新 token）；数据面 fetch 一律带
+// X-FilmFlow-Token header（?tok= 已废除）。embed css 用 fetch+<style> 注入
+// （<link> 带不了 header；css 是 data:URL 自包含的）。
+const TOK = new URLSearchParams(location.hash.slice(1)).get('tok') || '';
+const FH = () => (TOK ? { 'X-FilmFlow-Token': TOK } : {});
 const EMBED = q.get('embed');
 if (EMBED) {
-  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = EMBED;
-  document.head.appendChild(l);
+  fetch(EMBED, { headers: FH() }).then((r) => {
+    if (!r.ok) throw new Error('embed ' + r.status);
+    return r.text();
+  }).then((css) => {
+    const s = document.createElement('style');
+    s.textContent = css;
+    document.head.appendChild(s);
+  }).catch(() => { /* 字体注入失败：回退系统字体，行为同旧 link 403 */ });
 }
 const SPEC_URL = q.get('spec');
 const SCENE = q.get('scene') || '';
@@ -59,11 +71,11 @@ function collectText(program) {
 
 async function boot() {
   if (!SPEC_URL) return fail('missing spec');
-  const spec = await (await fetch(SPEC_URL, { cache: 'no-store' })).json();
+  const spec = await (await fetch(SPEC_URL, { cache: 'no-store', headers: FH() })).json();
   if (spec.schema !== 'filmflow.still-spec/2') return fail('spec schema != filmflow.still-spec/2');
   const scene = (spec.scenes || []).find((s) => s.id === SCENE) || (spec.scenes || [])[0];
   if (!scene || !scene.program) return fail('scene has no program');
-  const program = await (await fetch(scene.program, { cache: 'no-store' })).json();
+  const program = await (await fetch(scene.program, { cache: 'no-store', headers: FH() })).json();
   await SCENE_RENDER.preloadProgram(program);
   const c = program.canvas || {};
   const W = c.w || 1920, H = c.h || 1080;

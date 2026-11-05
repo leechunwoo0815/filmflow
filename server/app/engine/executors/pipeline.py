@@ -64,7 +64,11 @@ class FrameServer:
                 /engine/ 的页面与脚本是入库的公开引擎代码（另有 CSP sandbox 头），
                 不设闸：进程内随机 token 会随重启轮换，长命 Chrome 的缓存页/旧
                 cookie 会让相对路径的引擎脚本 403 → 静帧全黑（2026-11-05 实测的
-                D04 过暗回归）。数据面 URL 全部由服务端构造、必带 ?tok=，不受缓存影响。
+                D04 过暗回归）。A2（2026-11-06）：数据面凭据从 `?tok=`（会进访问
+                日志/浏览器历史，且曾被持久化进 artifact JSON）改为 **fetch
+                `X-FilmFlow-Token` header**；引擎页用 URL `#fragment` 携带 token
+                （fragment 永不出现在任何 HTTP 请求/日志里，Chrome 缓存按无
+                fragment 的 URL 键控 → 缓存页 + 新 hash 照样拿到新 token）。
                 """
                 p = u.path
                 if p.startswith("/project/") or p.startswith("/global-assets/"):
@@ -74,9 +78,8 @@ class FrameServer:
             def _authorized(self, u) -> bool:
                 import hmac
                 from ...config import settings
-                q = parse_qs(u.query)
-                tok = (q.get("tok") or [""])[0]
-                return hmac.compare_digest(tok, settings.frame_token)
+                got = self.headers.get("X-FilmFlow-Token", "")
+                return hmac.compare_digest(got, settings.frame_token)
 
             def end_headers(self):
                 from ...security import frameserver_headers
@@ -151,13 +154,14 @@ class FrameServer:
             # 规格 §5.2：端口被占且可健康检查 → 复用已有服务。
             # P2-32：探针必须带本进程 token——403 说明占端口的是**另一个进程**的
             # 帧服务（token 不同），复用它会让引擎取到别的项目根的 program（曾实测
-            # 产出黑帧/毒帧），fail-closed 拒绝启动。
+            # 产出黑帧/毒帧），fail-closed 拒绝启动。A2：token 走 header（引擎页
+            # 本身是 /engine/ 公开面，探针打它即可，URL 不携带凭据）。
             import urllib.request
             from ...config import settings
             try:
                 req = urllib.request.Request(
-                    f"http://127.0.0.1:{self.port}/engine/riso/entry/film.html"
-                    f"?tok={settings.frame_token}")
+                    f"http://127.0.0.1:{self.port}/engine/riso/entry/film.html",
+                    headers={"X-FilmFlow-Token": settings.frame_token})
                 with urllib.request.urlopen(req, timeout=3) as r:
                     if r.status != 200:
                         raise OSError
@@ -230,9 +234,20 @@ def _engine_url(ctx, engine_build: dict, entry: str, query: str) -> str:
         root = Path(ctx["project_root"])
         embed_rel = ("fonts/noto-sans-sc/embed.css" if (root / "fonts/noto-sans-sc/embed.css").exists()
                      else "fonts/embed.css")
-        q += f"&embed=http://127.0.0.1:{settings.frame_port}/project/{embed_rel}?tok={settings.frame_token}"
-    q += f"&tok={settings.frame_token}"
-    return f"http://127.0.0.1:{settings.frame_port}/engine/{engine_build['engine_id']}/{base}?{q}"
+        # A2：embed 传**相对路径**（token-free）——引擎页 fetch 后注入 <style>
+        # （embed css 是 data:URL 自包含的，<link> 带不了 header 所以弃用）
+        q += f"&embed=/project/{embed_rel}"
+    # A2：token 只走 #fragment——fragment 不进任何 HTTP 请求/日志/服务器侧记录；
+    # Chrome 缓存按无 fragment 的 URL 键控，缓存页照样从新 hash 读到轮换后的新 token
+    return (f"http://127.0.0.1:{settings.frame_port}"
+            f"/engine/{engine_build['engine_id']}/{base}?{q}#tok={settings.frame_token}")
+
+
+def _project_url(ctx, rel: str) -> str:
+    from ...config import settings
+    # A2：不再把 token 拼进 URL（此前 ?tok= 会被持久化进 artifact JSON）；
+    # 消费方（引擎页 fetch）统一带 X-FilmFlow-Token header
+    return f"http://127.0.0.1:{settings.frame_port}/project/{rel}"
 
 
 def _asset_resolver(ctx):
@@ -294,11 +309,6 @@ def _entry(build: dict, name: str) -> str | None:
 
 def _legacy_entry(build: dict, name: str) -> str | None:
     return (build.get("legacy_entry") or {}).get(name) or _entry(build, name)
-
-
-def _project_url(ctx, rel: str) -> str:
-    from ...config import settings
-    return f"http://127.0.0.1:{settings.frame_port}/project/{rel}?tok={settings.frame_token}"
 
 
 def _still_times(start: float, end: float) -> list[float]:

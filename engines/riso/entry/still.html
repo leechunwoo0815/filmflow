@@ -5,12 +5,27 @@
 <title>Riso still</title>
 <script>
 (function () {
-  var q = new URLSearchParams(location.search);
-  var e = q.get('embed');
-  var l = document.createElement('link');
-  l.rel = 'stylesheet';
-  l.href = e || '../fonts/noto-sans-sc/embed.css';
-  document.head.appendChild(l);
+  // A2（2026-11-06）：与 film.html 同款——token 走 #fragment，embed css 用
+  // fetch+<style> 注入（<link> 带不了 header；css 是 data:URL 自包含的）。
+  var TOK = new URLSearchParams(location.hash.slice(1)).get('tok') || '';
+  var FH = function () { return TOK ? { 'X-FilmFlow-Token': TOK } : {}; };
+  window.__FFH = FH;
+  var e = new URLSearchParams(location.search).get('embed');
+  if (e) {
+    fetch(e, { headers: FH() }).then(function (r) {
+      if (!r.ok) throw new Error('embed ' + r.status);
+      return r.text();
+    }).then(function (css) {
+      var s = document.createElement('style');
+      s.textContent = css;
+      document.head.appendChild(s);
+    }).catch(function () { /* 字体注入失败：回退系统字体，行为同旧 link 403 */ });
+  } else {
+    var l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = '../fonts/noto-sans-sc/embed.css';
+    document.head.appendChild(l);
+  }
 })();
 </script>
 <style>
