@@ -202,9 +202,9 @@ def test_project_create_happy_path_via_route():
     """happy path：合法请求必须继续走通（历史上只测 422 让 gate_decide 的 500 溜了出去）。"""
     import shutil
     import uuid as _uuid
+    from pathlib import Path as _P
 
     from app.config import settings
-    from pathlib import Path as _P
     # 必须在白名单内：tempfile 目录会被目录策略拒（那正是 B1 的防线）
     root = _P(settings.workspace_roots[0]).resolve() / f"judge-create-{_uuid.uuid4().hex[:8]}"
     root.mkdir(parents=True)

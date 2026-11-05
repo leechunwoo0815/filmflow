@@ -14,10 +14,9 @@ import base64
 import json
 from pathlib import Path
 
+from ..atomicwrite import write_atomic
 from ..config import settings
 from ..engine.cachekey import bytes_sha256
-
-from ..atomicwrite import write_atomic
 
 RENDERER_VER = "1.0.0"
 

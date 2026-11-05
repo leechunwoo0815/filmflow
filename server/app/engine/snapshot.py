@@ -8,10 +8,10 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from ..atomicwrite import write_atomic
-from .cachekey import file_sha256
 from ..models import ProjectDoc, Run, Workflow
 from ..services.project_docs import build_script_doc, build_timeline_doc, content_hash
 from ..services.render_profiles import resolve as resolve_render_profiles
+from .cachekey import file_sha256
 
 SNAPSHOT_SCHEMA = "filmflow.snapshot/1"
 

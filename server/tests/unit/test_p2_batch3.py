@@ -10,7 +10,6 @@ from sqlmodel import Session
 from app.db import engine
 from app.services import qa, templates
 
-
 # ---------- P2-18：项目模板保留场景文本 ----------
 
 def test_project_template_keeps_scene_text():

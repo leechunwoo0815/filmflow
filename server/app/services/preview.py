@@ -25,6 +25,7 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
+from ..atomicwrite import write_atomic
 from ..config import detect_chrome, settings
 from ..engine.cachekey import file_sha256
 from ..engine.fpscalc import fps_rational as _fps_rational
@@ -37,8 +38,6 @@ from ..models import Artifact, Project, Run, Style, Workflow
 from . import engines as engines_svc
 from . import project_docs as docs_svc
 from . import render_profiles as render_profiles_svc
-
-from ..atomicwrite import write_atomic
 
 RENDERER_VER = "preview-2.0.0"  # P2-14：相机单源（camera_from_e02）+ 引擎 ease 支持；P2-35 字体 CSS 对齐
 PREVIEW_PROFILES = render_profiles_svc.DEFAULT_PROFILES

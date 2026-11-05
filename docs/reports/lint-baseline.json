@@ -1,7 +1,17 @@
 {
  "schema": "filmflow.lint-baseline/1",
  "createdAt": "2026-11-06T00:45:00Z",
- "note": "lint 棘轮（整夜任务书 A3）：verify_p1_governance 第 17 项逐项断言 current <= baseline，只许降不许涨；上调基线必须先修代码并在台账给理由。口径：serverCwd = `cd server && uv run ruff check .`；repoRootCwd = 仓库根同一命令（scripts/ 不继承 server 的 line-length=110，两口径本就不同）。实测口径见 overnight-ledger 轮 2。",
- "serverCwd": {"total": 339, "BLE001": 65, "S110": 1, "F821": 0},
- "repoRootCwd": {"total": 405, "BLE001": 75, "S110": 1, "F821": 0}
+ "note": "lint 棘轮（整夜任务书 A3）：verify_p1_governance 第 17 项逐项断言 current <= baseline，只许降不许涨；上调基线必须先修代码并在台账给理由。口径：serverCwd = `cd server && uv run ruff check .`；repoRootCwd = 仓库根同一命令（scripts/ 不继承 server 的 line-length=110，两口径本就不同）。实测口径见 overnight-ledger 轮 2。 2026-11-06 B1 轮下调：I001 --fix 清掉 5 个文件的潜在导入排序存量（339→322 / 405→388），基线随之只降不升。",
+ "serverCwd": {
+  "total": 322,
+  "BLE001": 65,
+  "S110": 1,
+  "F821": 0
+ },
+ "repoRootCwd": {
+  "total": 388,
+  "BLE001": 75,
+  "S110": 1,
+  "F821": 0
+ }
 }

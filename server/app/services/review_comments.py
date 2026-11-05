@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import csv
+import fcntl
 import hashlib
 import io
 import json
 import uuid
 import zipfile
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..errors import ApiError, ErrorCode
-
 from ..atomicwrite import write_atomic
+from ..errors import ApiError, ErrorCode
 
 KINDS = {"rect", "arrow", "pen", "text"}
 CATEGORIES = {"must", "suggest", "question"}
@@ -55,6 +56,25 @@ def save(root: str | Path, data: dict) -> dict:
     return data
 
 
+@contextmanager
+def _mutation(root: str | Path):
+    """B1/P2-08：读改写全程持 flock（review.json 旁的 .review.lock）。
+
+    原子写只保证"不留半文件"，不保证不丢更新——两个并发客户端都 load v1 再各自
+    save 时，后写的会覆盖先写的。flock 对**跨线程**（各开各的 fd）与**跨进程**
+    都互斥；本模块的变更函数内部不再嵌套加锁（item 等读路径不锁），无自锁。
+    """
+    p = path(root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    f = open(p.parent / ".review.lock", "a")  # noqa: SIM115 -- 跨 yield 持锁，不能 with
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+
 def summary(root: str | Path) -> dict:
     data = load(root)
     comments = data["comments"]
@@ -73,6 +93,11 @@ def summary(root: str | Path) -> dict:
 
 
 def add(root: str | Path, payload: dict) -> dict:
+    with _mutation(root):
+        return _add(root, payload)
+
+
+def _add(root: str | Path, payload: dict) -> dict:
     body = str(payload.get("body") or "").strip()
     if not body and not payload.get("geometry"):
         raise ApiError(ErrorCode.E_VALIDATION, "批注必须包含文字或图形")
@@ -109,6 +134,11 @@ def add(root: str | Path, payload: dict) -> dict:
 
 
 def update(root: str | Path, comment_id: str, payload: dict) -> dict:
+    with _mutation(root):
+        return _update(root, comment_id, payload)
+
+
+def _update(root: str | Path, comment_id: str, payload: dict) -> dict:
     data = load(root)
     comment = next((c for c in data["comments"] if c.get("id") == comment_id), None)
     if not comment:
@@ -135,6 +165,11 @@ def update(root: str | Path, comment_id: str, payload: dict) -> dict:
 
 
 def decide(root: str | Path, payload: dict) -> dict:
+    with _mutation(root):
+        return _decide(root, payload)
+
+
+def _decide(root: str | Path, payload: dict) -> dict:
     decision = str(payload.get("decision") or "")
     if decision not in DECISIONS and decision not in ("approved", "rejected"):
         raise ApiError(ErrorCode.E_VALIDATION, "决议必须是 pass/needs_changes（整片可用 approved/rejected）")
@@ -164,6 +199,11 @@ def export_csv(root: str | Path) -> str:
 
 
 def import_json(root: str | Path, payload: dict) -> dict:
+    with _mutation(root):
+        return _import_json(root, payload)
+
+
+def _import_json(root: str | Path, payload: dict) -> dict:
     incoming = payload.get("review") if isinstance(payload.get("review"), dict) else payload
     comments = incoming.get("comments") if isinstance(incoming, dict) else None
     if not isinstance(comments, list):

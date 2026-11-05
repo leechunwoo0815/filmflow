@@ -231,3 +231,35 @@ project/resolution/runId/at/executorVersion/ssimMin/status/reportFile；**首次
 提交：见下一条 git log（feat(a2)）
 
 遗留/待决策：无
+
+---
+
+### 轮 5 · B1/P2-08 JSON 读改写并发安全（flock 全程锁）+ 真并行测试 · 2026-11-06 02:5x
+
+改了什么：
+- `services/review_comments.py`：`_mutation()` flock 上下文（review/.review.lock）；
+  `add/update/decide/import_json` 4 个变更函数改为薄包装（公开签名不变，内部 `_name` 持锁执行）。
+- `services/takes.py`：同款（card/.takes.lock）；`update/promote/delete` 3 个包装。
+- 原子写只保证不留半文件，不保证不丢更新——两个并发客户端都 load v1 再各自 save，
+  后写覆盖先写（专家 P2-08）。flock 对**跨线程**（各开各的 fd）与**跨进程**都互斥；
+  变更函数内部无嵌套加锁（读路径不锁），无自锁。选锁而非 CAS 409：并发用户排队
+  优于报错（任务书允许可选"或文件锁"）。
+- 新测试 `tests/unit/test_json_cas.py`：**真线程并行**（ThreadPoolExecutor 4×25 条批注、
+  4 线程混合写 takes），断言零丢失——连跑 3 次稳定。修复前此场景必丢数据。
+
+实测（命令含 cwd）：
+- `pytest tests/unit/test_json_cas.py -q` ×3 → 全过（竞态不可复现）
+- `cd server && uv run pytest tests -q` ×2 → **370 passed ×2**（196.72s/195.51s，0 skip）
+- 治理 **17 项全 ✓**；守卫 **PASS**（collected=370）；`cd web && npx tsc --noEmit` → 0
+- ruff：**322 / 388**（低于基线 339/405）——修 B1 时 I001 棘轮咬出 5 个文件的潜在导入排序
+  存量（含 routes.py/pipeline.py），`--fix` 清掉；**基线随之只降**（lint-baseline.json 已下调
+  并注明理由）；S110=1/BLE001=65·75/F821=0 不变
+- EXECUTOR 不升：文件锁语义，节点产出不变
+
+真渲染证据：无（无渲染路径改动）。
+
+没验的：跨进程并发未单测（flock 语义即跨进程互斥；进程内真并行已实测）。
+
+提交：见下一条 git log（feat(b1)）
+
+遗留/待决策：无

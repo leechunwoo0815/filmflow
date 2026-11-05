@@ -13,14 +13,13 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
+from ..atomicwrite import write_atomic
 from ..engine.scene.compiler import scene_text
 from ..models import Artifact, NodeRun, Project, Run, Workflow
 from . import assets as assets_svc
 from . import audio as audio_svc
 from . import project_docs as docs_svc
 from . import timeline_ops as tl_svc
-
-from ..atomicwrite import write_atomic
 
 FIX_SCHEMA = "filmflow.qa-fixes/1"
 CATEGORIES = (

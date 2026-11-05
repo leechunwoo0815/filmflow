@@ -1,7 +1,9 @@
 """FR-38 Take 元数据：命名/评分/备注/当前、软删除。"""
 from __future__ import annotations
 
+import fcntl
 import json
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -36,6 +38,21 @@ def save(root: str | Path, data: dict) -> dict:
     return data
 
 
+@contextmanager
+def _mutation(root: str | Path):
+    """B1/P2-08：读改写全程持 flock（card/.takes.lock）——跨线程/跨进程互斥，
+    并发写同一份 takes.json 不再互相丢更新。变更函数内部不嵌套加锁，无自锁。"""
+    p = path(root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    f = open(p.parent / ".takes.lock", "a")  # noqa: SIM115 -- 跨 yield 持锁，不能 with
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+
 def current_run(root: str | Path) -> int | None:
     value = load(root).get("currentRunId")
     try:
@@ -53,6 +70,11 @@ def item(root: str | Path, run_id: int) -> dict:
 
 
 def update(root: str | Path, run_id: int, payload: dict) -> dict:
+    with _mutation(root):
+        return _update(root, run_id, payload)
+
+
+def _update(root: str | Path, run_id: int, payload: dict) -> dict:
     data = load(root)
     raw = data["items"].setdefault(str(run_id), {})
     if "name" in payload:
@@ -82,6 +104,11 @@ def update(root: str | Path, run_id: int, payload: dict) -> dict:
 
 
 def promote(root: str | Path, run_id: int) -> dict:
+    with _mutation(root):
+        return _promote(root, run_id)
+
+
+def _promote(root: str | Path, run_id: int) -> dict:
     data = load(root)
     data["currentRunId"] = run_id
     raw = data["items"].setdefault(str(run_id), {})
@@ -97,6 +124,11 @@ def promote(root: str | Path, run_id: int) -> dict:
 
 
 def delete(root: str | Path, run_id: int) -> dict:
+    with _mutation(root):
+        return _delete(root, run_id)
+
+
+def _delete(root: str | Path, run_id: int) -> dict:
     data = load(root)
     if data.get("currentRunId") == run_id:
         raise ApiError(ErrorCode.E_VALIDATION, "当前 Take 不能删除；先提升另一个 Take", status=409)

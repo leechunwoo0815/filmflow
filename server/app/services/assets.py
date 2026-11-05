@@ -18,11 +18,10 @@ from xml.etree import ElementTree as ET
 import numpy as np
 from sqlmodel import Session, select
 
+from ..atomicwrite import write_atomic
 from ..config import settings
 from ..errors import ApiError, ErrorCode
 from ..models import Asset, Project, ProjectDoc, Run, Template, Workflow
-
-from ..atomicwrite import write_atomic
 
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
 AUDIO_EXT = {".wav", ".mp3", ".m4a"}

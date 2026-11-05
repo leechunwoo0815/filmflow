@@ -7,11 +7,10 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..atomicwrite import write_atomic
 from ..engine.fpscalc import frames_for, norm_fps
 from ..models import Template
 from . import assets
-
-from ..atomicwrite import write_atomic
 
 PROJECT_SCHEMA = "filmflow.project-template/1"
 SCENE_SCHEMA = "filmflow.scene-template/1"

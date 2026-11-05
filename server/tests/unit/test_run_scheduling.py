@@ -100,11 +100,12 @@ def test_delete_project_clears_run_lock(monkeypatch):
     import tempfile
     from pathlib import Path
 
+    from sqlmodel import Session
+
     import app.engine.runengine as re_mod
     from app.db import engine
     from app.models import Project
     from app.services.project_cleanup import delete_project
-    from sqlmodel import Session
 
     calls: list[str] = []
     monkeypatch.setattr(re_mod, "drop_project_run_lock", lambda root: calls.append(root))
@@ -122,8 +123,8 @@ def test_delete_project_clears_run_lock(monkeypatch):
 
 async def test_node_timeout_kills_child_and_retries(monkeypatch):
     """P2-02：第一次超时 → 杀子进程 → 自动重试 → 第二次成功。"""
-    from app.engine.runner import ProcessRunner
     from app.engine.runengine import N, execute_node
+    from app.engine.runner import ProcessRunner
 
     calls = {"n": 0, "killed": 0}
 
@@ -144,10 +145,11 @@ async def test_node_timeout_kills_child_and_retries(monkeypatch):
     import tempfile
     from pathlib import Path
 
+    from sqlmodel import Session
+
     from app.db import engine
     from app.models import NodeRun, Project, Run, Workflow
     from app.services.project_cleanup import delete_project
-    from sqlmodel import Session
 
     root = Path(tempfile.mkdtemp(prefix="p2-02-"))
     with Session(engine) as session:
@@ -191,14 +193,14 @@ async def test_node_timeout_exhausted_retries_fails(monkeypatch):
     monkeypatch.setitem(N, "A02", {**N["A02"], "timeout": 1, "retries": 1})
     monkeypatch.setitem(runengine.REGISTRY, "brief-form", hang_executor)
 
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
 
-    from app.models import NodeRun, Project, Run, Workflow
-    from app.services.project_cleanup import delete_project
     from sqlmodel import Session
 
     from app.db import engine
+    from app.models import NodeRun, Project, Run, Workflow
+    from app.services.project_cleanup import delete_project
 
     root = Path(tempfile.mkdtemp(prefix="p2-02b-"))
     with Session(engine) as session:

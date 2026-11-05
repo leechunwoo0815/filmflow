@@ -77,6 +77,7 @@ class FrameServer:
 
             def _authorized(self, u) -> bool:
                 import hmac
+
                 from ...config import settings
                 got = self.headers.get("X-FilmFlow-Token", "")
                 return hmac.compare_digest(got, settings.frame_token)
@@ -157,6 +158,7 @@ class FrameServer:
             # 产出黑帧/毒帧），fail-closed 拒绝启动。A2：token 走 header（引擎页
             # 本身是 /engine/ 公开面，探针打它即可，URL 不携带凭据）。
             import urllib.request
+
             from ...config import settings
             try:
                 req = urllib.request.Request(

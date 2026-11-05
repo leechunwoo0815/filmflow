@@ -10,10 +10,9 @@ from pathlib import Path
 
 import numpy as np
 
+from ..atomicwrite import write_atomic
 from ..engine.cachekey import file_sha256
 from ..errors import ApiError, ErrorCode
-
-from ..atomicwrite import write_atomic
 
 AUDIO_EXT = {".wav", ".mp3", ".m4a", ".webm", ".ogg", ".flac"}
 MAX_BYTES = 200 * 1024 * 1024
