@@ -251,3 +251,51 @@ P2-32 初版把 token 设为"全路径必须携带 + cookie 兜底"。重启 dev
 
 **第二夜提交**：`feat(p2-02/03/28/30/32/34)`、`fix(p2-18/19/20/21)`、`fix(p2-14)`、
 `fix(p2-32 回归根因)`、`test(camera)` 及文档——与第一夜 10 个提交同样**全部未推送**（push 需老板点头）。
+
+## 九、勘误（2026-11-05 晚，专家独立复核后）
+
+专家全量复核确认了账本主体（P2 逐条 grep 到真代码、库/磁盘/备份/golden/ruff/治理六组数字逐一吻合），
+同时抓出三处不实/不可复现，全部认账，勘误如下：
+
+### 9.1 「359 passed ×2 全绿」是**环境条件性**的，不是普适全绿（已修）
+- 专家复跑 358 passed + 1 failed，失败的正是转正的 P0-5 E2E：`F01 Invalid port: ':1]'`。
+- 根因（本机三段实测钉死）：[pipeline.py 的 F01](../../server/app/engine/executors/pipeline.py)
+  是 `server/app` 里**唯一**没传 `trust_env=False` 的 httpx 客户端（2026-11-01 `f73c9e6`
+  引入的老代码）；本机 `NO_PROXY` 带 IPv6 条目（`[::1],::1`——dev 进程 `ps eww` 实况）时，
+  httpx 0.28.1 解析代理环境变量直接抛 `InvalidURL`。报告作者的 shell 无代理变量 →
+  两轮全绿；换任何带该变量的 shell（含 dev 服务进程）→ F01 整链必挂。
+- 修复：F01 补 `trust_env=False`；**scripts 里 9 处裸 `httpx.Client` 一并补齐**（同样中毒）。
+  新增回归测试 2 条（`server/tests/unit/test_f01_http_env.py`）：毒环境对照组 +
+  F01 毒环境下真拿 200（对照组钉住 httpx 行为，上游修复后会失败提示清理）。
+- 复验：**361 passed ×2**（214.5s/188.1s）；dev 以**实测毒 NO_PROXY** 重启后
+  golden 5s 原帧真渲染通过（见 9.4）——毒环境从"必挂"变"照常出片"。
+- `EXECUTOR_VERSION` **不升**（维持 2.15.0）：修复只影响"能否发起请求"，不改任何成功
+  请求的产出（同 URL 同字节；localhost 无代理语义），ADR-0013 同款产出等价推理；
+  缓存键与既有缓存不受影响。
+
+### 9.2 「dev 服务运行中可直接验收」交付时不成立（已纠正）
+两夜收尾时后台 dev 任务已退出，:7860/:8787/:3000 全空，专家接手时无从直接验收。
+已于勘误当日重启（特意带上 dev 进程实况的毒 NO_PROXY，兼作 9.1 的回归实证环境）。
+
+### 9.3 「CI 首版」从未执行过；未推送提交数是 21 不是 17
+`.github/workflows/ci.yml` 只是 YAML——**21 个提交**（两夜 17 + B9 的 4）全部未推送，
+Actions 零执行。P1-20 记**半闭**（YAML 就位、真跑待 push 后首验）；bootstrap（P1-21）
+同理：本机 READY exit=0，未在干净机器实测。
+
+### 9.4 复验数字（勘误当日全量重测）
+| 项 | 实测 |
+|---|---|
+| pytest ×2 | **361 passed ×2**（214.5s/188.1s，0 skipped 0 xfailed；collected 361 = unit 321 + integration 33 + BDD 7） |
+| golden 5s 原帧 | dev 带毒 NO_PROXY 运行中真渲染 **SSIM=1.000000 ×6 / pHashDist=0**（勘误当日 run 336——黄金项目自删后 rowid 复用，与 §8.4 同号不同次；报告已覆盖归档 `docs/reports/golden/5s-original-run336.json`，schema/3 + status pass，指纹 Chrome 156.0.8078.80 / ffmpeg 9.0.2 / 字体 a3041811…） |
+| ruff | server **339** / 仓库根 **405**（S110 清尾 −2：`golden_run.py`、`verify_r2_5_delivery_40s.py` 两处 except:pass 落日志） |
+| 文档守卫/治理 | PASS / 16 项全 ✓（勘误当日复跑） |
+| DB | 11 项目恒定（golden 跑完自删） |
+
+### 9.5 遗留风险记账（专家指出，暂不改）
+- `?tok=` 走 query 会进访问日志/历史——接受理由：仅本机 127.0.0.1、token 进程内随机
+  且随重启轮换、日志在本地 `~/.filmflow/logs/`；改 header 需再过一轮"长命 Chrome 缓存"
+  验证（8.4 教训），留专批。
+- "S110=0" 口径是 `server/app`（scripts 本次清零；tests 尚有 1 处）；BLE001 72→75
+  无守卫，待加棘轮。
+- 文档 ruff 数字漂移（HANDOFF 曾写 352/421 的陈旧值）——本次同步为 339/405，
+  并维持"报 ruff 数字必须写清 cwd"的约定。

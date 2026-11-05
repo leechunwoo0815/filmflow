@@ -68,7 +68,7 @@ NTSC 验收：`verify_r2_5_delivery.py --fps 23.976 --duration 2` → run 333 �
 
 ```bash
 ./dev.sh
-cd server && uv run pytest tests -q                       # 359 passed（collected 359 = unit 319 + integration 33 + BDD 7；2026-11-05 第二夜两轮 188.0s/190.6s，dev 停跑，0 skipped 0 xfailed）；foreign_keys=ON
+cd server && uv run pytest tests -q                       # 361 passed（collected 361 = unit 321 + integration 33 + BDD 7；2026-11-05 专家复核日两轮 214.5s/188.1s，dev 带毒 NO_PROXY 实况运行，0 skipped 0 xfailed）；foreign_keys=ON
 uv run --project server python scripts/e2e_ui.py          # UI 8 场景 ~15s
 uv run --project server python scripts/e2e_onboarding.py  # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py        # API 冒烟：46 / 93
