@@ -130,6 +130,26 @@
    "ssimMin": 1.0,
    "status": "pass",
    "reportFile": "5s-original-run336-20261105T184819Z.json"
+  },
+  {
+   "project": "5s",
+   "resolution": "original",
+   "runId": 336,
+   "at": "2026-11-05T19:13:36Z",
+   "executorVersion": "2.17.0",
+   "ssimMin": 1.0,
+   "status": "updated",
+   "reportFile": "5s-original-run336-20261105T191336Z.json"
+  },
+  {
+   "project": "5s",
+   "resolution": "original",
+   "runId": 336,
+   "at": "2026-11-05T19:14:43Z",
+   "executorVersion": "2.17.0",
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "5s-original-run336-20261105T191443Z.json"
   }
  ]
 }

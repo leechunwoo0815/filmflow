@@ -1,6 +1,6 @@
 """Scene DSL 编译器：文本来自 script、base/motion 静态一致、12 组件 schema。"""
 from app.engine.scene.canonical import canonical
-from app.engine.scene.compiler import compile_scene, static_program
+from app.engine.scene.compiler import compile_scene, out_transition_of, static_program
 from app.engine.scene.components import COMPONENT_NAMES, COMPONENTS, validate_props
 from app.engine.scene.schema import validate_program
 from app.services.project_docs import build_script_doc
@@ -104,3 +104,27 @@ def test_unknown_component_is_rejected():
     program = compile_scene(scene, script, TOKENS, PROFILE)
     program["layers"][0]["component"] = "nope"
     assert any("未知" in e for e in validate_program(program))
+
+
+def test_text_out_fade_follows_out_transition():
+    """B3/P2-13：有出转场 → 文字保持满显到场景末尾、随转场窗口一起淡出。"""
+    script = build_script_doc("风从纸上起。纸不动，风先动。")
+    base = compile_scene(_scene(), script, TOKENS, PROFILE, motion=False, out_transition=0.5)
+    title = next(l for l in base["layers"] if l["id"] == "L_title")
+    assert title["out"] == {"at": 2.5, "type": "fade", "duration": 0.5}, \
+        "出转场窗内文字必须随窗口淡出（旧实现提前 0.4s 收掉）"
+    base0 = compile_scene(_scene(), build_script_doc("风从纸上起。"), TOKENS, PROFILE, motion=False)
+    title0 = next(l for l in base0["layers"] if l["id"] == "L_title")
+    assert title0["out"] == {"at": 2.1, "type": "fade", "duration": 0.4}, "末场/无出转场维持旧行为"
+
+
+def test_out_transition_of_matches_e04_scope():
+    """出转场 = 下一场的 transition_duration（缺省 0.5，与 E04 同口径）；末场 0。"""
+    scenes = [{"id": "S01", "start": 0, "end": 2},
+              {"id": "S02", "start": 2, "end": 4, "transition_duration": 0.8}]
+    assert out_transition_of(scenes, "S01") == 0.8
+    assert out_transition_of(scenes, "S02") == 0.0
+    assert out_transition_of([{"id": "S01", "start": 0, "end": 2}], "S01") == 0.0
+    assert out_transition_of([{"id": "S01", "start": 0, "end": 2},
+                              {"id": "S02", "start": 2, "end": 4}], "S01") == 0.5
+    assert out_transition_of([], "S01") == 0.0

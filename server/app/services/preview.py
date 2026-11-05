@@ -31,7 +31,7 @@ from ..engine.cachekey import file_sha256
 from ..engine.fpscalc import fps_rational as _fps_rational
 from ..engine.render_manifest import scene_hash
 from ..engine.scene.canonical import content_hash
-from ..engine.scene.compiler import compile_scene
+from ..engine.scene.compiler import compile_scene, out_transition_of
 from ..engine.scene.transitions import transition_type as _transition_type
 from ..errors import ApiError, ErrorCode, not_found
 from ..models import Artifact, Project, Run, Style, Workflow
@@ -39,7 +39,7 @@ from . import engines as engines_svc
 from . import project_docs as docs_svc
 from . import render_profiles as render_profiles_svc
 
-RENDERER_VER = "preview-2.0.0"  # P2-14：相机单源（camera_from_e02）+ 引擎 ease 支持；P2-35 字体 CSS 对齐
+RENDERER_VER = "preview-2.1.0"  # B3/P2-13：compile_scene 出转场对齐文字淡出（预览与 final 同源）；历史：2.0.0 P2-14 相机单源+ease、P2-35 字体 CSS
 PREVIEW_PROFILES = render_profiles_svc.DEFAULT_PROFILES
 CACHE_LIMIT_BYTES = 500 * 1024 * 1024
 HTML_PATH = Path(__file__).resolve().parents[3] / "engines/riso/entry/film_spec.html"
@@ -246,7 +246,8 @@ def build_programs(ctx: PreviewContext, motion: bool, scene_id: str | None = Non
         try:
             prog = compile_scene(s, ctx.script, ctx.tokens, ctx.profile,
                                  camera=_camera(s, ctx.profile) if motion else None, motion=motion,
-                                 asset_resolver=ctx.asset_resolver)
+                                 asset_resolver=ctx.asset_resolver,
+                                 out_transition=out_transition_of(ctx.scenes, s["id"]))
         except ValueError as e:
             msg = str(e)
             code = msg.split(":", 1)[0] if msg.startswith("E_") else "E_ASSET_MISSING"

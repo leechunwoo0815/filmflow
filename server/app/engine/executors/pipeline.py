@@ -380,7 +380,7 @@ async def d01(ctx):
     if not _api_v2(build):
         from ...errors import ApiError, ErrorCode
         raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 still_spec")
-    from ..scene.compiler import compile_scene
+    from ..scene.compiler import compile_scene, out_transition_of
     script_p = _run_doc_file(ctx, "script.doc.json")
     script = _read_json(script_p) if script_p.exists() else {}
     tokens = _tokens_lock(ctx)
@@ -390,7 +390,8 @@ async def d01(ctx):
         if s["id"] not in picks:
             continue
         prog = compile_scene(s, script, tokens, profile, motion=False,
-                             asset_resolver=_asset_resolver(ctx))
+                             asset_resolver=_asset_resolver(ctx),
+                             out_transition=out_transition_of(scenes, s["id"]))
         rel = f"scenes/{s['id']}.base.program.json"
         dst = _project_file(ctx, rel)
         write_atomic(dst, json.dumps(prog, ensure_ascii=False, indent=1))
@@ -660,18 +661,19 @@ async def e03(ctx):
         if not _api_v2(build):
             from ...errors import ApiError, ErrorCode
             raise ApiError(ErrorCode.E_ENGINE_API_UNSUPPORTED, "新项目缺少 Contract v2 film_spec")
-        from ..scene.compiler import compile_scene
+        from ..scene.compiler import compile_scene, out_transition_of
         script_p = _run_doc_file(ctx, "script.doc.json")
         script = _read_json(script_p) if script_p.exists() else {}
         profile = _profile(ctx)
         cams = {c.get("scene"): c for c in cameras}
         programs = []
         for s in scenes:
+            out_tr = out_transition_of(scenes, s["id"])
             base = compile_scene(s, script, tokens, profile, motion=False,
-                                 asset_resolver=_asset_resolver(ctx))
+                                 asset_resolver=_asset_resolver(ctx), out_transition=out_tr)
             motion = compile_scene(s, script, tokens, profile,
                                    camera=cams.get(s["id"]), motion=True,
-                                   asset_resolver=_asset_resolver(ctx))
+                                   asset_resolver=_asset_resolver(ctx), out_transition=out_tr)
             base_rel = f"scenes/{s['id']}.base.program.json"
             motion_rel = f"scenes/{s['id']}.program.json"
             for rel, prog in ((base_rel, base), (motion_rel, motion)):

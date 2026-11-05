@@ -1,5 +1,5 @@
 {
- "schema": "filmflow.golden-baseline/1",
+ "schema": "filmflow.golden-baseline/2",
  "project": "5s",
  "resolution": "original",
  "primary": "H2",
@@ -33,5 +33,22 @@
   "adf05c5fa70a631c5577d38d28a05c72950a72a8307caeed71827fe75916288a",
   "e0caf61637ab033654dd380b35b0a2d4a3fe6000721c4af39f9bcc808a99a97a"
  ],
- "sceneCount": 2
+ "sceneCount": 2,
+ "updateHistory": [
+  {
+   "at": "2026-11-05T19:13:36Z",
+   "reason": "B3/P2-13 文字 out 淡出与出转场窗口对齐：旧行为在窗起点(=场景边界)文字已衰减到地板，新行为满显到窗起、随出转场窗淡出（verify_transition_text.py 逐帧量化）。EXECUTOR 2.17.0 / RENDERER preview-2.1.0",
+   "runId": 336,
+   "environment": {
+    "executorVersion": "2.17.0",
+    "os": "Darwin 27.2.0 (arm64)",
+    "python": "3.13.2",
+    "chrome": "Google Chrome 156.0.8078.80",
+    "ffmpeg": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+    "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+    "styleLibrary": "/Users/litianyu/Documents/fy-style-library/代码动画_341种风格提示词",
+    "styleLibraryStatsSha256": "8902bdf277a34c7722b01e5bb066dd7439ca08617e1f230804d6d02a08cea973"
+   }
+  }
+ ]
 }

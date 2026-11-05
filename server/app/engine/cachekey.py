@@ -8,7 +8,8 @@ from __future__ import annotations
 import hashlib
 import json
 
-EXECUTOR_VERSION = "2.16.0"  # B2/P2-12：mix 与 Take 两遍 loudnorm（实测回灌 linear）+ f04 成片 bt709 色彩标签
+EXECUTOR_VERSION = "2.17.0"  # B3/P2-13：文字 out 淡出与出转场窗口对齐（program 字节变化，转场窗内视觉改）
+# 2.16.0：B2/P2-12 mix 与 Take 两遍 loudnorm（实测回灌 linear）+ f04 成片 bt709 色彩标签
 # 2.15.0：P2-02/P2-03 节点 timeout/retries 强制执行 + 同项目 Run 互斥（调度行为变化）
 # 2.14.0：帧服务端口可配置（FILMFLOW_FRAME_PORT，默认仍 8787）+ 快照补 caps/params
 # 2.13.0：C02 字体下载加 sha 钉 + 报告记 pinMatches，旧缓存自动失效

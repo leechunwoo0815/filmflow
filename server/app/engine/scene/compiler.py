@@ -80,9 +80,38 @@ def _font_family(value) -> str:
     return s or "Noto Sans SC"
 
 
+def out_transition_of(scenes: list[dict], scene_id: str) -> float:
+    """B3/P2-13：本场景的**出转场**时长 = 下一场的 transition_duration（E04 同口径：缺省 0.5）。
+
+    renderer 的转场窗口是 [本场景结束, 结束+时长)——窗口内本场景以 t>duration 继续被画，
+    文字的 out 淡出必须与这个窗口对齐（见 _text_out_fx）。末场没有出转场 → 0（旧行为）。
+    """
+    for i, s in enumerate(scenes):
+        if s.get("id") == scene_id:
+            nxt = scenes[i + 1] if i + 1 < len(scenes) else None
+            if nxt is None:
+                return 0.0
+            return float(nxt.get("transition_duration", 0.5) or 0.5)
+    return 0.0
+
+
+def _text_out_fx(duration: float, out_transition: float) -> dict:
+    """文字 out 淡出与**出转场窗口**对齐（P2-13：转场期文字不该先消失）。
+
+    旧的固定 `duration-0.4/0.4s` 会在转场窗口一开始就把文字收掉——背景还在
+    crossfade、文字却提前没了。有出转场：文字保持满显到场景末尾、随转场窗口一起
+    淡出；末场/无出转场：维持旧行为（golden 末帧不受影响）。
+    """
+    out_t = max(0.0, float(out_transition or 0.0))
+    if out_t > 0:
+        return {"at": round(duration, 3), "type": "fade", "duration": round(out_t, 3)}
+    return {"at": round(max(0.0, duration - 0.4), 3), "type": "fade", "duration": 0.4}
+
+
 def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
                   camera: dict | None = None, motion: bool = False,
-                  layout: str = "16x9", asset_resolver=None) -> dict:
+                  layout: str = "16x9", asset_resolver=None,
+                  out_transition: float = 0.0) -> dict:
     w = int(profile.get("width") or 1920)
     h = int(profile.get("height") or 1080)
     fps = norm_fps(profile.get("fps") or 24)  # P1-12：非整数 fps 不截断
@@ -141,7 +170,7 @@ def compile_scene(scene: dict, script: dict, tokens: dict, profile: dict,
                    **({"fontUrl": font_url} if font_url else {})},
          "reveal": {"type": "mask-reveal", "at": 0.15, "duration": 0.6, "ease": "easeOut"},
          "in": {"at": 0.0, "type": "cut"},
-         "out": {"at": round(max(0.0, duration - 0.4), 3), "type": "fade", "duration": 0.4}},
+         "out": _text_out_fx(duration, out_transition)},
         {"id": "L_cross", "type": "component", "z": 50,
          "component": "registration-cross",
          "props": {**cross, "size": 1.0, "color": pal[1]}},

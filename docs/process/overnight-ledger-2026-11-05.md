@@ -303,3 +303,44 @@ processed take 段已覆盖其执行路径（PASS）。
 提交：见下一条 git log（feat(b2)）
 
 遗留/待决策：无
+
+---
+
+### 轮 7 · B3/P2-13 文字淡出与出转场窗口对齐 + 逐帧量化 harness · EXECUTOR 2.17.0 / RENDERER preview-2.1.0 · 2026-11-06 03:5x
+
+改了什么：
+- `scene/compiler.py`：新增 `out_transition_of(scenes, scene_id)`（**出转场时长 = 下一场的
+  transition_duration**，缺省 0.5——与 E04 同口径；末场 0）与 `_text_out_fx()`——文字 out
+  从固定 `duration-0.4/0.4s` 改为：**有出转场 → 满显到场景末尾、随转场窗口一起淡出；
+  末场/无出转场 → 旧行为不变**。转场窗口内 renderer 以 t>duration 继续画本场景
+  （scene-render.js renderFrameAt），旧固定淡出在窗口起点就把文字收掉——背景在
+  crossfade、文字提前没了（专家 P2-13）。
+- 三处 compile_scene 调用全部贯通（C05 静态 program / E04 base+motion / preview
+  build_programs——预览与 final 同源，P2-14 的教训不再犯）。
+- 新 harness `scripts/verify_transition_text.py`：scratch 真渲到 F04（S02 文字清空让
+  度量只测 S01 出场文字），转场窗 [2.0,2.5) 前后逐帧抽帧，**标题区暗像素数**为文字
+  在场度量（H2 纸色卡片上的深墨文字；亮像素会被卡片本体淹没——实测选型）。
+- **EXECUTOR 2.16.0→2.17.0、RENDERER preview-2.0.0→preview-2.1.0**（program 字节与
+  预览渲染都变，照章双升）；**golden 基线按 P0-4b 程序更新**（`--update --reason` 写明
+  B3 视觉变化；旧行为的 t=2.917 锚帧在窗内、必然不同——这正是修复目的），随后
+  非 update 复跑 SSIM 1.0 ✓。
+- 新测试 ×2（test_scene_compiler）：out_fx 双形态 + out_transition_of 口径。
+
+实测（命令含 cwd）：
+- **`verify_transition_text.py` 真跑 PASS**：逐帧暗像素表
+  `t=1.8→2.2 全部 1811（满显平台）→ t=2.3 682 → t=2.4 560 → t=2.5 410 → t=2.6 234（地板）`
+  ——**t=2.0（窗口起点）文字满显**（旧行为此处已衰减到地板）、窗口内平滑衰减、窗后归零
+- **golden 基线更新后复跑 SSIM=1.0 PASS**（报告 `…-20261105T191336Z.json` + 复验，index 14 条）
+- **verify_r3_camera 真跑 PASS**：D01/E03/E04 全过，preview vs final SSIM **0.989879**
+  （B3 前基线 0.989483——同刻差 0.0004，预览/final 仍同源一致）
+- `cd server && uv run pytest tests -q` ×2 → **377 passed ×2**（200.06s/199.19s，0 skip）
+- 治理 **17 项全 ✓**；守卫 **PASS**（EXECUTOR=2.17.0 · collected=377 · DB=11）；ruff **322/388**；tsc 0
+
+真渲染证据：verify_transition_text 逐帧量化表 + golden 2.17.0 SSIM 1.0（新基线）+ camera 0.989879。
+
+没验的：8 种转场类型逐一过窗（harness 用默认 match-shape；out_fx 在 compiler 层与转场类型无关，
+类型差异由 drawTransition 既有实现承担）。
+
+提交：见下一条 git log（feat(b3)）
+
+遗留/待决策：无
