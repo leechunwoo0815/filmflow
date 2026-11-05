@@ -42,3 +42,35 @@ FR-40/FR-41 未开工；Wave B/C/D 全部未开工。
 ---
 
 ### 轮 1 · （开发模型从这里开始写）
+
+---
+
+### 轮 0b · 审查方锚点复核与修正（2026-11-06 凌晨——任务书落盘 ≠ 任务书可信，逐条复核后修 12 处）
+
+改了什么：任务书 [`overnight-goal-2026-11-05.md`](overnight-goal-2026-11-05.md) 修正 12 处——
+① 行号漂移（`dab7fe4` trust_env 提交使 pipeline.py 后移 5 行）：A2 `:228/230/296`→`:160/:233/:234/:301`、
+B2 `:1270-1273`→`:1329/:1332`、`:1082`→`:1141`；② 事实修正：B5→`assets.py:486`（`delete_asset`）+`routes.py:1756`、
+B6→**仓库根** `bdd/features/`（17 个，绑定文件名写明）、B7→10 处（:23–:142，300–5000ms）、Wave D routes.py→2764 行；
+③ 基线数字更新：`retry_wait` **12→7**（5 条按 72h 心跳被 `expire_parked` 在深夜 dev 重启时自然收走，策略按设计工作；
+剩余 7 条不许删）、未推送 23→25、A3 加 cwd 口径注（仓库根 BLE001=75 / `cd server` 65）、§2 pytest 基线标注
+dev 在跑时 360+1skip；④ 同步守卫看不见的入口文档失真：HANDOFF `test_p1_foundations.py:174`→`:234`、
+draft 46/10 目录 1.5GB→47 draft/11 目录 1.6G + retry_wait 7。
+
+实测（命令含 cwd）：
+- `git rev-list --count origin/master..HEAD` → **25**（HEAD `62b32e0`）；remote `git@github.com:leechunwoo0815/filmflow.git`，origin 停在 `8266f11`
+- `sqlite3 ~/.filmflow/filmflow.db "select count(*) …"`（表名**单数** project/draft/run/job）→ project **11** / draft **47** / run **44** / job(retry_wait) **7**
+- `ls -d /Users/litianyu/cc-projects/ai-v/filmflow-projects/*/ | wc -l` → **11**；`du -sh` → **1.6G**（HANDOFF:7 旧值"10 目录 1.5GB"是 11-05 夜的快照，已按实刷新）
+- `find . -name "*.feature" -not -path "*/node_modules/*" -not -path "*/vendor/*" -not -path "*/.git/*"` → **17 个，全部在仓库根 `bdd/features/`**（`server/` 下 0 个——B6 原锚点会把开发模型引去空目录）；绑定 2 个：`server/tests/bdd/test_style_indexing_bdd.py`、`test_r2_workbench_bdd.py`
+- `grep -ro "aria-[a-z]*\|role=\"" web/src --include="*.tsx" | wc -l` → **1**（B4 现值属实）；`grep -rn symlink server/tests | wc -l` → **0**（C1 现值属实）
+- ruff `--statistics`：`cd server` 口径 BLE001=**65** / S110=**1**；仓库根口径 BLE001=**75**；`uv run --project server ruff check .`（仓库根）→ Found **405**（DoD §0-4 的调用口径可复现 ✓）
+- PRD-002 §FR-40（**912–928 行**）/ §FR-41（**932–950 行**）验收原文与任务书引文**逐字吻合**（3+4 条）
+- A1 证据：`scripts/golden_run.py:321` 的归档名 `REPORT_DIR / f"{args.project}-{rr['resolution']}-run{rid}.json"`；`docs/reports/golden/5s-original-run336.json` mtime **Nov 5 23:37:10**（11-04 原件确被覆写）
+- 其余锚点核验为真：A4 `runengine.py:685`、A5 `_acceptance.py:152-154`（216/223 在列）+`project_cleanup.py:25-28`（`golden-5s` 在列）、A6 `routes.py:1148` + `delivery.py:378-383`（连"现网全部为空"注释都在）、A7 `jobs.py:150`、B1 `review_comments.py:33/54` + `takes.py:22/35`、B3 `compiler.py:144`（`duration-0.4` 淡出）、`preview.py:400/441`（CDP）、专家分析 §2.3 "P3 共 26 条"、`git ls-files | grep -c DS_Store` → 0
+
+真渲染证据：无（本轮只读 + 文档修正）。
+
+没验的：剩余 7 条 retry_wait 的归属未逐条查（沿用 §7-3 的性质结论）；A8"skip 可去掉"的可行性未预验（由开发模型按 A8 实现并证明）。
+
+提交：本条 + 任务书 12 处修正 + HANDOFF 两处（见下一条 git log）
+
+遗留/待决策：不变（任务书 §8 五个决策点仍待老板点头）。

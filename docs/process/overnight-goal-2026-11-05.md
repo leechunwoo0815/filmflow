@@ -58,7 +58,7 @@ cd /Users/litianyu/cc-projects/ai-v/filmflow
 git log --oneline -6 && git status --porcelain          # 应为 clean，HEAD=df5fbbb 或其后
 ./dev.sh                                                # 用工具的后台执行方式启动；别 nohup + 退出 shell（会被回收）
 curl -s http://127.0.0.1:7860/api/health
-cd server && uv run pytest tests -q                     # 基线：361 passed（0 skip 0 xfail）
+cd server && uv run pytest tests -q                     # 基线：361 passed（0 skip 0 xfail；dev 在跑时是 360+1skip——test_p1_foundations.py:234 的 8787 门控，见台账轮 0 与任务 A8）
 uv run --project server python scripts/verify_p1_governance.py    # 基线：16 项全 ✓
 uv run --project server python scripts/check_docs_consistency.py  # 基线：PASS
 ```
@@ -67,8 +67,8 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 - pytest **361 collected**（unit 321 / integration 33 / BDD 7）；第二夜自述 **361 passed ×2**（214.5s / 188.1s，0 skip 0 xfail）。
 - 治理 **16 项全 ✓**；文档守卫 **PASS**（EXECUTOR=2.15.0 · 迁移 [1,2,3,4,5] · DB=11 项目 · 裸 dict 写端点 0）。
 - ruff：**339**（`cd server` 口径）/ **405**（仓库根口径）；S110 剩 **1** 处（`server/tests/unit/test_multi_step_writes.py:50`）；BLE001 **75**（无棘轮）。
-- DB：11 项目 / 47 draft（僵尸 0）/ 44 run / `retry_wait` **12** 条（全属 rumor-39s 与演示 188，是"等人工门"的正常态，**不许删**）；磁盘 1.6G；`~/.filmflow` 1.5G；自动备份 `filmflow-auto-20261105.db` 33.4MB。
-- **23 个提交在本地未推送**（`origin/master` 停在 `8266f11`）。
+- DB：11 项目 / 47 draft（僵尸 0）/ 44 run / `retry_wait` **7** 条（整夜交接时是 12，其中 5 条已在深夜 dev 重启时按 72h 心跳被 `jobs.expire_parked` 自然收走——策略按设计工作，这正是 A7 要真实演练的机制；剩余 7 条全属 rumor-39s 与演示 188，是"等人工门"的正常态，**不许删**）；磁盘 1.6G；`~/.filmflow` 1.5G；自动备份 `filmflow-auto-20261105.db` 33.4MB。
+- **25 个提交在本地未推送**（`origin/master` 停在 `8266f11`；此后一律以 `git rev-list --count origin/master..HEAD` 实时值为准）。
 - 已知环境陷阱：本机 shell/dev 进程带 `NO_PROXY=…,[::1],::1`；全仓 httpx 客户端已补 `trust_env=False`（`dab7fe4`），
   回归测试 `server/tests/unit/test_f01_http_env.py`（含毒环境对照组）。**别再引入裸 httpx 客户端。**
 
@@ -79,12 +79,12 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 | # | 任务 | 落点 | 验收判据（我会复跑） |
 |---|---|---|---|
 | A1 | **黄金报告不再被覆写**：清库后 run id 会回落，`5s-original-run336.json` 已被 11-05 23:37 那次重跑**覆盖**（11-04 15:56 的原件没了）——证据可混淆 | `scripts/golden_run.py` 的 `--archive` 段（`REPORT_DIR / f"{project}-{resolution}-run{rid}.json"`） | 文件名带 UTC 时间戳（`{project}-{resolution}-run{rid}-{YYYYMMDDTHHMMSSZ}.json`）；已存在同名文件时**不覆写**；新增/维护 `docs/reports/golden/index.json`（每条：project/resolution/runId/at/executorVersion/ssim 最小值/status/reportFile）；用 `--project 5s --resolution original` 实跑一次，证明旧文件仍在、index 有两行 |
-| A2 | **帧服务 token 从 query 挪到 header**：`?tok=` 会进访问日志/浏览器历史（P2-32 遗留） | `pipeline.py:228/230/296`（引擎 URL 拼接）、`FrameServer._needs_token/_authorized`（:61-96）、引擎侧发帧的 JS（`engines/riso/**`，POST `/frame`、`/pframe`、`/done`） | 数据面全部改 header（`X-FilmFlow-Token`）；引擎 JS 的 fetch 带 header；**真渲染复验**：golden 5s 原帧 SSIM=1.000000 ×6 + `verify_r3_camera` PASS（P2-32 那次教训：长命 Chrome 缓存页/旧 cookie 会 403 成黑帧，必须实跑证明没复发）；访问日志里不再出现 token（给一条 `grep -c tok= ~/.filmflow/logs/app.log` 类证据） |
-| A3 | **BLE001 棘轮**：盲捕从 72 涨到 75，无人看守 | `scripts/verify_p1_governance.py`（新增第 17 项）或落一份 `docs/reports/lint-baseline.json` | 守卫读基线并断言 `BLE001 <= 75`、`S110 <= 1`、`F821 == 0`、总数 `<= 339/405`；超了即红；把当前值写进基线文件并提交 |
+| A2 | **帧服务 token 从 query 挪到 header**：`?tok=` 会进访问日志/浏览器历史（P2-32 遗留） | `pipeline.py:160`（复用探针）、`:233/:234`（`_engine_url`）、`:301`（`_project_url`）、`FrameServer._needs_token/_authorized`（:61-96）、引擎侧发帧的 JS（`engines/riso/**`，POST `/frame`、`/pframe`、`/done`） | 数据面全部改 header（`X-FilmFlow-Token`）；引擎 JS 的 fetch 带 header；**真渲染复验**：golden 5s 原帧 SSIM=1.000000 ×6 + `verify_r3_camera` PASS（P2-32 那次教训：长命 Chrome 缓存页/旧 cookie 会 403 成黑帧，必须实跑证明没复发）；访问日志里不再出现 token（给一条 `grep -c tok= ~/.filmflow/logs/app.log` 类证据） |
+| A3 | **BLE001 棘轮**：盲捕从 72 涨到 75，无人看守 | `scripts/verify_p1_governance.py`（新增第 17 项）或落一份 `docs/reports/lint-baseline.json` | 守卫读基线并断言（**仓库根口径**，`uv run --project server ruff check .`）`BLE001 <= 75`（现值 75；`cd server` 口径 65）、`S110 <= 1`、`F821 == 0`、总数 `<= 339/405`；超了即红；把当前值写进基线文件并提交 |
 | A4 | **`_PROJECT_RUN_LOCKS` 无限增长**（按项目根累积，进程内） | `server/app/engine/runengine.py:684+` | Run 进入终态或项目删除时 `pop`；单测：造 3 个 Run 跑完后字典为空；`delete_project` 路径也清 |
 | A5 | **守卫名单与现网脱节**：`_acceptance.DEMO_PROJECTS` 仍列 216/223（已删）、`project_cleanup._PROTECTED_NAMES` 仍含 `golden-5s`（已无该项目） | `scripts/_acceptance.py:152-154`、`server/app/services/project_cleanup.py:25-28` | 二选一并写理由：①清理已不存在的 id/name；②保留为"历史守卫"并在代码注释 + HANDOFF §7.4 注明。**同步 HANDOFF §7.4 的演示项目清单**（现网只有 11 个，逐个列出） |
 | A6 | **`params_snapshot` 现网全空**（实测 0 行非空）→ 交付门禁那条形同虚设 | `routes.py` 的 `POST /runs`（`Run(params_snapshot=payload.params)`）、`delivery.py:378-383` | 二选一并给证据：①让 UI/脚本真的传 params（`web/src/app/canvas/page.tsx` 的 run 创建处 + `_scratch_state`），并造一条非空快照跑通门禁；②明确"空即跳过"并加单测钉住该语义 + 在 HANDOFF 写清"这条门禁现网不生效"。**不许沉默** |
-| A7 | **`retry_wait` 回收策略只有单测，没有真实演练** | `server/app/services/jobs.py::expire_parked` | 在 scratch 项目上造一个 parked 作业（跑到门上 → park），把它的心跳改老（直接 SQL 或用小阈值调用），实跑 `expire_parked` 证明收成 `canceled/E_JOB_EXPIRED`，再证明签门后 `start_run` 能重建作业；输出贴台账。**不要动生产库那 12 条** |
+| A7 | **`retry_wait` 回收策略只有单测，没有真实演练** | `server/app/services/jobs.py::expire_parked` | 在 scratch 项目上造一个 parked 作业（跑到门上 → park），把它的心跳改老（直接 SQL 或用小阈值调用），实跑 `expire_parked` 证明收成 `canceled/E_JOB_EXPIRED`，再证明签门后 `start_run` 能重建作业；输出贴台账。**不要动生产库那 7 条**（整夜交接时 12 条，5 条已被 `expire_parked` 按策略自然收走——A7 要在 scratch 项目上把这个机制再演练一遍并留证据） |
 | A8 | **`test_p1_foundations.py:234` 的 8787 skip 门控**：帧服务端口已可配置，这个 skip 应该能去掉 | `server/tests/unit/test_p1_foundations.py` | 改用动态端口后删除该 skip；两次全量跑都 0 skipped（若仍必须保留，写清为什么） |
 
 ---
@@ -96,12 +96,12 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 | # | 任务 | 落点（审查方已定位） | 验收判据 |
 |---|---|---|---|
 | B1 | **P2-08** JSON 侧 load-modify-save 无锁（原子写≠防丢更新） | `services/review_comments.py:33/54`、`services/takes.py:22/35` | 加 CAS（读时记 hash/mtime，写时不符即 409 `E_DOC_CONFLICT` 同款语义）或文件锁；测试：**真并行**两客户端写同一文件，断言两侧都看到冲突且内容不丢（不许用顺序模拟） |
-| B2 | **P2-12** 音频簇：单遍 loudnorm、无色彩标签、码率 | `services/audio.py:307`、`executors/pipeline.py:1270-1273`（loudnorm）、`pipeline.py:1082`（CRF-only） | 两遍 loudnorm（先 measure 再 apply）；成片打 `bt709`/colorspace tags；验收：`verify_r3_audio_v2` 实跑 PASS 且 LUFS 更接近目标（现 -13.8 vs -14.0）、`ffprobe` 输出里能看到 color tags（贴原文） |
+| B2 | **P2-12** 音频簇：单遍 loudnorm、无色彩标签、码率 | `services/audio.py:307`、`executors/pipeline.py:1329/:1332`（loudnorm）、`pipeline.py:1141`（`-crf`） | 两遍 loudnorm（先 measure 再 apply）；成片打 `bt709`/colorspace tags；验收：`verify_r3_audio_v2` 实跑 PASS 且 LUFS 更接近目标（现 -13.8 vs -14.0）、`ffprobe` 输出里能看到 color tags（贴原文） |
 | B3 | **P2-13** 转场期文字淡出（text out fade 固定 `duration-0.4`，与转场无关） | `engine/scene/compiler.py:144` | 与转场窗口协同（转场期间文字不该先消失）；**必须建逐帧 SSIM harness**：转场窗口内取 N 帧，对比修改前后，给出"文字可见性"量化证据（不许只靠肉眼看一张图） |
 | B4 | **P2-15** a11y 近零（全前端 `aria-*`/`role` 仅 **1** 处） | `web/src/app/**`（时间轴/播放器/资产库/QA/交付）+ 新建的命令面板与通知中心 | 关键交互全部有 `role`/`aria-*`/键盘可达；验收：写一条**纯键盘** e2e（与 FR-40 验收共用），并给出 `grep -ro "aria-[a-z]*\|role=\"" web/src --include="*.tsx" \| wc -l` 的前后数字（现值 1）。引入 `eslint-plugin-jsx-a11y` 前**先问老板**（新增 devDependency） |
-| B5 | **P2-17** 资产删除无在飞守卫、无孤儿 GC | `services/assets.py:476-492` | 删除前查在飞作业（复用 `project_cleanup._job_is_live` 口径）；新增 `scripts/cleanup_assets.py`（默认只报告孤儿资产/无引用文件，`--confirm` 才删，前后出计数）；实跑报告模式并贴输出 |
-| B6 | **P2-25** BDD 17 个 `.feature` 只有 2 个绑定（`bdd/features/`） | `server/tests/bdd/` | 二选一并写理由：①再绑 ≥8 个（真步骤实现，不许空壳）；②裁剪死规格并在 `docs/adr/` 写一份 ADR 记录"为什么这些规格不再执行"。**不许继续沉默** |
-| B7 | **P2-26** e2e 固定 `wait_for_timeout`（`scripts/e2e_ui.py` 8 处 500–5000ms） | `scripts/e2e_*.py` | 改条件等待（`wait_for_selector`/`expect`/轮询 API）；给出前后 e2e 总耗时对比（`e2e_ui.py` 现约 15s） |
+| B5 | **P2-17** 资产删除无在飞守卫、无孤儿 GC | `services/assets.py:486`（`delete_asset`）、`api/routes.py:1756`（`DELETE /assets/{id}`） | 删除前查在飞作业（复用 `project_cleanup._job_is_live` 口径）；新增 `scripts/cleanup_assets.py`（默认只报告孤儿资产/无引用文件，`--confirm` 才删，前后出计数）；实跑报告模式并贴输出 |
+| B6 | **P2-25** BDD 17 个 `.feature` 只有 2 个绑定 | **仓库根** `bdd/features/`（17 个文件）；绑定在 `server/tests/bdd/test_style_indexing_bdd.py` 与 `test_r2_workbench_bdd.py` | 二选一并写理由：①再绑 ≥8 个（真步骤实现，不许空壳）；②裁剪死规格并在 `docs/adr/` 写一份 ADR 记录"为什么这些规格不再执行"。**不许继续沉默** |
+| B7 | **P2-26** e2e 固定 `wait_for_timeout`（`scripts/e2e_ui.py` 10 处，:23–:142，300–5000ms） | `scripts/e2e_*.py` | 改条件等待（`wait_for_selector`/`expect`/轮询 API）；给出前后 e2e 总耗时对比（`e2e_ui.py` 现约 15s） |
 | B8 | **P1-20 CI 从未真跑**（23 个提交未 push，Actions 0 次执行） | `.github/workflows/ci.yml` | 若老板批准 push → 首跑必须绿，红了当场修；若不批 → 落一份 `scripts/ci_local.sh` 跑 CI 的同样四步（ruff / unit+BDD / tsc / 文档守卫），实跑并贴输出，作为"CI 语义已验证"的替代证据 |
 | B9 | **P1-21 fresh-clone 未实测** | `scripts/bootstrap_fresh_clone.sh` | 在 `/tmp/filmflow-fresh-$$` 真跑：`git clone` 本地仓库 → 执行 bootstrap → 跑 `pytest -m "not slow"` + 文档守卫；把每一步输出贴台账；失败就修脚本，别改判据 |
 
@@ -125,7 +125,7 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 **逐条**给判定：`修（附提交）` / `不修（附理由）` / `需要老板决策`。至少这些要给出实质处理或明确理由：
 
 - 仓库**无 LICENSE**（老板决策项：选许可类型；未决前不要自己加）
-- `server/app/api/routes.py` 已 2711+ 行 → 拆分方案（按域拆 router，保持路径与守卫不变；反射守卫必须仍覆盖全部写端点）
+- `server/app/api/routes.py` 已 **2764** 行 → 拆分方案（按域拆 router，保持路径与守卫不变；反射守卫必须仍覆盖全部写端点）
 - 500MB base64 内存放大（音频/资产上传）→ 分块或落盘流式
 - CDP 9222 可预测端口 + 可预测 Chrome profile → 随机化（注意 `preview.py:400/441`）
 - `list_assets` O(项目×场景) 复杂度
@@ -168,7 +168,7 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 1. **push**：23（届时更多）个本地提交推到 `git@github.com:leechunwoo0815/filmflow`。push 后 CI 首跑必须盯到绿。
 2. **LICENSE 类型**（Wave D 第 1 条）。
 3. **新增 devDependency**（如 `eslint-plugin-jsx-a11y`）。
-4. **任何超出 §3–§7 范围的破坏性库写**（例如动那 12 条 `retry_wait`、VACUUM、删演示项目）。
+4. **任何超出 §3–§7 范围的破坏性库写**（例如动那 7 条 `retry_wait`、VACUUM、删演示项目）。
 5. **偏离规格端口/不变量**（`:7860`/`:3000`/`:8787` 语义、46/93/8+8/caps）。
 
 未获批准前：把这些写进台账"待决策"段，继续做其它任务，不要停机等答复。
