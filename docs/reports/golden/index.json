@@ -120,6 +120,16 @@
    "ssimMin": 1.0,
    "status": "pass",
    "reportFile": "5s-original-run336-20261105T181346Z.json"
+  },
+  {
+   "project": "5s",
+   "resolution": "original",
+   "runId": 336,
+   "at": "2026-11-05T18:48:19Z",
+   "executorVersion": "2.16.0",
+   "ssimMin": 1.0,
+   "status": "pass",
+   "reportFile": "5s-original-run336-20261105T184819Z.json"
   }
  ]
 }

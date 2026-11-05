@@ -36,7 +36,7 @@
 - 文件操作只在已登记项目根白名单内；禁止任意 shell / 路径穿越；全仓不许 `shell=True`。
 - **Chrome 全局串行 1 个**、ffmpeg 独占 → 任何两个渲染级验证**不许并行**（包括 pytest 与验收脚本同时跑）。
 - 46 节点 / 7 阶段 / 93 边 / 8+8 门 / 7 caps / 三类边 / `content_hash` 语义**不变**；新能力走节点内部子流程。
-- 改执行器行为**必须升 `EXECUTOR_VERSION`**（现 2.15.0）；改预览渲染器升 `RENDERER_VER`（现 preview-2.0.0）。
+- 改执行器行为**必须升 `EXECUTOR_VERSION`**（现 2.16.0）；改预览渲染器升 `RENDERER_VER`（现 preview-2.0.0）。
   升版后必须用 `golden_run.py --project 5s --resolution original` 复跑证明视觉未变（SSIM=1.000000）。
 - 落盘一律 `atomicwrite.write_atomic`；文件响应一律 `security.file_response`；本地 httpx 客户端一律 `trust_env=False`（这三条都有守卫，回潮会红）。
 - **演示/保护项目绝不动**：现存 11 个项目全部是演示或参考片（`rumor-39s`/`trace`/`rumor-clean-20261102`/`r2_5-audio`/
@@ -64,8 +64,8 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 ```
 
 **基线数字（2026-11-05 深夜，审查方实测/复核）**：
-- pytest **370 collected**（unit 330 / integration 33 / BDD 7；361→364 是 A5 把污染闸门测试按 DEMO_PROJECTS 现网 11 项目重新参数化 +3）；整夜 R2 **364 passed ×2**（189.8s / 185.9s，0 skip 0 xfail，dev 在跑）。
-- 治理 **17 项全 ✓**（第 17 项＝A3 lint 棘轮）；文档守卫 **PASS**（EXECUTOR=2.15.0 · 迁移 [1,2,3,4,5] · DB=11 项目 · 裸 dict 写端点 0）。
+- pytest **375 collected**（unit 335 / integration 33 / BDD 7；361→364 是 A5 把污染闸门测试按 DEMO_PROJECTS 现网 11 项目重新参数化 +3）；整夜 R2 **364 passed ×2**（189.8s / 185.9s，0 skip 0 xfail，dev 在跑）。
+- 治理 **17 项全 ✓**（第 17 项＝A3 lint 棘轮）；文档守卫 **PASS**（EXECUTOR=2.16.0 · 迁移 [1,2,3,4,5] · DB=11 项目 · 裸 dict 写端点 0）。
 - ruff：**339**（`cd server` 口径）/ **405**（仓库根口径）——已入棘轮（治理第 17 项 + `docs/reports/lint-baseline.json`：BLE001 65/75、S110 1/1、F821 0，**只许降不许涨**）。
 - DB：11 项目 / 47 draft（僵尸 0）/ 44 run / `retry_wait` **7** 条（整夜交接时是 12，其中 5 条已在深夜 dev 重启时按 72h 心跳被 `jobs.expire_parked` 自然收走——策略按设计工作，这正是 A7 要真实演练的机制；剩余 7 条全属 rumor-39s 与演示 188，是"等人工门"的正常态，**不许删**）；磁盘 1.6G；`~/.filmflow` 1.5G；自动备份 `filmflow-auto-20261105.db` 33.4MB。
 - **25 个提交在本地未推送**（`origin/master` 停在 `8266f11`；此后一律以 `git rev-list --count origin/master..HEAD` 实时值为准）。

@@ -71,9 +71,7 @@ class FrameServer:
                 fragment 的 URL 键控 → 缓存页 + 新 hash 照样拿到新 token）。
                 """
                 p = u.path
-                if p.startswith("/project/") or p.startswith("/global-assets/"):
-                    return True
-                return False
+                return p.startswith("/project/") or p.startswith("/global-assets/")
 
             def _authorized(self, u) -> bool:
                 import hmac
@@ -1152,6 +1150,10 @@ async def f04(ctx):
     argv = ["ffmpeg", "-y", "-framerate", fps_rational(fps), "-i", str(_project_file(ctx, "out/frames/%04d.png")),
             "-c:v", "libx264", "-crf", str(ctx["params"].get("crf", final["crf"])),
             "-preset", str(ctx["params"].get("preset", final["preset"])),
+            # B2/P2-12：成片色彩标签 bt709（frames 由 RGB 转 yuv420p）。用 x264 的 VUI
+            # 参数——实测 -colorspace/-color_primaries/-color_trc 三个输出标志只有
+            # color_space 会进流，x264-params 三个才全落 ffprobe（2026-11-06 实验）
+            "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709",
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)]
     res = await ctx["runner"].run(argv, timeout=600,
                                   on_progress=None)
@@ -1325,10 +1327,14 @@ async def _decode_pcm(ctx, path: Path, rate: int = 48000) -> list[float]:
 
 
 def _mix_filter(duration: float, music_db: float = -8.0, target_lufs: float = -16.0,
-                with_sfx: bool = False) -> str:
+                with_sfx: bool = False, measured: dict | None = None) -> str:
     d = f"{duration:.3f}"
     fade_at = f"{max(0.0, duration - 1.0):.3f}"
     fmt = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=mono"
+    from ...services import audio as audio_svc
+    # B2/P2-12：measured 缺省=第一遍测量（print_format=json）；有实测=第二遍线性归一
+    ln = (audio_svc.measured_loudnorm(target_lufs, measured) if measured
+          else f"loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11:print_format=json")
     base = (f"[0:a]{fmt},apad=whole_dur={d},atrim=duration={d}[voice];"
             f"[1:a]{fmt},highpass=f=80,atrim=duration={d},afade=t=out:st={fade_at}:d=1,"
             f"volume={music_db}dB[music];"
@@ -1338,10 +1344,10 @@ def _mix_filter(duration: float, music_db: float = -8.0, target_lufs: float = -1
         return (base +
                 f"[2:a]{fmt},atrim=duration={d},apad=whole_dur={d}[sfx];"
                 "[bed][sfx]amix=inputs=2:duration=longest:normalize=0,"
-                f"loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11,aresample=48000,"
+                f"{ln},aresample=48000,"
                 "alimiter=limit=0.7:level=false[a]")
     return (base +
-            f"[bed]loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11,aresample=48000,"
+            f"[bed]{ln},aresample=48000,"
             "alimiter=limit=0.7:level=false[a]")
 
 
@@ -1457,7 +1463,19 @@ async def g05(ctx):
     argv = ["ffmpeg", "-y", "-i", str(voice), "-stream_loop", "-1", "-i", str(music)]
     if sfx:
         argv += ["-i", sfx_stem["path"]]
-    argv += ["-filter_complex", _mix_filter(duration, music_db, target_lufs, with_sfx=bool(sfx)),
+    # B2/P2-12：第一遍测量（同图 print_format=json，输出走 null）→ 第二遍 linear 回灌；
+    # 测量不可用（解析失败/静音 -inf）就回退单遍
+    m_argv = ["ffmpeg", "-hide_banner", "-i", str(voice), "-stream_loop", "-1", "-i", str(music)]
+    if sfx:
+        m_argv += ["-i", sfx_stem["path"]]
+    m_argv += ["-filter_complex",
+               _mix_filter(duration, music_db, target_lufs, with_sfx=bool(sfx)),
+               "-map", "[a]", "-t", f"{duration:.3f}", "-f", "null", "-"]
+    m_res = await ctx["runner"].run(m_argv, timeout=300)
+    from ...services import audio as audio_svc
+    measured = audio_svc.parse_loudnorm(m_res.stderr_tail)
+    argv += ["-filter_complex",
+             _mix_filter(duration, music_db, target_lufs, with_sfx=bool(sfx), measured=measured),
              "-map", "[a]", "-t", f"{duration:.3f}", "-ar", "48000", "-ac", "1", str(out)]
     res = await ctx["runner"].run(argv, timeout=300)
     if not res.ok or not out.exists():

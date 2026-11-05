@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import subprocess
 import uuid
 from datetime import date
@@ -288,7 +289,34 @@ def take_for_scene(root: str | Path, scene_id: str) -> dict | None:
     return primary_take(root, "voice")
 
 
-def processing_filter(opts: dict) -> str:
+def parse_loudnorm(lines: list[str]) -> dict | None:
+    """B2/P2-12：从 ffmpeg stderr 解析 loudnorm 的 print_format=json 测量块。
+
+    返回 None = 测量不可用（解析失败或 input_i 非有限值，如全静音 -inf）——
+    调用方必须回退单遍 loudnorm，绝不让坏测量进第二遍。
+    """
+    try:
+        start = max(i for i, l in enumerate(lines) if l.strip() == "{")
+        end = min(i for i, l in enumerate(lines) if i > start and l.strip() == "}")
+        data = json.loads("\n".join(lines[start:end + 1]))
+        values = {k: float(data[k]) for k in
+                  ("input_i", "input_tp", "input_lra", "input_thresh", "target_offset")}
+    except (ValueError, StopIteration, KeyError, TypeError):
+        return None
+    if not all(math.isfinite(v) for v in values.values()):
+        return None
+    return values
+
+
+def measured_loudnorm(target_lufs: float, measured: dict) -> str:
+    """两遍 loudnorm 的第二遍：把第一遍的实测值回灌，linear=true 保持动态不变。"""
+    return (f"loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11"
+            f":measured_I={measured['input_i']}:measured_TP={measured['input_tp']}"
+            f":measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}"
+            f":offset={measured['target_offset']}:linear=true")
+
+
+def processing_filter(opts: dict, measured: dict | None = None) -> str:
     parts = []
     if opts.get("highpass"):
         parts.append("highpass=f=80")
@@ -303,7 +331,9 @@ def processing_filter(opts: dict) -> str:
         parts.append("silenceremove=start_periods=1:start_duration=0.05:start_threshold=-45dB:"
                      "stop_periods=-1:stop_duration=0.1:stop_threshold=-45dB")
     if opts.get("normalize"):
-        parts.append("loudnorm=I=-16:TP=-1.5:LRA=11")
+        # B2/P2-12：measured 缺省=第一遍测量（print_format=json）；有实测值=第二遍线性归一
+        parts.append(measured_loudnorm(-16.0, measured) if measured
+                     else "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json")
     return ",".join(parts)
 
 
@@ -312,7 +342,16 @@ def process_take(root: str | Path, take_id: str, opts: dict) -> dict:
     take = _take(root, take_id)
     if not take:
         raise ApiError(ErrorCode.E_NOT_FOUND, "音频 Take 不存在", status=404)
-    chain = processing_filter(opts)
+    src = root / take["file"]
+    # B2/P2-12：normalize 走两遍——第一遍 print_format=json 实测，第二遍 linear 回灌；
+    # 测量不可用（解析失败/静音 -inf）就回退单遍，绝不让坏测量进第二遍
+    measured = None
+    if opts.get("normalize"):
+        m = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(src),
+                            "-af", processing_filter(opts), "-f", "null", "-"],
+                           capture_output=True, text=True, timeout=600)
+        measured = parse_loudnorm((m.stderr or "").splitlines())
+    chain = processing_filter(opts, measured=measured)
     outdir = root / "card" / "audio"
     out = outdir / f"{take_id}.processed.wav"
     if not chain:
@@ -325,7 +364,6 @@ def process_take(root: str | Path, take_id: str, opts: dict) -> dict:
                 take = t
         save_manifest(root, data)
         return take
-    src = root / take["file"]
     res = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(src), "-af", chain,
                           "-ac", "1", "-ar", "48000", str(out)],
                          capture_output=True, text=True, timeout=600)

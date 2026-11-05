@@ -263,3 +263,43 @@ project/resolution/runId/at/executorVersion/ssimMin/status/reportFile；**首次
 提交：见下一条 git log（feat(b1)）
 
 遗留/待决策：无
+
+---
+
+### 轮 6 · B2/P2-12 两遍 loudnorm + f04 成片 bt709 色彩标签 · EXECUTOR 2.16.0 · 2026-11-06 03:1x
+
+改了什么：
+- `services/audio.py`：新增 `parse_loudnorm()`（解析 ffmpeg stderr 的 print_format=json 实测块；
+  **input_i 非有限值（全静音 -inf）/解析失败一律返回 None → 调用方回退单遍，绝不让坏测量进第二遍**）、
+  `measured_loudnorm()`（第二遍 linear=true 回灌）；`processing_filter(opts, measured=)` 双形态；
+  `process_take` normalize 走两遍。
+- `pipeline.py`：`_mix_filter(..., measured=)` 双形态（G05 mix 两遍：同图 null 输出测量 → 回灌编码）；
+  **f04 成片 `-x264-params colorprim=bt709:transfer=bt709:colormatrix=bt709`**——实验钉过：
+  ffmpeg 的 `-colorspace/-color_primaries/-color_trc` 三个输出标志**只有 color_space 会进流**
+  （/tmp/t1.mp4 实验），x264 VUI 三参数才全落 ffprobe（/tmp/t2.mp4 三标签齐）。
+- **EXECUTOR_VERSION 2.15.0 → 2.16.0**（这次是真行为变化：mix/take 编码参数与成片容器标签都变，
+  不是产出等价——规则照章升版）；cachekey 历史注释登记。
+- 新测试 `tests/unit/test_audio_two_pass.py` ×5（测量解析/静音拒绝/回灌串/双形态/版本下限沿用）。
+
+实测（命令含 cwd）：
+- **`verify_r3_audio_v2.py` 真跑 PASS ×2**（2.16.0 下）：`G06 -13.9 LUFS target -14.0`
+  （修复前 -13.8——**偏差 0.2→0.1，两遍生效**）；G01/G05/G06/G07 全绿、stems 5/5/5s
+- **ffprobe 色彩标签实证**（scratch 跑到 F04 后探测）：
+  `{"color_space": "bt709", "color_transfer": "bt709", "color_primaries": "bt709"}`
+- **golden 5s 原帧**（2.16.0 全新链重渲）：**SSIM=1.000000 ×6 PASS**（归档 184819Z，自删，DB 11）
+  ——视觉逐字节等价，升版无视觉回归
+- `cd server && uv run pytest tests -q` ×2 → **375 passed ×2**（199.57s/194.39s，0 skip）
+- 治理 **17 项全 ✓**；守卫 **PASS**（EXECUTOR=2.16.0 · collected=375）；ruff **322/388**（基线持平）；
+  tsc 0
+- 棘轮两次咬住自己（+1 潜在 SIM103/PIE810 被 B2 编辑的缓存失效暴露）——当场修（_needs_token
+  改直返条件），未抬基线
+
+真渲染证据：golden run 336 SSIM [1.0×6]（报告 `docs/reports/golden/5s-original-run336-20261105T184819Z.json`，
+EXECUTOR=2.16.0 指纹）+ verify_r3_audio_v2 PASS（G06 -13.9 LUFS）+ ffprobe bt709 三标签。
+
+没验的：Take 处理（process_take 两遍）的 LUFS 数值未单独验收——verify_r3_audio_v2 的
+processed take 段已覆盖其执行路径（PASS）。
+
+提交：见下一条 git log（feat(b2)）
+
+遗留/待决策：无
