@@ -579,6 +579,15 @@ async def _heartbeat_job(job_id: int, owner: str) -> None:
             _log.debug("swallowed exception in _heartbeat_job (except Exception:)", exc_info=True)
 
 
+def _project_name_of(session, wf) -> str:
+    try:
+        from ..models import Project
+        proj = session.get(Project, wf.project_id) if wf else None
+        return (proj.name if proj and proj.name else f"project {wf.project_id}") if wf else "-"
+    except Exception:   # noqa: BLE001 -- 仅为通知/日志取项目名，任何失败回 "-" 不致败 Run
+        return "-"
+
+
 async def _run_loop(run_id: int) -> None:
     owner = f"run:{run_id}"
     job_id: int | None = None
@@ -629,15 +638,35 @@ async def _run_loop(run_id: int) -> None:
                     if run.status == "succeeded":
                         _log.info("run finished run=%s status=succeeded", run_id)
                         _job_finish(job_id, "succeeded", result={"runStatus": "succeeded"})
+                        try:
+                            from ..services import notifications as notify_svc
+                            notify_svc.run_finished(run_id, _project_name_of(session, wf), True)
+                        except Exception:   # noqa: BLE001 -- 通知尽力而为，失败只记日志
+                            _log.debug("notify run_finished failed", exc_info=True)
                     elif run.status == "failed":
                         _log.info("run finished run=%s status=failed", run_id)
                         _job_finish(job_id, "failed", error_code="E_RUN_FAILED",
                                     error_msg="run failed", result={"runStatus": "failed"})
+                        try:
+                            from ..services import notifications as notify_svc
+                            fails = ",".join(n for n in N if states[n].status == "failed")
+                            notify_svc.run_finished(run_id, _project_name_of(session, wf), False,
+                                                    detail=f"失败节点：{fails}")
+                        except Exception:   # noqa: BLE001 -- 通知尽力而为，失败只记日志
+                            _log.debug("notify run_finished failed", exc_info=True)
                     else:
                         # 等门/needs_changes：保留 active job，批准后 start_run 复用
                         _log.info("run parked run=%s status=%s blocked=%s",
                                   run_id, run.status, blocked)
                         _job_park(job_id, "retry_wait", "E_RUN_BLOCKED", run.status)
+                        # FR-40：人工门待批通知（同 (run,gate) 未读期间去重）
+                        try:
+                            from ..services import notifications as notify_svc
+                            pname = _project_name_of(session, wf)
+                            for gate in blocked:
+                                notify_svc.gate_pending(run_id, gate, pname)
+                        except Exception:   # noqa: BLE001 -- 通知尽力而为，失败只记日志
+                            _log.debug("notify gate_pending failed", exc_info=True)
                     emit("run.finished", run_id, status=run.status)
                     return
             # 并发：纯分析节点 2 并发，锁由 LockManager 串行（规格 §9.3）

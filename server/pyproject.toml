@@ -35,3 +35,8 @@ asyncio_mode = "auto"
 [tool.ruff]
 line-length = 110
 target-version = "py313"
+
+[tool.ruff.lint]
+# B008（Depends 出现在参数默认值）与 FastAPI 的核心惯用法冲突——全仓 126 处全是
+# 路由声明；禁用是配置裁定不是代码放宽（2026-11-06 R10，见 lint-baseline note）
+ignore = ["B008"]

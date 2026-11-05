@@ -149,7 +149,7 @@ async def engines_list():
 
 @router.post("/engines/{engine_id}/validate")
 async def engines_validate(engine_id: str):
-    c = engines_svc.load_contract(engine_id)
+    engines_svc.load_contract(engine_id)   # 调用本身即校验（缺合同会抛）
     return {"engine_id": engine_id, "valid": True, "sha256": engines_svc.compute_pack_sha(engine_id)}
 
 
@@ -170,7 +170,7 @@ async def library_status():
 async def styles_list(q: str = "", family: str = "", collection: str = "", chips: str = "",
                       limit: int = 60, cursor: int = 0, session: Session = Depends(get_session)):
     """搜索（FTS5 trigram 中文子串）+ 筛选 chips（规格 §3.2）。"""
-    chips_set = set(c for c in chips.split(",") if c)
+    chips_set = {c for c in chips.split(",") if c}
     from ..services.search import search_styles
     if q:
         items = search_styles(session, q, limit=400)
@@ -210,7 +210,7 @@ def _fts_search(q: str) -> list[str] | None:
             raw = conn.connection.driver_connection if hasattr(conn.connection, "driver_connection") else conn.connection
             rows = raw.execute("SELECT style_id FROM styles_fts WHERE styles_fts MATCH ? ORDER BY rank LIMIT 200", (q,)).fetchall()
             return [r[0] for r in rows]
-    except Exception:
+    except Exception:   # noqa: BLE001 -- FTS 查询失败按"无候选"降级，主搜索路径不受影响
         return None
 
 
@@ -233,7 +233,7 @@ def _saturation(r: Style) -> float:
                 hx = "".join(c * 2 for c in hx)
             rr, gg, bb = (int(hx[i:i + 2], 16) / 255 for i in (0, 2, 4))
             vals.append(colorsys.rgb_to_hsv(rr, gg, bb)[1])
-        except Exception:
+        except Exception:   # noqa: BLE001 -- 单个坏色值跳过，其余照算饱和度均值
             continue
     return sum(vals) / len(vals) if vals else 0.0
 
@@ -2762,3 +2762,57 @@ async def run_report(run_id: int, session: Session = Depends(get_session)):
             "approvals": [table_dict(a) for a in apps],
             "metrics": [table_dict(m) for m in metrics],
             "nodes": [table_dict(n) for n in nodes]}
+
+
+# ---------- FR-40 通知中心（本地 JSON、flock、(kind,ref) 去重） ----------
+
+@router.get("/notifications")
+async def notifications_list():
+    """通知列表（最近 50 条 + 未读数）。无推送无邮件，前端轮询。"""
+    from ..services import notifications as notify_svc
+    return notify_svc.load()
+
+
+@router.post("/notifications/{notification_id}/read")
+async def notification_read(notification_id: str):
+    from ..services import notifications as notify_svc
+    if not notify_svc.mark_read(notification_id):
+        raise not_found("notification")
+    return {"read": notification_id}
+
+
+@router.post("/notifications/read-all")
+async def notifications_read_all():
+    from ..services import notifications as notify_svc
+    return {"marked": notify_svc.mark_all_read()}
+
+
+# ---------- FR-41 本地规则式创作辅助（纯本地规则，无外部请求） ----------
+
+from pydantic import BaseModel as _BaseModel
+from pydantic import Field as _Field
+
+
+class SuggestIn(_BaseModel):
+    text: str = _Field(min_length=1, max_length=5000)
+
+
+@router.post("/projects/{project_id}/suggest")
+async def suggest_scenes(project_id: int, payload: SuggestIn):
+    """粘贴文案 → 断句 + 4–6 场建议（每场带理由/组件/镜头/读时校验）。草稿层：不改原文。"""
+    from ..services import authoring
+    _ = project_id          # 建议只依赖文本；挂在项目下是为了落草稿层与权限口径
+    return authoring.suggest(payload.text)
+
+
+@router.get("/authoring/rules")
+async def authoring_rules():
+    """规则表导出（PRD 行为 6：可导出）。"""
+    from ..services import authoring
+    return {"schema": "filmflow.authoring-rules/1",
+            "readCps": authoring.READ_CPS,
+            "breakHints": list(authoring.BREAK_HINTS),
+            "componentHints": [{"keyword": k, "component": c}
+                               for k, c in authoring.COMPONENT_HINTS],
+            "cameraPresets": authoring.CAMERA_PRESETS,
+            "targetScenes": authoring.TARGET_SCENES}

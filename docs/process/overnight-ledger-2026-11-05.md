@@ -421,3 +421,46 @@ processed take 段已覆盖其执行路径（PASS）。
 提交：见下一条 git log（test(wave-c)）
 
 遗留/待决策：无
+
+---
+
+### 轮 10 · B6 ADR-0014 + Wave D 26 条判定 + FR-40/41 后端纵切 · 2026-11-06 06:5x
+
+改了什么：
+- **B6/P2-25**：ADR-0014（不造假绑定不删规格）——15 个未绑定 feature 头部加 `@unbound`
+  标记与逐个理由；待绑优先级 gates > cache-invalidation > resume 留真绑批次。
+- **Wave D**：`docs/process/p3-judgments-2026-11-06.md` **26 条逐条判定**（修 3 / 决策 3 /
+  不修+理由 20）。真修：.gitignore 补 .DS_Store；F02 预热 Chrome profile 加随机后缀。
+- **FR-40 后端纵切**：`services/notifications.py`（本地 JSON + flock + **(kind,ref) 未读去重** +
+  容量修剪不丢未读 + **失败通知带修复入口**）；runengine 三处接线（成功/失败/等门→
+  gate_pending，通知尽力而为不致败 Run）；API 三端点（GET list / {id}/read / read-all）。
+- **FR-41 后端纵切**：`services/authoring.py`（断句+转折词二次切分、4–6 场聚合带理由、
+  组件关键词映射、镜头 2–3 预设不自动应用、读时校验**复用 timeline_ops.READ_CPS=5.2**、
+  规则表可导出）；API：POST /projects/{id}/suggest（Pydantic 模型）+ GET /authoring/rules。
+  纯本地规则零网络依赖（代码审计断言）。
+- **lint 大幅下调**：B008（Depends 出现在参数默认值）与 FastAPI 核心惯用法冲突 →
+  **配置级忽略**（server/pyproject [tool.ruff.lint]，126 处全是路由声明——配置裁定非代码
+  放宽）；routes.py 四处手修。**基线 314/364/387 → 194/244/240**。
+
+实测（命令含 cwd）：
+- `pytest tests/unit/test_notifications.py tests/unit/test_authoring.py -q` → **12 passed**
+  （去重/已读/修剪/修复入口/API/接线 + ①300 字 1s 内 4–6 场带理由 ②草稿层 ③零网络
+  ④断句重组逐字等于原文）
+- `cd server && uv run pytest tests -q` ×2 → **396 passed ×2**（181.62s/179.77s，0 skip）
+- 治理 **17 项全 ✓**；守卫 **PASS**（collected=396）；棘轮 **194/244/240** 全 ✓；tsc 0；DB 11
+
+真渲染证据：无（本轮无渲染路径改动）。
+
+没验的（诚实边界）：
+- **FR-40 前端（铃铛面板/命令面板 Cmd+K/20 命令可搜/纯键盘 e2e_fr40_keyboard.py）未做**——
+  还差：web/src/lib/commands.ts 命令注册表、通知面板组件（role=alert/aria-live）、
+  面板/快捷键接线、e2e_fr40_keyboard 真跑。后端 API 已就绪（三端点全测试）。
+- **FR-41 前端（建议面板 UI/接受-拒绝交互/断网抓包证据）未做**——还差：编辑器内建议
+  草稿层 UI、接受→build_timeline_doc 落草稿、lsof/抓包证据。后端建议引擎+验收①③④
+  的纯本地证据已就绪。
+- **B4 a11y**：新增后端无 UI 面；前端 aria 计数仍是 1——随 FR-40 前端批一起做。
+
+提交：见下一条 git log（feat(fr40/fr41-backend)）
+
+遗留/待决策：push（22 个本地提交）、LICENSE 类型、devDependency（a11y lint）、
+VACUUM、ffmpeg 许可口径——全部 §8，等老板。
