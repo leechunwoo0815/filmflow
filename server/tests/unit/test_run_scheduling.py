@@ -54,6 +54,72 @@ async def test_run_loop_locked_rootless_runs_without_lock(monkeypatch):
     assert entered == [("in", 2)]
 
 
+async def test_run_lock_slots_evicted_after_runs_finish(monkeypatch):
+    """A4：3 个 Run 跑完后锁与登记计数必须清空（字典不随项目根无限增长）。"""
+    ran: list[int] = []
+
+    async def fake_loop(rid: int) -> None:
+        ran.append(rid)
+
+    monkeypatch.setattr(runengine, "_run_loop", fake_loop)
+    monkeypatch.setattr(runengine, "_PROJECT_RUN_LOCKS", {})
+    monkeypatch.setattr(runengine, "_PROJECT_RUN_HOLDERS", {})
+    for rid in (1, 2, 3):
+        runengine._retain_run_lock_slot("/root-a")     # 与 start_run 同款注册
+        await asyncio.create_task(runengine._run_loop_locked(rid, "/root-a"))
+    assert ran == [1, 2, 3]
+    assert runengine._PROJECT_RUN_LOCKS == {}, "最后一个 Run 退出后必须清掉锁字典"
+    assert runengine._PROJECT_RUN_HOLDERS == {}
+
+
+async def test_run_lock_slot_survives_while_sibling_waits(monkeypatch):
+    """A4：同项目第二个 Run 还在等锁时，第一个退出不许把锁字典清掉（丢互斥）。"""
+    ran: list[str] = []
+
+    async def fake_loop(rid: int) -> None:
+        ran.append(f"in{rid}")
+        await asyncio.sleep(0.02)
+        ran.append(f"out{rid}")
+
+    monkeypatch.setattr(runengine, "_run_loop", fake_loop)
+    monkeypatch.setattr(runengine, "_PROJECT_RUN_LOCKS", {})
+    monkeypatch.setattr(runengine, "_PROJECT_RUN_HOLDERS", {})
+    runengine._retain_run_lock_slot("/root-b")
+    t1 = asyncio.create_task(runengine._run_loop_locked(1, "/root-b"))
+    await asyncio.sleep(0.005)
+    runengine._retain_run_lock_slot("/root-b")
+    t2 = asyncio.create_task(runengine._run_loop_locked(2, "/root-b"))
+    await t1
+    assert "/root-b" in runengine._PROJECT_RUN_LOCKS, "兄弟 Run 还在等锁，锁不许被清"
+    await t2
+    assert runengine._PROJECT_RUN_LOCKS == {} and runengine._PROJECT_RUN_HOLDERS == {}
+
+
+def test_delete_project_clears_run_lock(monkeypatch):
+    """A4：delete_project 路径也清（spy drop_project_run_lock 被以项目根调用）。"""
+    import tempfile
+    from pathlib import Path
+
+    import app.engine.runengine as re_mod
+    from app.db import engine
+    from app.models import Project
+    from app.services.project_cleanup import delete_project
+    from sqlmodel import Session
+
+    calls: list[str] = []
+    monkeypatch.setattr(re_mod, "drop_project_run_lock", lambda root: calls.append(root))
+
+    root = Path(tempfile.mkdtemp(prefix="a4-del-"))
+    with Session(engine) as session:
+        p = Project(name="a4-lock-cleanup", root=str(root))
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        delete_project(session, p.id, remove_dir=False)
+    # macOS 的 /var 是 /private/var 的符号链接：比对 resolved 路径
+    assert len(calls) == 1 and Path(calls[0]) == Path(root).resolve(), calls
+
+
 async def test_node_timeout_kills_child_and_retries(monkeypatch):
     """P2-02：第一次超时 → 杀子进程 → 自动重试 → 第二次成功。"""
     from app.engine.runner import ProcessRunner

@@ -190,4 +190,7 @@ def delete_project(session: Session, project_id: int, *, remove_dir: bool = True
             except OSError as e:
                 # 库已删，目录失败只报告不抛错：可重试（目录还在，行已清）
                 result["dirError"] = str(e)
+    # A4：项目没了，进程内的 Run 锁/登记计数一起清（不随历史项目无限增长）
+    from ..engine import runengine as _runengine
+    _runengine.drop_project_run_lock(report["root"])
     return result

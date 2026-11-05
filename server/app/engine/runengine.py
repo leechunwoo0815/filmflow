@@ -25,6 +25,7 @@ from .snapshot import ensure_run_snapshot
 
 ACTIVE: dict[int, asyncio.Task] = {}
 from ..logs import get as _get_log
+
 _log = _get_log("engine")
 
 CANCELS: dict[int, asyncio.Event] = {}
@@ -676,13 +677,20 @@ def start_run(run_id: int) -> None:
                 ensure_run_snapshot(session, run, project.root)
         jobs_svc.ensure_run_job(session, run_id)
     CANCELS[run_id] = asyncio.Event()
+    if root:
+        _retain_run_lock_slot(root)   # A4：排队等锁也在册，最后一个退出者清字典
     ACTIVE[run_id] = asyncio.create_task(_run_loop_locked(run_id, root))
 
 
 # P2-03：同一项目根同一时刻只允许一个"执行中"的 Run 任务。frames/out/film 都是
 # 项目根共享的，两个任务并发写就是帧互相覆盖。锁按任务生命周期持有：任务 park
 # （等人工门）或结束就释放，等门的 Run 让位给同项目的下一个 Run，恢复时重新拿锁。
+# A4（2026-11-06）：字典按 root 只增不清曾无人管——登记计数（含排队等锁的 Run）
+# 归零时锁与计数一起 pop；项目删除时走 drop_project_run_lock 强制清。
+# 只动进程内字典卫生：节点执行/调度结果逐字节等价，EXECUTOR_VERSION 不升（同
+# trust_env 修复的产出等价裁决，见 b9-close-report §9.1）。
 _PROJECT_RUN_LOCKS: dict[str, asyncio.Lock] = {}
+_PROJECT_RUN_HOLDERS: dict[str, int] = {}
 
 
 def _project_run_lock(root: str) -> asyncio.Lock:
@@ -693,12 +701,35 @@ def _project_run_lock(root: str) -> asyncio.Lock:
     return lock
 
 
+def _retain_run_lock_slot(root: str) -> None:
+    """Run 任务注册期 +1（排队等锁也在册）；最后一个退出者负责清字典。"""
+    _PROJECT_RUN_HOLDERS[root] = _PROJECT_RUN_HOLDERS.get(root, 0) + 1
+
+
+def _release_run_lock_slot(root: str) -> None:
+    n = _PROJECT_RUN_HOLDERS.get(root, 0) - 1
+    if n > 0:
+        _PROJECT_RUN_HOLDERS[root] = n
+        return
+    _PROJECT_RUN_HOLDERS.pop(root, None)
+    _PROJECT_RUN_LOCKS.pop(root, None)
+
+
+def drop_project_run_lock(root: str) -> None:
+    """A4：项目删除时清掉它的 Run 锁与登记计数（不随历史项目无限增长）。"""
+    _PROJECT_RUN_HOLDERS.pop(root, None)
+    _PROJECT_RUN_LOCKS.pop(root, None)
+
+
 async def _run_loop_locked(run_id: int, root: str) -> None:
     if not root:
         await _run_loop(run_id)
         return
-    async with _project_run_lock(root):
-        await _run_loop(run_id)
+    try:
+        async with _project_run_lock(root):
+            await _run_loop(run_id)
+    finally:
+        _release_run_lock_slot(root)
 
 
 async def step_run(run_id: int) -> dict:

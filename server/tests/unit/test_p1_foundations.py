@@ -183,6 +183,25 @@ def test_delivery_rejects_params_drift(monkeypatch, tmp_path: Path):
             tmp_path, 1)
 
 
+def test_delivery_empty_params_snapshot_skips_and_match_passes(monkeypatch, tmp_path: Path):
+    """A6：把「空即跳过」钉成测试——**快照侧** params 为空（生产实况：POST /runs
+    的 payload.params 无人传 → 快照无 params）时完全不比对，run 侧带什么都放行；
+    快照侧非空且 run 一致时放行；非空漂移由 test_delivery_rejects_params_drift 钉死。"""
+    timeline = {"duration": 5.0, "scenes": [{"id": "S01"}]}
+    script = {"title": "t", "sentences": [{"text": "a"}]}
+    _seed_current(monkeypatch, {"script": script, "timeline": timeline})
+    # 快照无 params（生产实况）：run 侧就算带值也跳过（无从比对就不假装比对）
+    _write_snapshot(tmp_path, {"script": _doc(script), "timeline": _doc(timeline)})
+    delivery._ensure_run_documents_match(
+        None, SimpleNamespace(id=1, caps_json=[], params_snapshot={"anything": 1}), tmp_path, 1)
+    # 快照有 params 且 run 一致：放行
+    _write_snapshot(tmp_path, {"script": _doc(script), "timeline": _doc(timeline)},
+                    params={"variant": "v1"})
+    delivery._ensure_run_documents_match(
+        None, SimpleNamespace(id=1, caps_json=[], params_snapshot={"variant": "v1"}),
+        tmp_path, 1)
+
+
 def test_delivery_rejects_final_crf_drift(monkeypatch, tmp_path: Path):
     """P1-13 残余：final 档位从只比 w/h/fps 扩到全字段（crf/preset 直接进 master 编码）。"""
     timeline = {"duration": 5.0, "scenes": [{"id": "S01"}]}

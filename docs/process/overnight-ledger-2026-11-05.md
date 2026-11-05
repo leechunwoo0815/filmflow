@@ -138,3 +138,46 @@ project/resolution/runId/at/executorVersion/ssimMin/status/reportFile；**首次
 提交：见下一条 git log（feat(a3/a5/a8)）
 
 遗留/待决策：无
+
+---
+
+### 轮 3 · A4+A6+A7 锁生命周期 / params 语义钉死 / expire_parked 真实演练 · 2026-11-06 01:3x
+
+改了什么：
+- **A4** `runengine.py`：`_PROJECT_RUN_HOLDERS` 登记计数（排队等锁也在册）+ 最后退出者
+  pop 锁与计数；`start_run` 创建任务前 retain；`_run_loop_locked` finally release；
+  `drop_project_run_lock()` 供删除面强制清；`project_cleanup.delete_project` 接线调用。
+  **EXECUTOR_VERSION 不升（2.15.0）**：只动进程内字典卫生，节点执行/调度结果逐字节等价，
+  同 trust_env 的产出等价裁决（b9-close-report §9.1）。
+- **A6** 语义钉死（选②）：新增 `test_delivery_empty_params_snapshot_skips_and_match_passes`
+  ——**快照侧** params 为空（生产实况）完全不比对（run 侧带什么都放行）、快照非空且一致放行；
+  非空漂移已由 `test_delivery_rejects_params_drift` 钉死。HANDOFF/AGENTS 的"形同虚设"注记
+  改为"语义已钉死 + 单测"。
+- **A7** 新脚本 `scripts/verify_expire_parked.py`：**隔离实例真实演练**（独立
+  FILMFLOW_HOME/白名单/DB + 进程内真实 uvicorn 线程——TestClient 的 per-request portal
+  没有持久事件循环，start_run 的任务永远不推进，实测否决）。自建 scratch 跑到 B08 →
+  作业 park 成 retry_wait → 心跳拨老 73h → 真调 `expire_parked()`（72h 默认）→ 断言
+  **只收本演练作业** → 签门 + start_run → 断言作业重建。生产库那 7 条分毫未动
+  （job#85 心跳距 72h 红线仅 ~2h，绝不能在生产库上跑这个函数——这正是选隔离实例的原因）。
+- 测试 +3：`test_run_lock_slots_evicted_after_runs_finish`、
+  `test_run_lock_slot_survives_while_sibling_waits`（兄弟等锁时不许清锁）、
+  `test_delete_project_clears_run_lock`（macOS /var→/private/var 符号链接按 resolved 比）。
+
+实测（命令含 cwd）：
+- `uv run --project server python scripts/verify_expire_parked.py` →
+  `✓ 1) B08 待批，作业 1 park 成 retry_wait` → `✓ 3) expire_parked 收走作业 1：
+  canceled / E_JOB_EXPIRED（其余 retry_wait：0 条）` → `✓ 4) 作业重建：新作业 2（retry_wait）≠
+  被收的 1` → `PASS: … wall 129.6s，生产库零接触`（连跑两次稳定，第一次暴露
+  门标记↔作业置态的毫秒级竞态，已改为轮询到 park 为止）
+- `cd server && uv run pytest tests -q` ×2 → **368 passed ×2**（189.78s/185.86s，0 skip，dev 在跑）
+- 治理 **17 项全 ✓**（第 17 项棘轮在 R3 第一跑就咬住了自己：+1 server / +8 root，
+  全部修回，未抬基线）；守卫 **PASS**（collected=368）；ruff **339/405**；tsc 0
+- 生产库：project **11** / retry_wait **7**（分毫未动）
+
+真渲染证据：无（本轮无渲染路径改动；最新渲染证据仍是轮 1 的 golden SSIM 1.0×6）。
+
+没验的：无。
+
+提交：见下一条 git log（feat(a4/a6/a7)）
+
+遗留/待决策：无
