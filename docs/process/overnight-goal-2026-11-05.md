@@ -245,7 +245,8 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 3. **清理已执行**（孤儿目录 `r3-camera-260` 65MB + 4 条僵尸 draft；`filmflow-projects` 1.5G；僵尸/孤儿现值均为 0）。
    → 所以 **H3 现在只剩"把棘轮装上"**：治理第 18 项断言「孤儿目录==0 且 僵尸 draft==0」，并修 `destroy()` 的 draft 回收条件（漏掉"项目根被删后才变僵尸"的那条——实测就是它）。
 4. **`expire_parked` 策略认可**（保护项目的 job.status 可被改写，其余仍全保护）——把这句口径写进 HANDOFF/AGENTS 的门禁清单，别让它再被当成疑点。
-5. **VACUUM / LICENSE / devDependency** 三项**仍未决**，继续挂在决策点，不要自行处理。
+5. ~~**VACUUM / LICENSE / devDependency** 三项**仍未决**，继续挂在决策点，不要自行处理。~~
+   → **2026-11-06 晚已裁决并全部执行，见 §14**。今晚不要再把这三项当悬案。
 
 ## 13. H9（新增，优先级最高之一）—— CI 首跑红：子集选择与环境依赖从未对齐
 
@@ -280,3 +281,58 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 3. 新增一个**静态守卫**（治理第 19 项或单测）：用 `ast` 扫 `server/tests/**`，凡出现 `subprocess.run/exec` 且 argv 含 `ffmpeg|ffprobe|chrome` 的测试模块，必须声明对应 `requires_*` 标记；凡出现裸 `pytest.skip(...)`（conftest 的 `--allow-missing-env` 分支除外）即红。**这条是 H9 的长期防线，比修当前三处更值钱。**
 4. 本机对照：`cd server && uv run pytest tests -q` 仍 **396 passed / 0 skip / 0 xfail**（改标记不许把本机覆盖变薄）。
 5. 台账记 `gh run list --limit 3` 的输出（首绿的那一次）。
+
+---
+
+## 14. 老板第二轮决策（2026-11-06 晚，已生效）
+
+上一节 §12 的第 5 条（VACUUM / LICENSE / devDependency 悬案）与 §11 尾段的 6 个悬着决策点，本轮全部给出，**今晚不要再问、也不要自行改口径**。
+
+| # | 决策 | 老板选定 | 已执行到什么程度 | 证据 |
+|---|---|---|---|---|
+| 1 | LICENSE 类型 | **MIT** | ✅ 已落 `dc89f2c` | `LICENSE`（1078B，MIT 正文，"Copyright (c) 2026 FilmFlow contributors"）+ README「许可」节明写**三块不在 MIT 内**：`vendor/fy-code-animation/`（免费用/分享，禁包装成付费课程或付费 skill）、341 风格库（仓库外）、`rumor-39s` 参考片（仓库外）；ffmpeg/Chrome 是本机系统依赖，不构成分发传染。引用的两个第三方文件实测存在（`vendor/fy-code-animation/LICENSE.md`、库内 `许可与来源.md` + `第三方许可/`）。 |
+| 2 | 今晚切到哪一层 | **全都要**：Wave H（H1→H8）+ H9 + FR-40 前端 + FR-41 前端 | 顺序与判据不变 | 见下"半件不算 done"纪律。 |
+| 3 | 渲染环境漂移的防线怎么做 | **漂移即诊断 + 重锚流程**（不是硬失败） | ⏳ 未做 → 见 §15 **H10** | —— |
+| 4 | 两个挂在待决的小项 | **现在做 VACUUM** + **加 a11y lint 依赖** | ✅ 两项均已执行 | VACUUM：先备份 `~/filmflow-backup-20261106-pre-vacuum.db`，`page_count` 9083→6349、文件 37,203,968B→26,005,504B，`integrity_check=ok`、`foreign_key_check` 0 行，project 11 / draft 53 / run 44 / artifact 1744 与演示 docrevision 174=3 / 188=28 / 211=37 / 227=58 **全部零变化**，dev 已重启载入。a11y：`web/eslint.config.mjs` + `scripts/lint_a11y.py` 棘轮（见下）。 |
+
+**a11y 棘轮的实际口径**（今晚改前端时以它为准，别自造标准）：
+`eslint 10.14.0` + `eslint-plugin-jsx-a11y 6.10.2` + `typescript-eslint 8.72.1` 只装 devDependency、不进运行时；
+脚本**只计带 `ruleId` 的消息**（配置类 null-ruleId 噪声不算，`noInlineConfig` 已经挡掉仓库里引用未加载插件的内联 disable），
+`error` 必须为 0，`warn` 只许降不许涨，基线 `docs/reports/lint-baseline.json["a11y"]["warn"] = 60`。
+降了要 `python3 scripts/lint_a11y.py --update` 写回。**反向验证做过**：人为把基线写成 59 时脚本当场 `FAIL: a11y warn 涨了 59 → 60`，不是假绿。
+> H8 说的"a11y 现值 1 处 aria/role"指的是**业务代码里的可访问性属性密度**，棘轮量的是**违规数**——两者不是一回事。
+> 前端批次要同时把两边都推进：违规只降不涨，且关键路径（命令面板 / 通知面板 / 快捷键表）要有真的 `role`/`aria-*`/键盘可达。
+
+**"全都要"的半件不算 done 纪律**（老板点名的历史毛病，本轮起硬执行）：
+1. 每个 Wave 项在台账里只有两种合法状态：**闭合**（命令 + 输出 + 提交哈希）或 **差哪一步**（写明"代码在 X:Y，缺 Z 验证/接线，下一个动作是……"）。**不许出现"基本完成 / 大体就绪 / 已交付（部分）"。**
+2. 优先级顺序固定：H1→H8 → H9（含 ast 静态守卫，这是长期防线，不许最后砍掉）→ FR-40 前端 → FR-41 前端。
+   时间不够就**从队尾（FR-41）截断**，不许从中间跳着做半截。
+3. 凡动了执行器行为 → 升 `EXECUTOR_VERSION`（现 **2.17.0**）；动了预览渲染器 → 升 `RENDERER_VER`（现 `preview-2.1.0`）；两个版本的现值处要跟着守卫走。
+4. 每轮提交后 `git push origin master`（已确认每轮都推），推完 `gh run list --limit 1` 看一眼，红了当场修，别攒。
+
+## 15. H10（新增，本轮决策 3 落地）—— 环境漂移：诊断 + 重锚流程，不做硬失败
+
+**为什么现在必须做**：今晚的 CI 首跑与 golden 复跑已经证明——本机与 runner 的**环境不一致**会同时制造
+"假绿"（本机有 ffmpeg/字体，runner 没有 → 未标记用例只在本机跑过）和"假红"（Chrome/字体/ffmpeg 版本变了 → SSIM 掉，代码却没问题）。
+老板选的修法不是"漂了就 fail"，而是**先让人看得见漂移，再给一条可执行的重锚路**。
+
+**要做的三件事（判据逐条对应）**：
+
+1. **指纹补齐**：`scripts/golden_run.py` 的 `_environment(root)` 已记录 Chrome/ffmpeg/字体等；
+   把 **RENDERER_VER、EXECUTOR_VERSION、字体缓存 sha 列表、fps 口径版本**一并写入每份报告的 `environment` 块，
+   并让 `docs/reports/golden/index.json` 每条记录带上 `environment` 摘要（哪个 run 是在什么环境下锚的）。
+   判据：任选两份历史报告 diff 出 `environment` 字段齐、可读。
+2. **漂移即诊断**：`check_docs_consistency.py`（或新 `scripts/diagnose_environment_drift.py`，由文档守卫调用）
+   比对**当前实测环境**与**最近一次锚点报告的 environment**，逐项输出 `一致 / 漂移（旧值→新值）`，
+   漂移时打印一段**可直接照做的重锚指引**：
+   `uv run --project server python scripts/golden_run.py --project 5s --resolution original --update --reason "<为什么环境变了、为什么新锚是对的>"`，
+   并**exit 0**（诊断不是门禁——这是老板明确选的口径，别改成 fail-closed，否则环境一升级整夜循环就被锁死）。
+   判据：本机人为改一个被采集项（例如临时替换 ffmpeg 版本字符串来源）→ 输出"漂移"行 + 重锚命令；
+   还原后 → 输出全"一致"、PASS。**两种输出都要贴进台账。**
+3. **重锚留痕**：`--update --reason` 已经强制给理由并写 `updateHistory`；
+   再加一条断言（治理项或单测）：**凡 `updateHistory` 里 reason 提到环境/版本变化的记录，必须能在 `index.json` 找到对应的 environment 差异**——
+   即"重锚的理由"与"当时真实的环境"互证，防止以后有人拿"环境漂了"当掩盖回归的借口。
+   判据：正向过；反向（伪造一条 reason 与实际环境不符的记录）变红。
+
+> H10 不与 H9 混淆：H9 修的是**测试子集与环境依赖从未对齐**（标记 / 双 job / ast 守卫），
+> H10 修的是**渲染产出与环境的因果可见性**（指纹 / 诊断 / 重锚留痕）。两条都要做，做完各自贴证据。

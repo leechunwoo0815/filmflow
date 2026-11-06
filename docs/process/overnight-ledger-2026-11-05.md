@@ -464,3 +464,71 @@ processed take 段已覆盖其执行路径（PASS）。
 
 遗留/待决策：push（22 个本地提交）、LICENSE 类型、devDependency（a11y lint）、
 VACUUM、ffmpeg 许可口径——全部 §8，等老板。
+
+### 轮 11 · 老板第二轮决策四则落地（MIT / VACUUM / a11y 棘轮 / 范围「全都要」+ 新 H10）· 2026-11-06 晚
+
+> 本轮由**审查方亲手执行**（不是开发模型）：老板以选择题给出四项决策，其中两项当场做完，
+> 另两项写成今晚的活（§14 范围 + §15 H10）。轮 10 尾行的「遗留/待决策」五项**全部清零**。
+
+**决策 → 动作 → 实测**
+
+1. **LICENSE = MIT**
+   - 新增 `LICENSE`（1078B，MIT 正文，`Copyright (c) 2026 FilmFlow contributors`）。
+   - README 新增「许可」节，明写**三块不受 MIT 覆盖**：`vendor/fy-code-animation/`（免费用/分享、**禁包装成付费课程或付费 skill**）、
+     341 风格库（仓库外）、`rumor-39s` 参考片（仓库外）；ffmpeg/系统 Chrome 是本机依赖、不构成分发传染（这就把轮 10 挂着的「ffmpeg 许可口径」一并答了）。
+   - 引用真实性核验（不是写了就完）：`vendor/fy-code-animation/LICENSE.md` 存在；
+     库内 `许可与来源.md` 与 `第三方许可/` 存在（路径取自 `vendor/style-library.path`）。
+2. **VACUUM 现在做**
+   - 前置备份 `~/filmflow-backup-20261106-pre-vacuum.db`（`sqlite3 .backup`，WAL 安全）。
+   - `PRAGMA page_count` **9083 → 6349**；库文件 **37,203,968B → 26,005,504B**。
+   - 不变量逐条对照（`integrity_check=ok`、`foreign_key_check` **0 行**）：
+     project **11** / draft **53** / run **44** / artifact **1744** 前后一致；
+     演示 docrevision **174=3 / 188=28 / 211=37 / 227=58** 前后一致（保护面零接触）。
+   - dev 双服务重启载入，随后治理/守卫/全量测试全在新库上复跑通过。
+3. **a11y lint 依赖（devDependency）+ 棘轮装上**
+   - `web/eslint.config.mjs`：`eslint 10.14.0` + `eslint-plugin-jsx-a11y 6.10.2` + `typescript-eslint 8.72.1`（`pnpm ls --depth 0` 实测版本，只进 devDependencies，不进运行时 bundle）。
+     `linterOptions.noInlineConfig` 是**必须的**：仓库里有引用未加载插件的内联 `eslint-disable`（`@next/next/no-img-element`），否则 9 条 "rule not found" **error** 假红。
+   - `scripts/lint_a11y.py`：**只计带 `ruleId` 的消息**（配置类 null-ruleId 不计，否则基线被 9 条噪声灌成 69），`error` 必须 0，`warn` 走「只降不涨」棘轮，降了 `--update` 写回。
+   - 基线：`docs/reports/lint-baseline.json["a11y"] = {warn: 60, error: 0}`；`web/package.json` 加 `"lint:a11y"`。
+   - **反向验证（防假绿）**：人为把基线改成 59 → `FAIL: a11y warn 涨了 59 → 60`；还原 → `PASS`。
+     实测分布：`label-has-for` 28 / `control-has-associated-label` 14 / `no-static-element-interactions` 7 /
+     `click-events-have-key-events` 6 / `media-has-caption` 5（其余为长尾）。
+   - 口径区分（写清免得 H8 误读）：棘轮量的是**违规数**，H8 说的「a11y 现值 1」量的是**业务代码里 aria/role 属性密度**——两件事，前端批要同时推进两边。
+4. **今晚范围 = 全都要**（Wave H + H9 + FR-40 前端 + FR-41 前端）→ 任务书 §14 落成硬纪律：
+   固定顺序、时间不够**从队尾 FR-41 截断**、台账每项只有「闭合」或「差哪一步」两种状态（禁「基本完成」）。
+5. **漂移防线 = 诊断 + 重锚，不是硬失败** → 新增 **H10**（任务书 §15）：环境指纹补齐（含 `RENDERER_VER`/`EXECUTOR_VERSION`/字体缓存 sha）→
+   守卫逐项打印「一致 / 漂移（旧值→新值）」并给出可直接照做的 `golden_run.py --update --reason` 命令 → **exit 0**
+   （明写不许改成 fail-closed：环境一升级就把整夜循环锁死不是老板选的口径）→ `updateHistory` 的理由与当时真实环境互证，伪造即红。
+
+**棘轮第一次咬住本轮自己**（这是它该干的事，不是事故）：新脚本 `scripts/lint_a11y.py` 带 1 处 `F541`（无占位符 f-string）→
+`repoRootCwd 244→245`、`ciScope 240→241` 当场变红。**修代码不抬基线**，改完回 194/244/240。
+
+**文档同步**（现值处只写当前实测，历史写中文）：
+- HANDOFF 顶部：`EXECUTOR_VERSION` 由残留的 **2.16.0 修成 2.17.0**（含升版理由）、ruff 由 **339/405 修成 194/244/240** 三口径、
+  加 a11y 第四口径、加「2026-11-06 晚 老板第二轮决策四则」块；H9 那句「三个方案待老板选」改成**已选双 job**。
+- AGENTS 门禁清单：加「许可（MIT + 三块豁免）」与「a11y 棘轮」两条；`364 passed` 修成 **396 passed**（本轮实测）；
+  fresh-clone 措辞按 H4 收窄为「本机干净 clone 实测 READY，真干净机器未验证」；FR-40/41 改成「后端纵切已交付 / 前端＝H8」；
+  「下一步」由作废的「§六 未闭项 → 才谈 FR-40/41」改成 §11→§13→§15→FR-40 前端→FR-41 前端。
+- 任务书 §12 第 5 条（VACUUM/LICENSE/devDependency 悬案）划废并指向 §14；新增 §14（决策表）+ §15（H10）。
+
+实测（命令含 cwd）：
+- `cd server && uv run pytest tests -q` → **396 passed**，220.63s，**0 skip / 0 xfail**
+- `uv run --project server python scripts/verify_p1_governance.py` → **17 项全 ✓**（`PASS: P1 治理复核全部通过`）
+- `uv run --project server python scripts/check_docs_consistency.py` → **PASS**
+  （`EXECUTOR=2.17.0 · 迁移[1..5] · collected=396 · governance=17 · DB=11 · 裸 dict=0`）
+- `python3 scripts/lint_a11y.py` → **error=0 · warn=60（基线 ≤60）· PASS**
+- `cd web && npx tsc --noEmit` → **0 错误**
+- push：`4650cd0..dc89f2c`（`git rev-list --count origin/master..HEAD` → **0**）；本轮 docs 批次随后再推一次。
+
+真渲染证据：无（本轮无渲染路径改动；VACUUM 只动库文件布局，golden/锚点未重跑——
+若要视觉级结论请跑 `golden_run.py --project 5s --resolution original`，那是 H10 的活）。
+
+没验的（诚实边界）：
+- **H10 未实现**（本轮只写下判据，代码一行没动）。
+- **Wave H1–H8 / H9 双 job 未动**——本轮只做老板当场可执行的两项 + 把另两项变成可验收的任务书条目。
+- a11y 棘轮装上后**没有修任何一条现存违规**（60 条原样入基线）：这是「先止血再治」的刻意选择，
+  真降要随 FR-40 前端批做，否则就是无谓 churn。
+- `pnpm-lock.yaml` +1902 行是 eslint 依赖树（`pnpm ls` 已核版本）；未审每个传递依赖的许可，
+  若老板要 SPDX 级清单，那是独立一次 `pnpm licenses` 导出。
+
+提交：`dc89f2c`（feat: MIT + a11y 棘轮）与本轮 docs 提交（docs(decisions): 轮 11）。
