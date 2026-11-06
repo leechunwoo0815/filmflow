@@ -850,6 +850,67 @@ push `4766e27` 触发 run **42170418486** →
 
 ---
 
+### 轮 18 · H10 环境漂移诊断 + 重锚理由互证（含我这两处自错的勘误）· 2026-11-06 06:3x
+
+**先记两条我自己的错**（不复述就等于留给下一个人再踩）：
+1. **轮 16 里我写的 `updateHistory` 位置是错的**——我写成 `fixtures/golden/<项目>/spec.json`，
+   真实位置是 `fixtures/golden/<项目>/baseline[_original].json`（`golden_run.py:252` 写的是 baseline_json）。
+   今天写互证时按 spec.json 去读，读出"updateHistory 0 条"才发现不对。
+   `fixtures/golden/README.md` 的两处已改，本轮不抹掉这条错误记录（台账留着才有"证据可追"的意义）。
+2. **第一版把"代码升版"和"环境变化"混成一条正则**。真实那条 B3 理由写的是
+   `EXECUTOR 2.17.0 / RENDERER preview-2.1.0`，宽松正则把它判成"声称环境变了"，
+   于是互证去要求 Chrome/ffmpeg 前后不同——那次环境本来就相同，**正确行为被判成违规**。
+   现在分成 `ENV_CLAIM_RE` / `CODE_CLAIM_RE` 两类，各自验各自的键（代码类比 `executorVersion`/`rendererVersion`，
+   环境类比其余键），并把这两类各写了正反两条断言。
+
+**做了什么**（判据逐条对应任务书 §15）：
+1. **指纹补齐**（`scripts/golden_run.py:_environment`）：新增 `rendererVersion`（`app.services.preview.RENDERER_VER`）、
+   `fontCacheSha256`（缓存目录里每个 ttf 的 sha 列表）、`fpscalcSha256`（`engine/fpscalc.py` 文件哈希），
+   并让 `index.json` 每条新记录带 `environment` 摘要。判据：新报告与 index 里都能直接读出锚定环境。
+2. **漂移即诊断**（新 `scripts/diagnose_environment_drift.py`）：
+   `current_environment()` **复用 `golden_run._environment`**（同一份实现，守卫和报告不许说两套话）；
+   `anchor_environment()` 优先 index、回落目录最新报告；
+   `diff_environment()` 返回 (漂移项, 锚点未记录的键)——**锚点里没这个键不算漂移**（否则每加一个采集项就一片假红）；
+   漂移时打印 `⚠ 漂移 k: 旧 → 新` + 可直接照做的 `--update --reason` 命令，并明写"这不是门禁"；**恒 exit 0**。
+   文档守卫 `check_docs_consistency.py` 末尾接入该诊断（**不参与返回值**，且有断言钉住这一点）。
+3. **重锚留痕互证**（`corroborate`）：`(problems, unverifiable)` 两个桶，
+   `strict_from=2026-11-06T05:00:00Z` 之前的历史记录只进"无法验证"（H10 之前没有对照锚点，
+   拿今天的规则追认会把真实历史判成违规），之后仍缺对照的就是问题——**豁免有边界，不往后开**。
+
+**正反两向现场输出（真跑，非描述）**：
+```
+【人为改被采集项】锚点 5s-original-run336-20261106T033355Z.json
+  漂移项：[('chrome','Google Chrome 157.0.0000.9…','Google Chrome 156.0.8078.8…'),
+          ('ffmpeg','ffmpeg version 10.0.1…','ffmpeg version 9.0.2…')]
+  重锚命令：uv run --project server python scripts/golden_run.py --project 5s --resolution original \
+              --update --reason "<为什么环境变了、为什么新锚是对的>"
+【还原后】漂移项：[] · 锚点未记录：['rendererVersion','fpscalcSha256']
+```
+真实数据跑互证：`5s` 那条 B3 记录 → `problems == []`，`unverifiable == 1`（早于 strict_from，且序列里只有它自己）。
+
+测试 `server/tests/unit/test_h10_environment_drift.py` **13 条**：漂移判定三面（相同/逐项漂移/缺键不算漂移）、
+声称分类两面（真实 B3 理由=代码类、Chrome 升级=环境类）、互证四面（环境声称无证据 / 升版声称但版本没变 /
+历史豁免 / 过界后仍缺对照算问题）、真实记录不误报、`main()` 正反两个现场（含"必须打印重锚命令"和"必须仍是 0"）、
+以及"守卫里的诊断段不许出现 return"这条防失守断言。
+
+实测（命令含 cwd）：
+- `cd server && uv run pytest tests/unit/test_h10_environment_drift.py -q` → **13 passed**
+- `uv run --project server python scripts/check_docs_consistency.py` → **PASS**，
+  并新增一行 `环境漂移诊断：与锚点 5s-original-run336-…json 逐项一致（锚点报告未记录 2 项：rendererVersion,fpscalcSha256）`
+- `cd server && uv run pytest tests -q` → **428 passed**（collected 428 = unit 388 / integration 33 / BDD 7，0 skip / 0 xfail）
+- `uv run --project server python scripts/lint_ratchet.py` → **187/237/233** 与 BLE001 目标 54/64/64 全 ✓
+  （本轮棘轮又咬住 2 处：`FURB167` 用 `re.I` 别名、`RUF100` 无用 noqa——`--fix` 清掉，没抬基线）
+
+没验的（诚实边界）：
+- **`fontCacheSha256` 与 `fpscalcSha256` 还没进过任何真实锚点报告**（要等下一次真跑 golden 才会落进 `environment`）；
+  今天它们只出现在"当前指纹"侧，所以守卫输出里那两项显示为"锚点未记录"。**这不等于已验证**。
+- 互证的正向分支（"环境真的变了 → 没问题"）跑的是合成数据；真实数据里目前只有 1 条记录、无法形成对照，
+  因此 `corroborate` 在真实序列上**只验证了不产生假红**，没验证过"抓出假理由"。
+- 诊断只对照 `--project 5s` 的最新锚点（15s/40s 需要各自跑一次脚本）。三档一起对照留给下一批，
+  本轮不扩面——避免"顺手改一片"把 golden 跑批时间带进守卫。
+
+---
+
 ### 轮 17 · H6 盲捕下降目标（BLE001 从"只钉不涨"变成"每批要降"）· 2026-11-06 06:1x
 
 **顺手挖出一个基线自身的失真**（这条比改 6 个 except 更值钱，先记它）：

@@ -10,7 +10,7 @@
 用它测出来的 1.0 是假的。所以：
 
 - 整批替换 = 一次真实 Run 的完整快照；
-- 替换必须带理由：`golden_run.py --update --reason "…"`，理由写进 `spec.json` 的 `updateHistory`；
+- 替换必须带理由：`golden_run.py --update --reason "…"`，理由连同当时的环境指纹写进同目录 `baseline*.json` 的 `updateHistory`；
 - 没有 `--reason` 时 `--update` 直接拒绝执行（P0-4b 的程序）。
 
 ## 台账在哪
@@ -18,7 +18,7 @@
 | 东西 | 位置 |
 |---|---|
 | 锚点（当前生效的 6 张） | `fixtures/golden/<项目>/baseline_original/*.png` |
-| 锚点的更新史（谁、何时、为什么换） | `fixtures/golden/<项目>/spec.json` → `updateHistory` |
+| 锚点的更新史（谁、何时、为什么换） | `fixtures/golden/<项目>/baseline[_original].json` → `updateHistory`（每条自带**当时的 `environment` 指纹**） |
 | 每次验证的报告 | `docs/reports/golden/<项目>-<档>-run<id>.json`（含**环境指纹**：EXECUTOR/Chrome/ffmpeg/字体 sha） |
 | 报告的归档台账 | `docs/reports/golden/index.json`（`items` = 现存，`pruned` = 被裁掉的**及其 sha256**） |
 | 保留策略 | `scripts/cleanup_golden_reports.py`（默认 keep=20；被裁的报告**移动**到仓库根 `.trash/golden-reports/`，不 unlink） |

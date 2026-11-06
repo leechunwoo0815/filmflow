@@ -127,6 +127,28 @@ def main() -> int:
                     continue
                 problems.append(f"{doc.name}:{n} 出现已作废说法「{phrase}」——{why}；行：{line[:90]}")
 
+    # H10：环境漂移**诊断**（老板 2026-11-06 明确选"漂移即诊断 + 重锚流程"）。
+    # 这段打印不参与返回值——把它做成门禁的话，Chrome/ffmpeg 一升级整夜自主循环就锁死了，
+    # 而没有循环比有一条会红的门禁更糟。要做的是让漂移可见、并给出下一步动作。
+    try:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import diagnose_environment_drift as drift
+
+        cur_env = drift.current_environment()
+        anchor_env, anchor_name = drift.anchor_environment("5s")
+        drifted, unknown = drift.diff_environment(cur_env, anchor_env)
+        if not anchor_env:
+            print("环境漂移诊断：没有可对照的锚点报告（首次运行/报告目录空），跳过")
+        elif drifted:
+            print(f"环境漂移诊断（不是门禁）：锚点 {anchor_name} · 漂移 {len(drifted)} 项 → "
+                  + "、".join(f"{k}: {o[:24]} → {n[:24]}" for k, o, n in drifted))
+            print(f"  SSIM 若同时下降，按重锚流程办：{drift.reanchor_command('5s')}")
+        else:
+            extra = f"（锚点报告未记录 {len(unknown)} 项：{','.join(unknown)}）" if unknown else ""
+            print(f"环境漂移诊断：与锚点 {anchor_name} 逐项一致{extra}")
+    except (OSError, ValueError, ImportError) as e:      # 诊断失败不许影响文档守卫的判定
+        print(f"环境漂移诊断跳过（不影响返回值）：{e}")
+
     if problems:
         print(f"\nFAIL: 文档漂移 {len(problems)} 处", flush=True)
         for p in problems:

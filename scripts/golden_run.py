@@ -186,13 +186,23 @@ def _environment(root: Path) -> dict:
     if not font.exists():
         font = settings.home / "cache" / "fonts" / "NotoSansSC[wght].ttf"
     stats = settings.style_library_root / "_统计.json"
+    # H10：预览渲染器版本与整包字体缓存也进指纹。
+    # 只记一个 fontSha256 是不够的——C02 走的是"缓存里那一个字体"，而文字排版同时受
+    # 其它缓存字体影响；漂移诊断要能回答"到底是哪一项变了"。
+    from app.services.preview import RENDERER_VER
+
+    font_dir = settings.home / "cache" / "fonts"
+    cache_fonts = sorted((f.name, _sha(f)) for f in font_dir.glob("*.ttf")) if font_dir.is_dir() else []
     return {
         "executorVersion": EXECUTOR_VERSION,
+        "rendererVersion": RENDERER_VER,
+        "fpscalcSha256": _sha(ROOT / "server" / "app" / "engine" / "fpscalc.py"),
         "os": f"{platform.system()} {platform.release()} ({platform.machine()})",
         "python": platform.python_version(),
         "chrome": _version([chrome, "--version"]) if chrome else "",
         "ffmpeg": _version(["ffmpeg", "-version"]),
         "fontSha256": _sha(font),
+        "fontCacheSha256": dict(cache_fonts),
         "styleLibrary": str(settings.style_library_root),
         "styleLibraryStatsSha256": _sha(stats),
     }
@@ -355,6 +365,13 @@ def main() -> int:
                 "project": args.project, "resolution": rr["resolution"], "runId": rid,
                 "at": report["generatedAt"], "executorVersion": env["executorVersion"],
                 "ssimMin": min(rr["ssim"]) if rr.get("ssim") else None,
+                # H10：锚是在什么环境下打的要能直接看出来，漂移诊断不用去翻整份报告
+                "environment": {"executorVersion": env["executorVersion"],
+                                "rendererVersion": env["rendererVersion"],
+                                "chrome": env["chrome"], "ffmpeg": env["ffmpeg"],
+                                "fontSha256": env["fontSha256"],
+                                "styleLibraryStatsSha256": env["styleLibraryStatsSha256"],
+                                "fpscalcSha256": env["fpscalcSha256"]},
                 "status": report["status"], "reportFile": archived.name})
             print(f"  archived report: {archived}", flush=True)
         write_atomic(index_path, json.dumps(index, ensure_ascii=False, indent=1).encode("utf-8"))
