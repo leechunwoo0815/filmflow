@@ -22,7 +22,7 @@
 >   4 条 rumor-39s + 1 条演示 r3-camera）。**正式口径：保护项目的"作业行"允许被该策略改写**（Run 状态与文档/产物不受影响，签门后 `start_run`→`ensure_run_job` 会重建作业）；
 >   保护范围仍然覆盖项目行、Run、文档、资产、目录——只有 `job.status` 这一列例外。现存 7 条 retry_wait 未动。
 > **CI 首跑（push 的直接产出）＝红，33s，且不是代码回归**：`gh run view 42159751964 --log-failed` →
->   `3 failed, 354 passed, 3 skipped, 3 errors`。两类根因：
+>   （2026-11-06 CI runner 原文日志，**不是本机 collected 口径**）`3 failed, 354 passed, 3 skipped, 3 errors`。两类根因：
 >   (a) `tests/unit/test_audio_v2.py` **没有任何环境标记**却真调 ffmpeg → runner 无 ffmpeg 直接 `FileNotFoundError`（本机有所以看不见这个洞）；
 >   (b) `tests/bdd/test_style_indexing_bdd.py` 3 条按 `E_ENV_MISSING` **硬失败**（341 风格库不入 git，CI 天生没有）——这是我们自己的"不静默 skip"纪律在 CI 上的必然结果。
 >   即 `ci.yml` 的 `uv run pytest tests/unit tests/bdd -q` 这个子集选择与环境依赖从未对齐过；修法见任务书 Wave H9（三个方案待老板选）。
