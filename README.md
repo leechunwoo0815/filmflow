@@ -81,3 +81,12 @@ uv run --project server python scripts/drive_run.py <run> <project>   # 全链�
 ## 实现期裁决（已录规格 §19）
 
 F03 重复帧按 §6.2 降为警告 · G07 门后真实打包 · embed 上限 profile 化 · 门控调度活同步。
+
+## 许可
+
+- **代码**：[MIT](LICENSE)（2026-11-06 老板选定）。
+- **不在 MIT 内的部分**（各自按自己的条款，别当 MIT 用）：
+  - `vendor/fy-code-animation/` —— 见 [`vendor/fy-code-animation/LICENSE.md`](vendor/fy-code-animation/LICENSE.md)：免费使用/分享，**禁止包装成付费课程或付费 skill 出售**；
+  - 341 风格库（仓库外，路径见 `vendor/style-library.path`）—— 见库内 `许可与来源.md` 与 `第三方许可/`；**不要把原文或示例 mp4 重新分发进公开仓库**；
+  - `rumor-39s` 参考片（仓库外）—— 仅作本地回归基线，不随仓库分发。
+- **运行时依赖**：ffmpeg 与系统 Chrome 由本机安装、不随本仓库分发，因此不构成分发传染。
