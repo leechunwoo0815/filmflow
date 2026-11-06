@@ -718,3 +718,45 @@ F01 类缺陷（毒 `NO_PROXY` 带 IPv6 条目 → httpx 默认客户端解析�
 - `ci-env` 的 Chrome 类用例：本机 `detect_chrome()` 走 `/Applications` 绝对路径，**无法在 macOS 上模拟"没有 Chrome"**，
   所以"未标记却依赖 Chrome"的漏网面只有 runner 能证明。若 `ci-lean` 真跑出这类红，当场修并补记一轮。
 - `-rs` 的 skip 计数进 summary 只在 `ci-env` 里做；本机 `ci_local.sh` 第 3 步也带 `-rs`，但输出没落进任何台账（下一轮如需要可 tee 到文件）。
+
+---
+
+### 轮 15 · H9 的 CI 首绿 + H4 fresh-clone 体检双口径 · 2026-11-06 05:5x
+
+**H9 的完成判据 1 已经拿到（这是本轮最值钱的一行）**：
+push `4766e27` 触发 run **42170418486** →
+`ci-lean（零安装必绿：lint 棘轮 + tsc + 无环境依赖用例） → completed success`。
+`gh run view 42170418486 --json jobs` 原文可复核；`ci-env` 在本轮提交时仍 `in_progress`，
+它的结果（跑了多少 / skip 多少）留到下一条记录，不在这里替它宣布。
+本机复刻（轮 14 第 2 步）与 runner 实测**两侧都绿**，才算这条判据闭合。
+
+**H4：`scripts/bootstrap_fresh_clone.sh` 拆成两个口径**（复审原话是"措辞比证据强"，那就把措辞与证据绑进退出码）：
+- `--require-all`（默认，本机口径）：任一外部依赖缺失 → `exit 1`，且每条缺失都打印
+  `✗ E_ENV_MISSING: <项>` 并汇总成机器可读清单。"READY"这个词现在只在 exit 0 时才会出现。
+- `--check-only`（CI 口径）：同样逐条点名，但**恒 `exit 0`**。
+  理由写进脚本头注：runner 上没有系统 Chrome / macOS 字体 / 341 风格库是本项目的**已知事实**，
+  不是回归；把它做成必然红的步骤，只会让真信号（ci-lean 的红）被淹没——H9 首跑就是靠人肉读日志摸根因的。
+- 未知参数 → `exit 2` + 用法（防"拼错 flag 静默按默认跑"）。
+- `ci-lean` 新增一步 `bootstrap --check-only`，缺失清单进 `$GITHUB_STEP_SUMMARY`。
+
+四种退出码**全部实测**（含反向）：
+| 命令 | 期望 | 实测 |
+|---|---|---|
+| `bash scripts/bootstrap_fresh_clone.sh` | READY + 0 | `exit=0`，打印 4 条建议验收命令 |
+| `env PATH=/usr/bin:/bin:/usr/sbin:/sbin bash … ` | 缺失 → 1 | `exit=1`，**13 条** `E_ENV_MISSING`（首三条：uv / ffmpeg / python 3.13 未检出） |
+| 同上 + `--check-only` | 报告不红 → 0 | `exit=0`，尾部打印"已知缺失，报告进 summary" |
+| `bash … --bogus` | 用法 → 2 | `exit=2` + `用法：… [--require-all\|--check-only]` |
+
+措辞同步：AGENTS 顶部早前已改成"**本机**干净 clone 实测 READY；换一台真干净机器仍未验证"（轮 11），
+本轮把 `--require-all` 指为拿到该结论的唯一途径，`--check-only` 明确不许被当成 READY 证据。
+
+实测（命令含 cwd）：
+- 上表四行即全部证据（同一台机器、同一份 clone、无网络动作）。
+- `gh run view 42170418486 --json jobs` → ci-lean `success`；ci-env `in_progress`（提交时点）。
+
+没验的（诚实边界）：
+- **`--check-only` 在真 Linux runner 上的输出还没落地**（这一步随本轮 push 才第一次进 CI，
+  结果在 run 42170418486 之后的那一次里）。本机只证明了退出码与清单文本。
+- bootstrap 的检查项仍偏 macOS（Chrome 候选路径是 `/Applications/...`）；Linux 上的
+  `chromium` 包路径没进候选——这属于"渲染级 CI"那一批的活（要先把字体/风格库指纹参数化），本轮不扩面。
+- H4 的"文档措辞收窄"只覆盖 AGENTS 与脚本头注；`HANDOFF.md` 里 B9 时期的历史叙述按日期标记保留。

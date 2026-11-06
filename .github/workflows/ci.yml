@@ -41,6 +41,16 @@ jobs:
           node-version: 22
       - name: web 类型检查
         run: cd web && pnpm install --frozen-lockfile && pnpm exec tsc --noEmit
+      - name: 外部依赖体检（bootstrap --check-only，H4）
+        # 这一条**不可能是绿的判定**，所以 --check-only：runner 上没有系统 Chrome / macOS 字体 /
+        # 341 风格库是本项目已知事实。它的作用是把"这台机器到底缺什么"变成 summary 里的清单，
+        # 而不是让人从 FileNotFoundError 反推（H9 首跑就是这么摸的）。
+        # 想在目标机器上拿 READY 结论：bash scripts/bootstrap_fresh_clone.sh --require-all
+        run: |
+          bash scripts/bootstrap_fresh_clone.sh --check-only | tee /tmp/bootstrap.log
+          echo "### 外部依赖体检（--check-only，报告不判定）" >> "$GITHUB_STEP_SUMMARY"
+          grep -E "E_ENV_MISSING" /tmp/bootstrap.log | sed 's/^/  - /' >> "$GITHUB_STEP_SUMMARY" \
+            || echo "  - 无缺失（意外：runner 上不应有 macOS 系统资源）" >> "$GITHUB_STEP_SUMMARY"
       - name: pytest（只跑不依赖外部工具的用例）
         # 关键：这里**不装** ffmpeg/Chrome，所以任何"真调外部工具却漏标 requires_*"的用例
         # 会在这里红，而不是像以前那样红成一堆看不出根因的 FileNotFoundError。
