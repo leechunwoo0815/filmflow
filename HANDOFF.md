@@ -12,6 +12,22 @@
 
 ---
 
+> **2026-11-06 老板决策四则（已执行，审查方亲手）**：
+> ① **push**：`8266f11..2585b3b` 已推到 `git@github.com:leechunwoo0815/filmflow`（39 个提交，push 前扫描：0 密钥特征、0 个 >5MB 文件、原始未脱敏专家报告不在库内）；
+> ② **今晚顺序**＝先 Wave H（8 条正确性/安全/卫生），再 FR-40 前端；
+> ③ **磁盘/库卫生清理已授权并执行**（不动 VACUUM）：备份 `~/filmflow-backup-20261106-pre-hygiene.db`（`sqlite3 .backup`，WAL 安全，37,203,968B）→
+>   先确认孤儿目录 `r3-camera-260` **零 DB 引用**（project 行 0、artifact 指向 0）才删；draft **57→53**（清 4 条：B2 探针遗留 3 条 + 该孤儿项目自身的向导 draft 1 条，
+>   后者是我删目录后才变僵尸的，已连因果一起收）；**僵尸 draft 0、孤儿目录 0**；`filmflow-projects` 1.6G→**1.5G**；project 11 / run 44 / artifact 1744 恒定未变；
+> ④ **`expire_parked` 72h 策略认可**：11-05 22:56 dev 重启时它自动收走 5 条 parked 作业（`app.log` 有 `expiredParked=[13,48,49,72,80]`，DB 里 `canceled/E_JOB_EXPIRED`；
+>   4 条 rumor-39s + 1 条演示 r3-camera）。**正式口径：保护项目的"作业行"允许被该策略改写**（Run 状态与文档/产物不受影响，签门后 `start_run`→`ensure_run_job` 会重建作业）；
+>   保护范围仍然覆盖项目行、Run、文档、资产、目录——只有 `job.status` 这一列例外。现存 7 条 retry_wait 未动。
+> **CI 首跑（push 的直接产出）＝红，33s，且不是代码回归**：`gh run view 42159751964 --log-failed` →
+>   `3 failed, 354 passed, 3 skipped, 3 errors`。两类根因：
+>   (a) `tests/unit/test_audio_v2.py` **没有任何环境标记**却真调 ffmpeg → runner 无 ffmpeg 直接 `FileNotFoundError`（本机有所以看不见这个洞）；
+>   (b) `tests/bdd/test_style_indexing_bdd.py` 3 条按 `E_ENV_MISSING` **硬失败**（341 风格库不入 git，CI 天生没有）——这是我们自己的"不静默 skip"纪律在 CI 上的必然结果。
+>   即 `ci.yml` 的 `uv run pytest tests/unit tests/bdd -q` 这个子集选择与环境依赖从未对齐过；修法见任务书 Wave H9（三个方案待老板选）。
+
+
 ## 0. 下一个 Agent 从这里开始（15 分钟）
 
 ### 0.0 上下文压缩后接续（判官复核 → B1–B6 已交付，从这里继续）

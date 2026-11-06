@@ -234,3 +234,32 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 | H8 | **结构性缺口（最大的一块）** | **FR-40/FR-41 只有后端纵切**：`scripts/e2e_fr40_keyboard.py` 不存在；命令面板/快捷键表/`?` 帮助/铃铛面板/进度中心/通知 UI 全无；FR-41 草稿层 UI 全无；**a11y 现值仍是 1 处 aria/role**（这三条你们自己已在"诚实边界"里写明，我确认属实） | `web/src/lib/commands.ts`（待建）、`web/src/components/`（面板/快捷键/通知）、`server/app/services/{notifications,authoring}.py`（已就绪） | 今晚做 **FR-40 前端纵切优先**：①20 个命令注册表 + `Cmd/Ctrl+K` 面板（可搜、可执行、键盘可达、`role`/`aria`）；②快捷键表 + 冲突检测 + `?` 视图；③通知中心面板（去重展示、已读、失败通知带"修复入口"跳 QA/delivery）；④进度中心（job 进度/ETA/取消，不阻塞编辑）；⑤`scripts/e2e_fr40_keyboard.py` 真跑**全流程纯键盘**（建项目→改→预览→跑→批门→导出），每步贴输出；⑥a11y 现值从 1 涨到"关键路径全覆盖"并给前后计数。FR-41 前端（草稿层 UI + 接受/拒绝/编辑）次优先，PRD 四条判据里"断网抓包证据"用 `lsof -p <pid>` 快照代替并说明 |
 
 **Wave H 之后仍然悬着的老板决策点（6 个，别自己拍）**：push（现 38 个提交未推）、LICENSE 类型、VACUUM、`?tok=`→header 已完成无需决策、devDependency（a11y lint）、**以及新出现的一个**：`expire_parked` 的 72h 策略在 11-05 22:56 的 dev 重启时**自动收走了 5 条 parked 作业**（4 条 rumor-39s + 1 条演示 188，`app.log` 可查 `expiredParked=[13,48,49,72,80]`，DB 里 `status=canceled/E_JOB_EXPIRED`）。行为符合设计、Run 未受影响（仍 blocked，签门时会重建作业），但**它动的是保护项目的行**——需要老板明确认可"策略可以自动改写保护项目的作业状态"，否则把阈值改成"只收非保护项目"并加守卫。
+
+
+---
+
+## 12. 老板决策（2026-11-06 中午，已生效——今晚按这个做，别再问）
+
+1. **push 已执行**（`8266f11..2585b3b`，现 origin/master = 已同步；此后每轮提交**照旧 push**，不必再逐次请示）。
+2. **顺序**：Wave H（H1→H8）→ FR-40 前端纵切 → FR-41 前端。FR-41 若时间不够，明写差哪一步。
+3. **清理已执行**（孤儿目录 `r3-camera-260` 65MB + 4 条僵尸 draft；`filmflow-projects` 1.5G；僵尸/孤儿现值均为 0）。
+   → 所以 **H3 现在只剩"把棘轮装上"**：治理第 18 项断言「孤儿目录==0 且 僵尸 draft==0」，并修 `destroy()` 的 draft 回收条件（漏掉"项目根被删后才变僵尸"的那条——实测就是它）。
+4. **`expire_parked` 策略认可**（保护项目的 job.status 可被改写，其余仍全保护）——把这句口径写进 HANDOFF/AGENTS 的门禁清单，别让它再被当成疑点。
+5. **VACUUM / LICENSE / devDependency** 三项**仍未决**，继续挂在决策点，不要自行处理。
+
+## 13. H9（新增，优先级最高之一）—— CI 首跑红：子集选择与环境依赖从未对齐
+
+实测：`gh run view 42159751964 --log-failed` → `3 failed, 354 passed, 3 skipped, 3 errors`（33s）。
+
+- 根因 (a)：`server/tests/unit/test_audio_v2.py` **没有 `pytestmark`**（0 个 `requires_ffmpeg`/`requires_chrome`），
+  但 4 个用例里 3 个真调 ffmpeg → runner 上 `FileNotFoundError: 'ffmpeg'`。
+  **这是测试卫生缺陷，无论选哪个方案都必须先补标记**（顺带全仓扫一遍还有没有别的"未标记却依赖环境"的用例：
+  对照 `subprocess`/ffmpeg/Chrome/风格库 的调用点与 marker 交集）。
+- 根因 (b)：BDD 风格库场景按我们的纪律在缺环境时**硬失败**，而 341 风格库不入 git → CI 天生缺。
+
+**三个修法（老板尚未选，今晚若未选就先做"补标记 + 全仓审计未标记环境依赖"这一半，另一半等口径）**：
+- 方案 1「真环境」：CI 里 `apt-get install ffmpeg`（+ Chrome），BDD 风格库那几条用 `--allow-missing-env` 显式 skip 并在 job summary 打印 skip 数；
+- 方案 2「纯 CI 纪律」：CI 只跑 `-m "not requires_ffmpeg and not requires_chrome and not requires_style_library"`，零安装，但必须在文档写明"CI 覆盖面不含任何环境依赖用例"；
+- 方案 3「双 job」：`ci-lean`（方案 2）+ `ci-env`（方案 1），信号最全，YAML 与时长翻倍。
+
+无论哪个：**CI 的红必须当场修到绿并留下 `gh run list` 的证据**，否则"CI 首版"依旧是死配置。
