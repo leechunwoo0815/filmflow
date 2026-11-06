@@ -74,21 +74,23 @@ def _loudness(path: Path) -> dict:
                     "-f", "null", "-"], 300)
     lufs = tp = None
     for line in res.stderr.splitlines():
+        # H6：ffmpeg 的 ebur128 行只可能因为**格式变动**解析失败（ValueError/IndexError），
+        # 用 except Exception 会把 KeyError/属性写错这类真 bug 一起吞进 debug 日志。
         if "I:" in line and "LUFS" in line:
             try:
                 lufs = float(line.split("I:")[1].split("LUFS")[0].strip())
-            except Exception:
-                _log.debug("swallowed exception in _loudness ()", exc_info=True)
+            except (ValueError, IndexError):
+                _log.debug("ebur128 的 I: 行无法解析：%r", line)
         if "True peak:" in line and "dBFS" in line:
             try:
                 tp = float(line.split("True peak:")[1].split("dBFS")[0].strip())
-            except Exception:
-                _log.debug("swallowed exception in _loudness ()", exc_info=True)
+            except (ValueError, IndexError):
+                _log.debug("ebur128 的 True peak 行无法解析：%r", line)
         if "Peak:" in line and "dBFS" in line and "True peak" not in line:
             try:
                 tp = float(line.split("Peak:")[1].split("dBFS")[0].strip())
-            except Exception:
-                _log.debug("swallowed exception in _loudness (except Exception:)", exc_info=True)
+            except (ValueError, IndexError):
+                _log.debug("ebur128 的 Peak 行无法解析：%r", line)
     return {"lufs": lufs, "truePeak": tp}
 
 
@@ -135,9 +137,12 @@ def _alignment(session: Session, root: Path, run: Run, task: dict,
     for a in reversed(rows):
         try:
             d = json.loads(Path(a.path).read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, ValueError) as e:
+            # H6：读不到/不是合法 JSON 才跳过这条历史产物；其它异常（比如上面写错变量名）
+            # 必须冒出来，否则交付门禁会拿着"其实没读到 segments"的假结论继续走。
+            _log.debug("G02 产物 %s 读不了，回退下一条：%s", a.path, e)
             continue
-        if d.get("segments"):
+        if isinstance(d, dict) and d.get("segments"):
             return d["segments"], d.get("source") or "alignment"
     manual = audio_svc.load_alignment(root)
     if manual.get("segments"):
@@ -170,11 +175,14 @@ def _font(size: int):
         if p.exists():
             try:
                 return ImageFont.truetype(str(p), size)
-            except Exception:
-                _log.debug("swallowed exception in _font (except Exception:)", exc_info=True)
+            except (OSError, ValueError) as e:
+                # H6：字体文件坏了/读不了才换下一个候选；PIL 之外的异常（例如 size 传了字符串）
+                # 是调用方 bug，不该被"换下一张字体"掩盖成一张默认字体的封面。
+                _log.debug("字体 %s 打不开（%s），试下一个候选", p, e)
     try:
         return ImageFont.load_default(size=size)
-    except Exception:
+    except TypeError:
+        # 老版 Pillow 的 load_default() 不收 size 参数
         return ImageFont.load_default()
 
 

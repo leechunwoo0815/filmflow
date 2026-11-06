@@ -35,6 +35,11 @@ def main() -> int:
     scopes = [("serverCwd", ROOT / "server", "."),
               ("repoRootCwd", ROOT, "."),
               ("ciScope", ROOT, "server scripts")]
+    # H6：BLE001（`except Exception` 盲捕）除了"不许涨"，还要**每批下降**。
+    # 只钉不涨的棘轮会允许它一辈子停在原地，而盲捕恰恰是最贵的一类：出问题时最难定位
+    # （P2-30 那批 except:pass 的同类），渲染链与交付门禁里的每一次吞异常都可能把
+    # "其实失败了"读成"其实成功了"。所以目标值单独成块、单独断言。
+    targets = baseline.get("BLE001target") or {}
     fail = False
     for label, cwd, target in scopes:
         if label not in baseline:
@@ -49,9 +54,17 @@ def main() -> int:
                 print(f"✗ {label}.{key}={got} > 棘轮 {limit}——涨了就修代码，不许抬基线")
             else:
                 print(f"{mark} {label}.{key}={got}/{limit}")
+        t = targets.get(label)
+        if t is not None:
+            got = cur.get("BLE001", 0)
+            if got > int(t):
+                fail = True
+                print(f"✗ {label}.BLE001={got} > 下降目标 {t}——收窄成具体异常类型（每批 -5 是既定节奏）")
+            else:
+                print(f"✓ {label}.BLE001 下降目标 {t}（现 {got}）")
     if fail:
         return 1
-    print("PASS: lint 棘轮三口径全部在基线内（只许降不许涨）")
+    print("PASS: lint 棘轮三口径全部在基线内（只许降不许涨），BLE001 达到下降目标")
     return 0
 
 

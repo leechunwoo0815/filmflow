@@ -847,3 +847,50 @@ push `4766e27` 触发 run **42170418486** →
   旧锚批次仍在），本轮做的是"今后有上限"。
 - `ci-env` 的 Chrome 类用例仍不在覆盖内（runner 上没装 Chrome，那几条合法 skip）；渲染级 CI 需要先把
   字体/风格库指纹参数化，是独立一批（ci.yml 顶部注释已写明）。
+
+---
+
+### 轮 17 · H6 盲捕下降目标（BLE001 从"只钉不涨"变成"每批要降"）· 2026-11-06 06:1x
+
+**顺手挖出一个基线自身的失真**（这条比改 6 个 except 更值钱，先记它）：
+按 HEAD 实测，`BLE001` 早就是 **60/70/70**，而基线里写的是 **65/75/77**——
+差 5/5/7 是以前几批（R9 `--fix`、B5 SVG/base64 收窄等）降下去后**从没回填**留下的。
+也就是说"H6 只钉不降"的代价不只是"停在原地"，而是**基线数字与事实分叉**：
+棘轮显示 `BLE001=60/65 ✓`，看的人会以为还有 5 处空间，实际上那 5 处早就不存在了。
+本轮把两个数都按实测回填，并把 JSON 里那份**没人读的** `{"BLE001": {...}}` 旧块删掉（它就是分叉的源头，同一件事两处真源）。
+
+**下降目标怎么装的**（`scripts/lint_ratchet.py`）：
+基线新增 `BLE001target`（＝本批实测 54/64/64）+ 断言 `current <= target`，输出多一行
+`✓ serverCwd.BLE001 下降目标 54（现 54）`。目标值与只降不涨的 `BLE001` 基线**同批写入**，
+以后每批收窄就跟着降；节奏（每批 −5）写进 JSON 的 note 和脚本注释，不靠口头记忆。
+
+**首批收窄的 6 处，全在"吞异常最贵"的两条链上**（`server/app/services/delivery.py`）：
+| 位置 | 原样 | 现在 | 为什么这里最值得 |
+|---|---|---|---|
+| `_loudness` ebur128 解析 ×3 | `except Exception` + `exc_info=True` 的 debug | `except (ValueError, IndexError)` + 打印原始行 | 交付门禁的 LUFS/TP 判定来自这里：解析失败时 `lufs=None`，`except Exception` 会把"我们其实没量到"和"ffmpeg 换了行格式"混成同一条日志 |
+| `_alignment` 读 G02 产物 | `except Exception: continue`（**连日志都没有**） | `except (OSError, ValueError)` + debug 记文件名与原因 | 原来任何异常（包括代码写错）都变成"静默换下一条产物"，最后拿着 manual/空 segments 继续走交付——最典型的假结论通路 |
+| `_font` 字体候选 ×2 | `except Exception` / 兜底 `except Exception` | `except (OSError, ValueError)`；兜底改 `except TypeError`（老 Pillow 的 `load_default()` 不收 size） | 封面字体坏了应该换候选或退回默认，但 `size` 传错这种调用方 bug 必须冒出来，否则会被"换一张字体"掩盖成一张正常封面 |
+
+**顺带保住的一条行为**：`_alignment` 里 `d.get("segments")` 在收窄后会对"产物是 JSON 数组"这种情况抛 `AttributeError`
+（原来被 `except Exception` 吞掉），因此显式改成 `isinstance(d, dict) and d.get("segments")`——
+收窄不能把旧的正确容错一起删掉，这一处是收窄过程中发现的、必须补的守卫。
+
+反向验证（真做，不是描述）：临时写 `server/app/_tmp_ble_probe.py`（一个 `except Exception`）→
+`✗ serverCwd.BLE001=55 > 棘轮 54` + `✗ …=55 > 下降目标 54` + `✗ total=188 > 187` 三条同时红；删掉探针 → PASS。
+
+实测（命令含 cwd）：
+- `uv run --project server python scripts/lint_ratchet.py` → **187 / 237 / 233**，
+  `BLE001` 基线 54/64/64 与**下降目标同源**，`PASS: …BLE001 达到下降目标`
+- `cd server && uv run pytest tests -q` → **415 passed**（200.03s，0 skip / 0 xfail）
+- `cd server && uv run pytest tests/unit/test_delivery.py tests/unit/test_audio_v2.py -q` → **10 passed**
+  （交付与音频两条链正是被改的两个函数所在处）
+- HEAD 与现版对照（属性用）：`git show HEAD:…delivery.py` → BLE001 11 处；现版 5 处（本批 −6）
+
+没验的（诚实边界）：
+- 交付门禁的**端到端出片**没在本批重跑（`verify_r2_5_delivery.py` 会真出 9 文件包）。改动只在
+  "异常分类 + 日志"，且 10 条单测覆盖这两个函数所在模块；但 `_loudness` 的真实 ffmpeg 输出解析只在
+  `test_audio_v2` 的 ffmpeg 用例里被间接经过——**下一批动交付面时应补一次 delivery 验收**并贴 LUFS 原文。
+- 剩余 54 处盲捕没清点分布。`ruff check --select BLE001 --statistics` 按目录聚合是下一批 −5 的选题依据，
+  本轮没做（避免"顺手改一片"把不相关的渲染路径卷进来）。
+- `BLE001target` 与 `BLE001` 基线现在是同一个数（54/64/64），**目标尚未低于现值**；
+  "每批 −5"真正生效要到下一批收窄之后。这里没有把它写成"已经在下降"。
