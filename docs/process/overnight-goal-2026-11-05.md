@@ -212,3 +212,25 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 
 **最后一句**：宁可少报，不可虚报。前两夜因为"数字没标环境边界"和"文档说闭了实测没闭"被逐条打回过；
 这一夜的产出会被同等强度复核。做完全部 Wave 才算完成；做不完就把"差哪一步"写清楚。
+
+
+---
+
+## 11. Wave H —— 审查方 2026-11-06 复审新发现（今晚从这里接，8 条，按序）
+
+> 我对整夜产出的独立复审：**Wave A–D 的申报基本全部复现**（396 passed 0 skip / 治理 17 项 / 守卫 PASS /
+> lint 194·244·240 / tsc 干净 / 我自己重跑 golden 5s 原帧 SSIM 1.0×6·pHash 0×6 / 我自己跑 e2e_ui 8 步 7.0s·固定等待 0 /
+> 我自己 fresh-clone bootstrap READY）。下面是**只有我没查出来、你没记**的八条。
+
+| # | 严重度 | 发现 | 落点 | 今晚的验收判据 |
+|---|---|---|---|---|
+| H1 | **中** | **B5 删除判活语义没有测试钉住**，且留一个真空窗：`queued` 状态用 `created_at` 兜底判龄——**排队等 Chrome 锁超过 120s 的作业会被判"不在飞"**，于是资产可以在它即将执行时被删掉 | `server/app/services/assets.py:500-521`（`_inflight_jobs_using`） | `queued` 一律算在飞（只有 `leased/running` 用 120s 心跳窗，僵尸行靠 `recover` 清理）；补 2 条测试：①queued+老 created_at → 拒绝删除；②retry_wait（等门）→ 允许删除。测试名带 P2-17/H1 |
+| H2 | **中** | **裸 httpx 客户端的守卫有洞**：只查 `httpx.Client(`/`AsyncClient(`，**不查模块级便捷函数** `httpx.get/post/head/...`。实测漏网 1 处：`scripts/e2e_timeline_100.py:41` 的 `httpx.get(...timeout=3)`——毒 `NO_PROXY` 环境下这条脚本会当场炸（与被修的 F01 同一类） | `scripts/e2e_timeline_100.py:41`；守卫落点 `verify_p1_governance.py` 第 17/18 项或新单测 | 修那一处 + 静态守卫扩到 `httpx\.(get|post|head|put|patch|delete)\(` 必须带 `trust_env=False`；守卫实跑证明把 `trust_env=False` 删掉会变红 |
+| H3 | **中** | **磁盘/库卫生回归（两处）**：①孤儿项目目录 `r3-camera-260`（**65MB，无 DB 行**，11-05 23:18 遗留）；②僵尸 draft **3 条**（id 261/262/263，root 指向已删的 `.acceptance/b2-color-tags-*`）——那是 B2 探针三次在 `destroy` 前抛错留下的，账本说"清掉了"但 draft 行还在 | `~/cc-projects/ai-v/filmflow-projects/r3-camera-260`；`scripts/_acceptance.py::destroy` 的 draft 回收条件 | ①按磁盘纪律清孤儿目录（**先备份、出前后计数、需老板点头**）；②`cleanup_projects.py --stale-drafts --confirm` 清这 3 条；③把"孤儿目录数==0 且僵尸 draft==0"做成治理第 18 项（只报告也算，别让它再无声增长）；④`destroy()` 的回收条件改为按 draft 名/root 前缀**或** payload 里任一指向本项目根的键，补一条单测 |
+| H4 | **小** | **B9 的措辞比证据强**：fresh-clone 实测是在**同一台机器**（风格库/rumor/Chrome/ffmpeg 都在），换一台真干净机器仍未验证。晨报写"fresh-clone 真闭"过满 | `scripts/bootstrap_fresh_clone.sh`；`docs/process/overnight-ledger-2026-11-05.md` 轮 8 | 措辞改为"本机 fresh-clone 实测 READY"；给 bootstrap 加 `--require-all`（缺任一外部依赖即 exit≠0 + `E_ENV_MISSING` 逐条点名），并在 CI 里加一步 `bootstrap --check-only`（这样缺依赖的机器会红而不是"READY"） |
+| H5 | **小** | **`.git` 从 63M 涨到 68M**：B3 重锚一次就整批替换 6 张 1080p PNG，且 1824999 后每批视觉改动都会再涨 | `fixtures/golden/*/baseline_original/`、`docs/reports/golden/`（现 16+ 份） | 定一个"锚点/churn"策略：报告只保留最近 N=20 份 + `index.json` 记录被裁掉的哈希；锚点目录写 README 说明"整批替换是有意的、理由在 updateHistory"。**不要**上 LFS（不联网）。给一次 `du -sh .git` 前后数字 |
+| H6 | **小** | **BLE001 只钉不降**：棘轮基线 65/75/77 只保证不涨，没有下降目标；`except Exception` 面广，出问题时最难定位（P2-30 的同类） | `docs/reports/lint-baseline.json` | 给"每批 −5"的下降目标（写进基线 JSON 的 `target` 字段 + 治理断言 `<= target`），首批挑 5 处最有价值的（渲染链与交付门禁里的盲捕）收窄成具体异常类型 |
+| H7 | **小** | **台账可读性**：`轮 1 ·（开发模型从这里开始写）` 空占位与真正的轮 1 同号；轮 0b 之后编号跳 R1…R10 与"轮 N"混用 | `docs/process/overnight-ledger-2026-11-05.md:44` | 删空占位或改标 `轮 1（占位）`；后续统一"轮 N · <Wave 编号> <标题>"；在文件头加一张 R1–R10 → Wave → 提交哈希的索引表（明天我按这张表抽查） |
+| H8 | **结构性缺口（最大的一块）** | **FR-40/FR-41 只有后端纵切**：`scripts/e2e_fr40_keyboard.py` 不存在；命令面板/快捷键表/`?` 帮助/铃铛面板/进度中心/通知 UI 全无；FR-41 草稿层 UI 全无；**a11y 现值仍是 1 处 aria/role**（这三条你们自己已在"诚实边界"里写明，我确认属实） | `web/src/lib/commands.ts`（待建）、`web/src/components/`（面板/快捷键/通知）、`server/app/services/{notifications,authoring}.py`（已就绪） | 今晚做 **FR-40 前端纵切优先**：①20 个命令注册表 + `Cmd/Ctrl+K` 面板（可搜、可执行、键盘可达、`role`/`aria`）；②快捷键表 + 冲突检测 + `?` 视图；③通知中心面板（去重展示、已读、失败通知带"修复入口"跳 QA/delivery）；④进度中心（job 进度/ETA/取消，不阻塞编辑）；⑤`scripts/e2e_fr40_keyboard.py` 真跑**全流程纯键盘**（建项目→改→预览→跑→批门→导出），每步贴输出；⑥a11y 现值从 1 涨到"关键路径全覆盖"并给前后计数。FR-41 前端（草稿层 UI + 接受/拒绝/编辑）次优先，PRD 四条判据里"断网抓包证据"用 `lsof -p <pid>` 快照代替并说明 |
+
+**Wave H 之后仍然悬着的老板决策点（6 个，别自己拍）**：push（现 38 个提交未推）、LICENSE 类型、VACUUM、`?tok=`→header 已完成无需决策、devDependency（a11y lint）、**以及新出现的一个**：`expire_parked` 的 72h 策略在 11-05 22:56 的 dev 重启时**自动收走了 5 条 parked 作业**（4 条 rumor-39s + 1 条演示 188，`app.log` 可查 `expiredParked=[13,48,49,72,80]`，DB 里 `status=canceled/E_JOB_EXPIRED`）。行为符合设计、Run 未受影响（仍 blocked，签门时会重建作业），但**它动的是保护项目的行**——需要老板明确认可"策略可以自动改写保护项目的作业状态"，否则把阈值改成"只收非保护项目"并加守卫。
