@@ -593,3 +593,67 @@ F01 类缺陷（毒 `NO_PROXY` 带 IPv6 条目 → httpx 默认客户端解析�
   queued / leased / running 三条现在口径一致。收成公共函数是卫生工作，本轮没做，也没动 `project_cleanup`（它现在是对的）。
 - H2 守卫只扫 `httpx`；`urllib.request` / `aiohttp` 之类不在面内（实测全仓无 aiohttp，`urllib` 用于本地文件路径解析，不建连接）。
 
+
+---
+
+### 轮 13 · H3 磁盘/库卫生棘轮（治理第 18 项，fail-closed 而非"只报告"）· 2026-11-06 05:2x
+
+**为什么不做成"报告模式"**：同类残留一夜里漏过两次（65MB 孤儿目录 `r3-camera-260`、4 条僵尸 draft），
+台账当时都写着"已清"。报告没人天天看，等于没有防线——所以第 18 项**直接 fail-closed**：
+以后谁漏了，治理当场红。（任务书 H3 允许"只报告也算"，这里按更严的口径做，理由入 docstring。）
+
+**三处改动**：
+- `scripts/cleanup_projects.py`：新增 `orphan_dirs(session)`（`filmflow-projects/` 下没有任何 Project 行指向的目录；
+  排除 `.acceptance`，那条由第 14 项管）与 `hygiene_counts(session)`（僵尸 draft + 孤儿目录 + 可核对的 id/name 清单）。
+  路径来自 `settings.workspace_roots[0] / "filmflow-projects"`，**不硬编码主目录**（P1-19 的口径）。
+- `scripts/verify_p1_governance.py`：新增第 **18** 项 `check_disk_hygiene()`，放在 `check_no_demo_writes` 之后
+  （孤儿/僵尸计数只有在自建项目全部回收之后才有意义），**判据复用 `cleanup_projects.hygiene_counts`**
+  ——守卫和清理工具不许各写一套判据（历史上这类分叉就是"守卫说没事、工具说有 4 条"的来源）。
+- `scripts/_acceptance.py`：draft 回收条件从"只读 `payload["root"]`"改为 `_draft_points_at()`——
+  递归扫 payload 任意深度的路径值命中项目根（含子目录）即算本项目草稿，兼容原样/`resolve()` 两种写法。
+  **刻意不按 `draft.name` 匹配**并在 docstring 写明理由：草稿名就是项目标题，自建项目允许与真实项目同名
+  （`golden-5s` 既是脚本名也是演示名），按名删会误删别人的草稿，比漏删更糟。
+  诚实标注：生产库 8 个 payload 键里**目前**只有 `root` 是路径，所以这条今天行为等价，它是防"键名漂移"，
+  不是宣称修好了某个正在发生的泄漏。
+
+**踩到并当场修的自己的编辑事故 ×2**：
+① 插入函数时吞掉了 `def _parked_jobs(...)` 后的换行 → `IndentationError`（由测试收集阶段暴露，不是靠肉眼）；
+② 一处 docstring 把"向导把路径塞进别的键"写成了既成事实 → 先查生产库 `json_each(payload_json)` 的键分布，
+   发现只有 `root` 是路径，**改成诚实表述 + 标明这是防御性改动**。
+
+**测试**（`server/tests/unit/test_h3_hygiene_ratchet.py`，6 条）：
+孤儿目录识别（含"登记成行以后就不该再报"）、僵尸 draft 计数与 id 清单、
+`_draft_points_at` 覆盖嵌套/列表路径 + **拒绝前缀相似陷阱**（`/a/scratch-1` vs `/a/scratch-10`，
+误命中就会删掉别人项目的草稿）、治理第 18 项接线断言（`ok("18` 标签 + `check_disk_hygiene()` 调用 + 同源判据），
+以及**反向验证**：tmp 里造一个"目录在、行不在"的孤儿 → `pytest.raises(AssertionError, match="孤儿目录")` 真的红。
+
+**这条测试自己返工两次，两次都是"测试写错"而不是"代码写错"——值得入账**：
+① 第一版断言绝对计数 `zombieDrafts == 1`，单跑绿、**全量红**（366 passed / 1 failed）：
+   unit 库跨测试共享，别的测试也会留下指向已删目录的草稿。改成**增量断言**（`after == before + 1`），
+   判据照样钉死，但不依赖执行顺序。
+② 改增量后**单跑也红**了：`alive.mkdir()` 写在取基线**之前**，基线里已经含了那个孤儿 →
+   `1 == 1 + 1` 必然失败。把 mkdir 挪到取基线之后，并在那行加注释「基线必须在造任何东西之前取，
+   否则增量断言自己骗自己」。
+教训：**新写的"计数类"测试必须在 `tests/unit` 全目录跑一遍再宣布绿**，只跑单文件会漏掉顺序依赖。
+
+实测（命令含 cwd）：
+- `cd server && uv run pytest tests/unit/test_h3_hygiene_ratchet.py -q` → **6 passed**
+- `uv run --project server python scripts/verify_p1_governance.py` → **18 项全 ✓**，
+  新增行 `✓ 18 磁盘/库卫生棘轮：孤儿目录 0 个、僵尸 draft 0 条（判据与 cleanup_projects 同源）`
+- `uv run --project server python scripts/lint_ratchet.py` → **194 / 244 / 240 全 ✓**
+  （新代码首跑 +6：两处 I001 + 四处 RUF100 `noqa E402` 在 scripts 口径不生效——`--fix` 清掉，不抬基线；
+  改完测试后又咬住 1 处 F401（去掉 `s.exec(select(...))` 后 `select` 变未用）——**棘轮这一轮共红过两次，两次都是我的新代码**）
+- `cd server && uv run pytest tests -q` → **407 passed**（collected 407 = unit 367 / integration 33 / BDD 7，0 skip / 0 xfail）
+- 文档同步 10 处：`17 项`→`18 项`（HANDOFF §0.6.3、AGENTS 顶部实测行 + 先跑什么注释、任务书 §2）；
+  `401`→`407`（HANDOFF ×4、AGENTS ×2，均写成中文说明"+11 是 H1×2 + H2 守卫×3 + H3×6"）。守卫 **PASS**。
+
+真渲染证据：无（本轮纯治理/卫生面）。
+
+没验的（诚实边界）：
+- 第 18 项**没有对"生产库真实泄漏"做过现场演练**（现在生产库是 0/0，无法在不破坏纪律的前提下造泄漏）。
+  反向验证是在 tmp + 隔离测试库里做的，能证明判据与抛出行为，不能证明"CI/治理真跑时也会红"——
+  下一次任何脚本真留孤儿时那才是首次实战。
+- `orphan_dirs` 只看顶层目录，不看嵌套在项目根内的残留（那是 `delete_project` 的 `remove_dir` 面）。
+- `_draft_points_at` 的行为等价性已说明；**`destroy()` 的端到端回收没有在真验收脚本上复跑**
+  （验收脚本会在 H9 之后的 CI 里被更严格覆盖，届时 `verify_r3_templates` 的"回收 N 条"输出是它的自然证据）。
+- 治理步数 17→18 后，任何还在引用"17 项"的旧台账轮次条目按历史保留（守卫只认现值处）。

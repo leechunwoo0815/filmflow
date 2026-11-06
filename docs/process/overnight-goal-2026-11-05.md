@@ -18,7 +18,7 @@
 
 1. `cd server && uv run pytest tests -q` 全绿，**连跑两次**数字一致，且 0 skipped / 0 xfailed（有就必须写明理由）；
    跑完生产库计数不变（`conftest` 的守卫会自动判）。
-2. `uv run --project server python scripts/verify_p1_governance.py` → 全项 ✓（现在 17 项，你新增守卫就更多）。
+2. `uv run --project server python scripts/verify_p1_governance.py` → 全项 ✓（**现值 18 项**：H3 加了第 18 项磁盘/库卫生棘轮；你再加守卫就更多）。
 3. `uv run --project server python scripts/check_docs_consistency.py` → PASS。
 4. `cd web && npx tsc --noEmit` 干净；`cd server && uv run ruff check .` **不高于 339**、仓库根 `uv run --project server ruff check .` **不高于 405**（只许降）。
 5. 每个 Wave 的每条任务都有：**代码落点（file:line）+ 可复现实测输出 + 提交哈希**，写进台账 `docs/process/overnight-ledger-2026-11-05.md`（格式见 §6）。

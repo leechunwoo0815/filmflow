@@ -49,6 +49,39 @@ def _stale_drafts(s) -> list:
     return out
 
 
+def orphan_dirs(s) -> list[Path]:
+    """H3：`filmflow-projects/` 下**没有任何 Project 行指向**的目录（反向孤儿）。
+
+    `_stale_drafts` 查的是"行在、目录没了"，这一条查的是相反方向——目录还在、行已经没了，
+    实测漏过 65MB 的 `r3-camera-260`（B7 camera 脚本没自删，删行/删目录的顺序让它活成了孤儿）。
+    `.acceptance` 是验收脚本的工作区，由 `check_no_demo_writes` 单独管残留，这里排除。
+    """
+    from app.config import settings
+    from app.models import Project
+    from sqlmodel import select
+
+    base = Path(settings.workspace_roots[0]) / "filmflow-projects"
+    if not base.is_dir():
+        return []
+    known = {str(Path(p.root or "").resolve()) for p in s.exec(select(Project)).all()}
+    out = []
+    for d in sorted(base.iterdir()):
+        if not d.is_dir() or d.name == ".acceptance":
+            continue
+        if str(d.resolve()) not in known:
+            out.append(d)
+    return out
+
+
+def hygiene_counts(s) -> dict[str, object]:
+    """治理第 18 项的唯一真源：僵尸 draft 与孤儿目录各多少（两边不许各写一份判据）。"""
+    stale = _stale_drafts(s)
+    orphans = orphan_dirs(s)
+    return {"zombieDrafts": len(stale), "orphanDirs": len(orphans),
+            "zombieIds": [int(d.id) for d, _ in stale],
+            "orphanNames": [d.name for d in orphans]}
+
+
 def _parked_jobs(s, hours: int) -> list:
     from datetime import UTC, datetime, timedelta
 

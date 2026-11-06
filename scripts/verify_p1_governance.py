@@ -466,6 +466,33 @@ def check_lint_ratchet() -> None:
     ok("17 lint 棘轮", "三口径（serverCwd/repoRootCwd/ciScope）与 CI lint 步同源 lint_ratchet.py")
 
 
+def check_disk_hygiene() -> None:
+    """18 磁盘/库卫生棘轮：孤儿目录与僵尸 draft 都必须为 0（H3）。
+
+    为什么不是"只报告"：11-05 到 11-06 一夜里同类残留长了两次（65MB 的 `r3-camera-260`
+    孤儿目录、B2 探针留下的 3 条僵尸 draft），而台账当时写的是"已清"。**报告模式下没人会
+    天天去看报告**，所以这里 fail-closed：以后谁漏了，治理当场红，而不是等复审再抓。
+    判据与 `cleanup_projects.hygiene_counts()` 同源（同一份实现，防止守卫和清理工具各说一套）。
+    """
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from app.db import engine
+    from cleanup_projects import hygiene_counts
+    from sqlmodel import Session
+
+    with Session(engine) as s:
+        h = hygiene_counts(s)
+    problems = []
+    if h["orphanDirs"]:
+        problems.append(f"孤儿目录 {h['orphanDirs']} 个：{h['orphanNames'][:5]}"
+                        "（库行已不存在，先确认 0 条 artifact 引用再删目录）")
+    if h["zombieDrafts"]:
+        problems.append(f"僵尸 draft {h['zombieDrafts']} 条：id {h['zombieIds'][:5]}"
+                        "（root 目录已不存在；`cleanup_projects.py --stale-drafts --confirm` 回收）")
+    if problems:
+        raise AssertionError("磁盘/库卫生回归：\n  - " + "\n  - ".join(problems))
+    ok("18 磁盘/库卫生棘轮", "孤儿目录 0 个、僵尸 draft 0 条（判据与 cleanup_projects 同源）")
+
+
 def main() -> int:
     with httpx.Client(base_url=BASE, headers=HEADERS, timeout=120, trust_env=False) as c:
         if c.get("/health").status_code != 200:
@@ -493,6 +520,7 @@ def main() -> int:
         check_typed_write_bodies(c)
         check_script_teardown()
         check_no_demo_writes(c)      # 放在最后：.acceptance 残留检查要求前面的自建项目都已回收
+        check_disk_hygiene()         # 同上：孤儿/僵尸计数只有在所有自建项目回收完以后才有意义
     print("PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）")
     return 0
 

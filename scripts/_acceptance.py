@@ -61,6 +61,37 @@ def _settle(client, pid: int, timeout: float = 150.0) -> None:
     raise SystemExit(f"项目 {pid} 的作业在 {timeout:.0f}s 内没停（{inflight}）——拒绝强删")
 
 
+def _draft_points_at(payload: dict, root: Path) -> bool:
+    """H3：草稿是否属于这个自建项目——**payload 里任意深度的路径值**命中项目根即算。
+
+    旧判据只读 `payload["root"]` 这一个键。实测生产库 8 个键里（root/copy/profile/pick/
+    voice/title/brief/audioPlaceholder）**目前**只有 `root` 是路径，所以这一改动今天的行为
+    等价——它是**防"键名漂移"**：向导以后把同一个路径挪到别的键、或嵌进列表/子对象里，
+    旧判据就会静默漏收，而漏收的代价是库里多一枚指向已删目录的僵尸 draft（实测 11-06 一夜
+    就积过 4 条，靠治理第 18 项才看得见）。
+
+    刻意**不按 draft.name 匹配**：草稿名就是项目标题，而自建项目允许与真实项目同名
+    （`golden-5s` 既是脚本名也是演示名）。按名删会误删别人的草稿，比漏删更糟。
+    """
+    targets = {str(root).rstrip("/")}
+    try:
+        targets.add(str(Path(root).resolve()))
+    except OSError:
+        pass
+
+    def walk(v) -> bool:
+        if isinstance(v, str):
+            p = str(Path(v))
+            return any(p == t or p.startswith(t + "/") for t in targets)
+        if isinstance(v, dict):
+            return any(walk(x) for x in v.values())
+        if isinstance(v, (list, tuple)):
+            return any(walk(x) for x in v)
+        return False
+
+    return walk(payload or {})
+
+
 def destroy(client, pid: int, root: Path) -> None:
     """P1-06 后统一走级联删除服务（foreign_keys=ON 下手工顺序会踩 FK）。
 
@@ -81,7 +112,7 @@ def destroy(client, pid: int, root: Path) -> None:
         delete_project(s, pid, remove_dir=False,
                        confirm_name=(proj.name if proj else ""))
         stale = [d for d in s.exec(select(Draft)).all()
-                 if str((d.payload_json or {}).get("root") or "").startswith(str(root))]
+                 if _draft_points_at(d.payload_json or {}, Path(root))]
         for d in stale:
             s.delete(d)
         if stale:
