@@ -26,10 +26,9 @@ def test_download_path_is_pinned():
     assert "pinMatches" in src, "报告/产物元数据要留下摘要是否对得上的痕迹"
 
 
+@pytest.mark.requires_cached_font      # H9-c：缺缓存时硬失败（E_ENV_MISSING），不再静默 skip
 def test_pin_matches_the_font_on_this_machine():
     font = _cache_font()
-    if not font.exists():
-        pytest.skip(f"本机没有字体缓存（{font}）：干净机器上 C02 走下载路径，由钉住的摘要把关")
     got = hashlib.sha256(font.read_bytes()).hexdigest()
     assert got == ex.NOTO_SANS_SC_SHA256, (
         f"本机字体与钉住的摘要不符：{got} != {ex.NOTO_SANS_SC_SHA256}；"

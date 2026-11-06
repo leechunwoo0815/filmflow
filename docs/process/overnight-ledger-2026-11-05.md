@@ -657,3 +657,64 @@ F01 类缺陷（毒 `NO_PROXY` 带 IPv6 条目 → httpx 默认客户端解析�
 - `_draft_points_at` 的行为等价性已说明；**`destroy()` 的端到端回收没有在真验收脚本上复跑**
   （验收脚本会在 H9 之后的 CI 里被更严格覆盖，届时 `verify_r3_templates` 的"回收 N 条"输出是它的自然证据）。
 - 治理步数 17→18 后，任何还在引用"17 项"的旧台账轮次条目按历史保留（守卫只认现值处）。
+
+---
+
+### 轮 14 · H9：CI 双 job + 测试环境依赖的静态防线 · 2026-11-06 05:4x
+
+**先做了一次"本机复刻 CI"的探针**（这一步改变了整批做法）：
+`env PATH=/usr/bin:/bin:/usr/sbin:/sbin uv run pytest tests/unit tests/bdd -m "not requires_*"` ——
+`uv` 用绝对路径、PATH 里不留 homebrew，`shutil.which("ffmpeg")` 就跟 runner 一样解析不到。
+结果精确复现 CI 的三条红：`test_audio_v2.py` ×3 `FileNotFoundError: 'ffmpeg'`，**且全仓只有这三条**
+（367 passed / 10 deselected / 3 failed）。这意味着不用等 CI 就能验证 `ci-lean` 会不会绿。
+
+**四处对齐**（H9-a/b/c）：
+| 动作 | 落点 | 为什么这样而不是别的做法 |
+|---|---|---|
+| `pytestmark = pytest.mark.requires_ffmpeg` | `server/tests/unit/test_audio_v2.py` | 本文件每个用例都经模块级 `_wav()` 真调 ffmpeg；逐条加标记会漏掉以后新增的用例，模块级才是对的粒度 |
+| 两处静默 skip → `@pytest.mark.requires_system_font` / `requires_cached_font` | `test_assets.py:101/116` | 原写法"字体不在就 skip"在本机永远不触发、在 CI 上少跑两条没人知道；改成缺环境**硬失败**，只有 `--allow-missing-env` 才可见 skip |
+| 第三处同类 | `test_c02_font_pin.py:29` → `requires_cached_font` | 同上（干净机器走下载路径由 sha 钉把关，逻辑不变） |
+| conftest 注册两个新 marker + `_env_guard` 加两条判定 | `server/tests/conftest.py:63-127` | 判定路径与用例真正读的字体路径同源（`_PROD_HOME`/系统绝对路径），防止门禁和测试说两套话 |
+
+**静态防线（长期值钱的那半条）**：`server/tests/unit/test_h9_env_marker_guard.py`，3 条，用 `ast` 不用 grep：
+1. `test_env_dependent_tests_declare_markers`——凡模块里出现 `subprocess.{run,Popen,call,check_output,check_call}`
+   且 argv 字面量含 ffmpeg/ffprobe（或 chrome 类），该模块的 `pytestmark` 或**每个能走到那次调用的测试函数**必须有 `requires_*`。
+   **关键设计**：还追一层"模块内辅助函数"——`test_audio_v2` 的三个用例本身不写 subprocess，只调 `_wav()`；
+   只查函数体就正好漏掉我们要防的那个案例。
+2. `test_no_bare_pytest_skip_outside_env_gate`——裸 `pytest.skip` 只许在 conftest 的 `--allow-missing-env` 分支
+   或**显式豁免表**（`SKIP_EXEMPT`，键相对 `server/tests/`，每项必须带理由）里。
+3. `test_skip_exempt_table_is_not_stale`——反向过期检测：豁免表里登记的文件如果已经没有裸 skip，**必须删掉登记**。
+   没有这条，豁免表会变成永久停车场。
+
+**反向验证（两条都真做过，不是"应该能抓到"）**：
+- 造一个临时 `test_zz_reverse_probe_tmp.py`：模块级 `_mk()` 调 ffmpeg、测试函数无标记
+  → 守卫红：`unit/test_zz_reverse_probe_tmp.py:11 … 调了 ['requires_ffmpeg'] 却没有标记`；删掉文件 → 3 passed。
+- 探针本身（PATH 剥 ffmpeg）就是"标记缺失会红"的现场证据，见上面 3 failed。
+
+**CI 改成双 job**（`.github/workflows/ci.yml`）：
+- `ci-lean`：lint 棘轮 + tsc + `pytest -m "not requires_ffmpeg and not requires_chrome and not requires_style_library and not requires_system_font and not requires_cached_font"`，
+  **零安装**——它绿才叫绿，任何未标记的环境依赖会在这里红。
+- `ci-env`：`apt-get install ffmpeg` 后跑 unit+bdd 带 `-rs --allow-missing-env`，把跑了多少/skip 多少与原因写进 `$GITHUB_STEP_SUMMARY`。
+- `scripts/ci_local.sh` 从四步改五步，**第 2 步在本机就复刻 ci-lean**（绝对路径 uv + 剥 PATH + 风格库指向不存在），
+  以后不必 push 才知道 CI 会不会红。
+
+**一处刻意不做（诚实边界，不是偷懒）**：H9-b 原本要求给 `ci-env` 造一个"最小合法风格库 fixture"。
+实测该 feature 断言的是真库的**十个来源集计数**与**库版本哈希**——造假库等于造假绑定，
+正是老板在 B6/ADR-0014 里明确禁止的那件事。所以风格库三条在 `ci-env` 走**可见 skip**（`-rs` + summary 写明理由），
+不写成"已覆盖"。这一条已写进 ci.yml 的注释，防止下一个人顺手把假 fixture 加回来。
+
+实测（命令含 cwd）：
+- `bash scripts/ci_local.sh` 五步 → **1 ✓ 棘轮 / 2 ✓ 367 passed + 10 deselected（无 ffmpeg 环境）/ 3 ✓ 377 passed（unit+bdd 真环境）/ 4 ✓ tsc / 5 守卫**
+- `cd server && uv run pytest tests -q` → **410 passed**（237.65s，0 skip / 0 xfail；collected 410 = unit 370 / integration 33 / BDD 7）
+- `uv run --project server python scripts/verify_p1_governance.py` → 18 项全 ✓（本轮无新增治理步骤）
+- `uv run --project server python scripts/check_docs_consistency.py` → **PASS**（先 FAIL 4 处 407→410，按现值同步后过）
+- `uv run --project server python -m ruff check …`（新文件）→ 首跑 1 处语法错（中文串里用了直引号）+ 2 处路径口径 bug（`TESTS.parents[1]` 拼错、
+  AnnAssign 分支写了没用的代码）→ 全部改对，棘轮 **194/244/240** 未抬基线
+
+没验的（诚实边界）：
+- **`ci-lean` / `ci-env` 的首次真绿要看这次 push 之后的 `gh run`**——本机复刻只证明" deselect 集合在无 ffmpeg 环境下自洽"，
+  不能证明 runner 上没有别的差异（例如 Ubuntu 的 `/System/Library/Fonts` 本就不存在 → 那两条 marker 会 deselect，符合预期；
+  但 `sqlite`/`libGL` 一类依赖只有真跑才知道）。推完必须 `gh run list` 核对并贴链接。
+- `ci-env` 的 Chrome 类用例：本机 `detect_chrome()` 走 `/Applications` 绝对路径，**无法在 macOS 上模拟"没有 Chrome"**，
+  所以"未标记却依赖 Chrome"的漏网面只有 runner 能证明。若 `ci-lean` 真跑出这类红，当场修并补记一轮。
+- `-rs` 的 skip 计数进 summary 只在 `ci-env` 里做；本机 `ci_local.sh` 第 3 步也带 `-rs`，但输出没落进任何台账（下一轮如需要可 tee 到文件）。

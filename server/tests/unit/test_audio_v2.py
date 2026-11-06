@@ -14,6 +14,10 @@ sys.path.insert(0, str(SERVER))
 from app.errors import ApiError
 from app.services import audio as au
 
+# H9-a：本文件每个用例都经 `_wav()` 真调 ffmpeg 生成素材。CI runner 上没有 ffmpeg 时，
+# 缺标记就会以 `FileNotFoundError: 'ffmpeg'` 红在 nobody 预料的地方（2026-11-06 首跑实测）。
+pytestmark = pytest.mark.requires_ffmpeg
+
 
 def _wav(path: Path, seconds: float, freq: int = 220) -> Path:
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",

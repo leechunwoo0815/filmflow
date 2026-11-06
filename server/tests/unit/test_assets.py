@@ -99,11 +99,10 @@ def test_usage_delete_guard_and_replace(env):
     assert assets.delete_asset(session, old.id)["deleted"] == old.id
 
 
+@pytest.mark.requires_system_font      # H9-c：以前是静默 skip，CI 上少跑没人知道
 def test_font_requires_license(env):
     session, proj, root = env
     font = Path("/System/Library/Fonts/Supplemental/Arial.ttf")
-    if not font.exists():
-        pytest.skip("Arial 测试字体不存在")
     data = base64.b64encode(font.read_bytes()).decode()
     with pytest.raises(ApiError) as e:
         assets.import_asset(session, "project", root, "x.ttf", data)
@@ -113,10 +112,9 @@ def test_font_requires_license(env):
     assert ok.kind == "font"
 
 
+@pytest.mark.requires_cached_font      # H9-c：以前是静默 skip，CI 上少跑没人知道
 def test_font_coverage_reports_missing_glyph():
     font = Path.home() / ".filmflow/cache/fonts/NotoSansSC[wght].ttf"
-    if not font.exists():
-        pytest.skip("Noto Sans SC 字体不存在")
     ok = assets.font_coverage(font, "中文 ABC")
     assert ok["ok"] and ok["missingCount"] == 0
     bad = assets.font_coverage(font, "中文\U0001F600")

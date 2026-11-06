@@ -59,10 +59,17 @@ def pytest_addoption(parser):
     )
 
 
+# H9-c：两个"本机才有"的字体面。路径必须和用例真正读的那个一致，否则门禁与测试说的是两套话。
+_SYSTEM_FONT = Path("/System/Library/Fonts/Supplemental/Arial.ttf")
+_CACHED_FONT = _PROD_HOME / "cache" / "fonts" / "NotoSansSC[wght].ttf"
+
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "requires_style_library: 需要真实风格库")
     config.addinivalue_line("markers", "requires_chrome: 需要本机 Chrome")
     config.addinivalue_line("markers", "requires_ffmpeg: 需要本机 ffmpeg")
+    config.addinivalue_line("markers", "requires_system_font: 需要 macOS 系统字体（Arial.ttf）")
+    config.addinivalue_line("markers", "requires_cached_font: 需要本机已缓存的 Noto Sans SC")
     config.addinivalue_line("markers", "slow: 真实 Chrome/ffmpeg 冒烟，耗时较长")
 
 
@@ -120,6 +127,10 @@ def _env_guard(request):
         ("requires_style_library", settings.style_library_root.is_dir(), f"风格库不存在 {settings.style_library_root}"),
         ("requires_chrome", detect_chrome() is not None, "未检测到 Chrome/Chromium"),
         ("requires_ffmpeg", detect_ffmpeg() is not None, "未检测到 ffmpeg"),
+        # H9-c：以前这些用例是"字体不在就 pytest.skip"，本机永远绿、CI 上静默少跑 N 条，
+        # 从没人发现。现在统一走同一扇门：缺环境就**硬失败**，只有 --allow-missing-env 才 skip。
+        ("requires_system_font", _SYSTEM_FONT.is_file(), f"系统字体不在 {_SYSTEM_FONT}（macOS 专有路径）"),
+        ("requires_cached_font", _CACHED_FONT.is_file(), f"Noto Sans SC 缓存不在 {_CACHED_FONT}"),
     ]
     for marker, present, reason in checks:
         if request.node.get_closest_marker(marker) and not present:

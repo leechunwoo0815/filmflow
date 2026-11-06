@@ -1,14 +1,17 @@
-# FilmFlow CI（P1-20，2026-11-05 首版）
+# FilmFlow CI（P1-20 首版 2026-11-05；H9 双 job 改造 2026-11-06）
 #
-# 范围（刻意收窄，避免"绿得没有意义"）：
-# - unit + BDD 全量（无 Chrome/ffmpeg/风格库依赖；渲染级集成测试**仍只在有真实
-#   环境的本机跑**——隔离服务要系统 Chrome + ffmpeg + 风格库，Ubuntu runner 装
-#   这些不难，但 golden/SSIM 的语义锚在本机字体/风格库上，跑在别处会给出另一套
-#   数字，反而破坏"任何完成申报必须附可复现实测输出"的口径。要上渲染级 CI 需
-#   先把字体/风格库指纹参数化，那是独立一批。）
-# - ruff（server 配置口径；scripts/ 也按同一配置过一遍）
-# - tsc --noEmit（web）
-# - 文档守卫 / verify_p1_governance 依赖生产库与运行中的服务，属本机验收，不进 CI。
+# 为什么是两个 job（老板 2026-11-06 选定方案 3）：
+# 首跑 `uv run pytest tests/unit tests/bdd -q` 在零安装的 Ubuntu runner 上必然红——
+# 三个根因都不是代码回归，而是"子集选择与环境依赖从未对齐"：
+#   (a) `test_audio_v2.py` 真调 ffmpeg 却没有标记 → `FileNotFoundError: 'ffmpeg'` ×3；
+#   (b) 风格库 BDD 按我们自己的"不静默 skip"纪律**硬失败**，而 341 风格库不入 git；
+#   (c) `test_assets.py` 两处静默 `pytest.skip`（本机字体永远在，所以从没人发现少跑了）。
+# 单 job 只能二选一（要么假绿、要么必红），所以拆成：
+#   ci-lean —— 零安装、必须绿；任何"未标记却依赖环境"的用例都会让它红，这就是它的意义。
+#   ci-env  —— 真装 ffmpeg，覆盖环境依赖用例；确实拿不到的（风格库/Chrome/系统字体）
+#              走 --allow-missing-env **可见地 skip**，并把跑了多少/skip 多少写进 job summary。
+# 渲染级 golden/SSIM 仍只在本机跑：锚点绑的是本机字体与风格库指纹，换机器会得到另一套数字，
+# 那会破坏"完成申报必须附可复现实测输出"的口径（要上渲染级 CI 得先把指纹参数化，独立一批）。
 name: ci
 on:
   push:
@@ -16,7 +19,8 @@ on:
   pull_request:
 
 jobs:
-  lint:
+  ci-lean:
+    name: ci-lean（零安装必绿：lint 棘轮 + tsc + 无环境依赖用例）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,14 +41,47 @@ jobs:
           node-version: 22
       - name: web 类型检查
         run: cd web && pnpm install --frozen-lockfile && pnpm exec tsc --noEmit
+      - name: pytest（只跑不依赖外部工具的用例）
+        # 关键：这里**不装** ffmpeg/Chrome，所以任何"真调外部工具却漏标 requires_*"的用例
+        # 会在这里红，而不是像以前那样红成一堆看不出根因的 FileNotFoundError。
+        # 长期防线另有静态版：server/tests/unit/test_h9_env_marker_guard.py（ast 扫描，本机就能拦）。
+        run: |
+          cd server
+          uv run pytest tests/unit tests/bdd -q \
+            -m "not requires_ffmpeg and not requires_chrome and not requires_style_library and not requires_system_font and not requires_cached_font" \
+            | tee /tmp/lean.log
+          tail -3 /tmp/lean.log
+          echo "### ci-lean 覆盖" >> "$GITHUB_STEP_SUMMARY"
+          echo '- 命令：`pytest tests/unit tests/bdd -m "not requires_ffmpeg and not requires_chrome and not requires_style_library and not requires_system_font and not requires_cached_font"`' >> "$GITHUB_STEP_SUMMARY"
+          tail -1 /tmp/lean.log | sed 's/^/- 结果：/' >> "$GITHUB_STEP_SUMMARY"
+          echo '- 本 job **零安装**：跑到的每一条都不需要 ffmpeg/Chrome/风格库/本机字体。' >> "$GITHUB_STEP_SUMMARY"
 
-  test-unit-bdd:
+  ci-env:
+    name: ci-env（真环境广覆盖：装 ffmpeg，缺的可见 skip）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.13"
-      - name: pytest unit + bdd（隔离 HOME，不碰任何生产库）
-        run: cd server && uv run pytest tests/unit tests/bdd -q
+      - name: pytest（含 ffmpeg 依赖用例；缺环境可见 skip）
+        # --allow-missing-env 把"缺环境"从硬失败变成 **skip**，但 skip 数会印在 summary 上，
+        # 不静默。为什么风格库不造一个最小 fixture：feature 里断言的是真库的**十个来源集计数**
+        # 与库版本哈希，造假库等于造假绑定（老板在 B6/ADR-0014 明确禁止），
+        # 所以这一条宁愿可见地 skip，等真有带库的环境再跑。
+        run: |
+          cd server
+          uv run pytest tests/unit tests/bdd -q -rs --allow-missing-env \
+            | tee /tmp/env.log
+          tail -3 /tmp/env.log
+          echo "### ci-env 覆盖" >> "$GITHUB_STEP_SUMMARY"
+          echo '- 已安装：ffmpeg（apt）。Chrome / 341 风格库 / macOS 系统字体 / Noto 缓存 **不在** runner 上。' >> "$GITHUB_STEP_SUMMARY"
+          tail -1 /tmp/env.log | sed 's/^/- 结果：/' >> "$GITHUB_STEP_SUMMARY"
+          echo '- skip 明细（-rs）：' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^SKIPPED" /tmp/env.log | sed 's/^/  - /' >> "$GITHUB_STEP_SUMMARY" || echo "  - 无 skip" >> "$GITHUB_STEP_SUMMARY"
