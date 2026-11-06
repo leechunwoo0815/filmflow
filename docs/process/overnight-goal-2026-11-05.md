@@ -18,7 +18,7 @@
 
 1. `cd server && uv run pytest tests -q` 全绿，**连跑两次**数字一致，且 0 skipped / 0 xfailed（有就必须写明理由）；
    跑完生产库计数不变（`conftest` 的守卫会自动判）。
-2. `uv run --project server python scripts/verify_p1_governance.py` → 全项 ✓（**现值 18 项**：H3 加了第 18 项磁盘/库卫生棘轮；你再加守卫就更多）。
+2. `uv run --project server python scripts/verify_p1_governance.py` → 全项 ✓（**现值 19 项**：H3 加第 18 项磁盘/库卫生棘轮、H5 加第 19 项黄金证据 churn；你再加守卫就更多）。
 3. `uv run --project server python scripts/check_docs_consistency.py` → PASS。
 4. `cd web && npx tsc --noEmit` 干净；`cd server && uv run ruff check .` **不高于 339**、仓库根 `uv run --project server ruff check .` **不高于 405**（只许降）。
 5. 每个 Wave 的每条任务都有：**代码落点（file:line）+ 可复现实测输出 + 提交哈希**，写进台账 `docs/process/overnight-ledger-2026-11-05.md`（格式见 §6）。
@@ -279,7 +279,7 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 1. `ci-lean` job：零安装、必绿，且在 `test_audio_v2` 漏标记的情况下**必须变红**——用一次故意的反向验证证明 deselect 真的在起作用（贴 `gh run` 链接）。
 2. `ci-env` job：`apt-get install -y ffmpeg`（+ 若跑渲染级则装 Chrome），风格库走最小 fixture；跑完在 job summary 写明「跑了多少 / skip 多少 / 为什么」。
 3. 新增一个**静态守卫**（治理第 19 项或单测）：用 `ast` 扫 `server/tests/**`，凡出现 `subprocess.run/exec` 且 argv 含 `ffmpeg|ffprobe|chrome` 的测试模块，必须声明对应 `requires_*` 标记；凡出现裸 `pytest.skip(...)`（conftest 的 `--allow-missing-env` 分支除外）即红。**这条是 H9 的长期防线，比修当前三处更值钱。**
-4. 本机对照：`cd server && uv run pytest tests -q` 仍 **401 passed / 0 skip / 0 xfail**（数字随 collected 现值走，不许为了通过把覆盖改薄）（改标记不许把本机覆盖变薄）。
+4. 本机对照：`cd server && uv run pytest tests -q` 仍 **415 passed / 0 skip / 0 xfail**（数字随 collected 现值走，不许为了通过把覆盖改薄）（数字随 collected 现值走，不许为了通过把覆盖改薄）（改标记不许把本机覆盖变薄）。
 5. 台账记 `gh run list --limit 3` 的输出（首绿的那一次）。
 
 ---

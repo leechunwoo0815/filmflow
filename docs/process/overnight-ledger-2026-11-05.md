@@ -6,6 +6,34 @@
 
 ---
 
+### 索引 · 轮次 → Wave → 提交（H7：复审方按这张表抽查，不用从 700 行里找）
+
+| 轮 | Wave / 内容 | 提交 | 关键证据一句话 |
+|---|---|---|---|
+| 轮 0 | 基线（审查方交接实测，无代码改动） | — | 396 collected / 治理 15 项 / ruff 339·405 |
+| 轮 0b | 复核任务书并修 12 处失真 | `54eef29` `2585b3b` | 独立复跑 golden 5s 原帧 SSIM 1.0×6；复审新发现并入 Wave H |
+| 轮 1 | A1 黄金报告防覆写 | `2acb6e2` | UTC 时间戳 + index.json 台账 + 绝不覆写 |
+| 轮 2 | A3 lint 棘轮 / A5 演示名单 / A8 去 8787 门控 | `2d64709` | 棘轮进治理第 17 项；skip 归零 |
+| 轮 3 | A4 Run 锁 / A6 params 语义 / A7 expire_parked 演练 | `bf4c958` | 隔离实例 129.6s 真实演练，零生产接触 |
+| 轮 4 | A2 凭据 header 化（?tok= 废除） | `dbbc073` | 黑帧回归当场抓出（漏改 still_spec.html）+ golden 1.0×6 |
+| 轮 5 | B1/P2-08 JSON flock 读改写 | `5140c99` | 真并行线程测试，零丢失 |
+| 轮 6 | B2/P2-12 两遍 loudnorm + bt709 | `795a754` | G06 −13.9 LUFS；ffprobe 三标签；EXECUTOR 2.16.0 |
+| 轮 7 | B3/P2-13 文字随出转场淡出 | `40202e3` | 逐帧暗像素表 1811→234；EXECUTOR 2.17.0 / RENDERER preview-2.1.0 |
+| 轮 8 | B5 资产守卫 / B7 e2e 条件等待 / B8 ci_local / B9 fresh-clone | `7625049` | 15s→6.6s；本机 clone bootstrap READY |
+| 轮 9 | Wave C 七条（含两个真 bug） | `d3a2523` | 损坏资产 500→4xx；空文件静默收下→拒 |
+| 轮 10 | B6 ADR-0014 / Wave D 26 条判定 / FR-40·41 后端 | `ae51f62` `1824999` | 15 个 @unbound 带理由；后端纵切 12 测试 |
+| 轮 11 | 老板第二轮决策（MIT / VACUUM / a11y 棘轮 / 范围「全都要」+ H10） | `dc89f2c` `7a33117` | a11y 基线 60 + 反向验证 FAIL(59→60)；库 37.2→26.0MB |
+| 轮 12 | H1 queued 在飞判据 / H2 httpx 静态守卫 | `ffd8db4` | 两处反向验证均当场红过 |
+| 轮 13 | H3 治理第 18 项 磁盘/库卫生棘轮 | `8c6e2ef` | fail-closed；孤儿目录与僵尸 draft 现值 0/0 |
+| 轮 14 | H9 CI 双 job + ast 标记守卫 | `4766e27` | 本机复刻 CI：367 passed + 10 deselected（无 ffmpeg 环境） |
+| 轮 15 | H9 CI 首绿 + H4 bootstrap 双口径 | `ba6bac3` | **run 42170418486 ci-lean = success**；bootstrap 四种退出码实测 |
+| 轮 16 | H5 黄金证据 churn（治理第 19 项）+ H7 本索引表 | 本轮 | keep=20 只裁报告不碰锚；被裁必留 sha256 |
+
+> 说明（H7 要求的编号统一）：`轮 0b` 之后曾有一个空占位标题也叫"轮 1"，已改标 `轮 0c（占位）`；
+> 后续统一 **`轮 N · <Wave 编号> <标题> · 日期`** 一种格式，`R几` 这种混用写法不再新增。
+
+---
+
 ### 轮 0 · 基线（审查方交接时实测，2026-11-05 深夜）
 
 改了什么：无（只读复核 + 落这份任务书与台账）
@@ -41,7 +69,7 @@ FR-40/FR-41 未开工；Wave B/C/D 全部未开工。
 
 ---
 
-### 轮 1 · （开发模型从这里开始写）
+### 轮 0c · （占位：开发模型的起点标记，无内容；真正的轮 1 在下面的 00:3x 条目）
 
 ---
 
@@ -760,3 +788,62 @@ push `4766e27` 触发 run **42170418486** →
 - bootstrap 的检查项仍偏 macOS（Chrome 候选路径是 `/Applications/...`）；Linux 上的
   `chromium` 包路径没进候选——这属于"渲染级 CI"那一批的活（要先把字体/风格库指纹参数化），本轮不扩面。
 - H4 的"文档措辞收窄"只覆盖 AGENTS 与脚本头注；`HANDOFF.md` 里 B9 时期的历史叙述按日期标记保留。
+
+---
+
+### 轮 16 · H9 双 job **双双首绿** + H5 黄金证据 churn（治理第 19 项）+ H7 台账索引 · 2026-11-06 06:0x
+
+**H9 的两条 CI 判据本轮真正闭合**（run **42171682684**，head `ba6bac3`）：
+
+| job | 结论 | runner 原文计数 |
+|---|---|---|
+| `ci-lean（零安装必绿…）` | **success** | `367 passed, 10 deselected, 9 warnings in 17.07s` |
+| `ci-env（真环境广覆盖…）` | **success** | `371 passed, 6 skipped, 9 warnings in 16.77s` |
+
+复核命令：`gh run view 42171682684 --json jobs` / `--log`。
+`ci-env` 那 **6 条 skip 是可见的**（`-rs` + 写进 `$GITHUB_STEP_SUMMARY`），内容是
+风格库 ×3 / Chrome / macOS 系统字体 / Noto 缓存——正是 runner 上合法不存在的那几项。
+`ci-lean` 的 `bootstrap --check-only` 一步也把缺失清单原样打进 summary
+（`E_ENV_MISSING: 系统 Chrome 未找到 / vendor/style-library.path 指向的目录不存在 / rumor-39s 未找到 / ffmpeg 未安装`），
+以后不用从 `FileNotFoundError` 反推环境。
+（上一条轮 15 记录时 ci-env 还 `in_progress`，本轮把它补齐——**没有**用"应该能过"代替实测。）
+
+**H5 黄金证据 churn 策略**（`.git` 63M→69M 的那条发现）：
+- 新 `scripts/cleanup_golden_reports.py`：默认 `keep=20`，**只裁 `docs/reports/golden/*.json`**；
+  删除动作是**移动到仓库根 `.trash/golden-reports/`**（不 unlink，保留反悔窗口），
+  并往 `index.json` 的 `pruned` 追加 `{reportFile, sha256, at, movedTo, reason}`——
+  **哈希取自移动后的字节**，所以"被裁的报告"永远能自证曾经存在且没被改过。
+  `--keep 0` 直接 `SystemExit`（证据台账不许被裁空）。
+- 新 `fixtures/golden/README.md`：写清**整批替换是有意的**（锚点是一次真实 Run 的 6 个采样帧，
+  只换几张会得到从来没被渲染出来过的拼图，那样测出的 1.0 是假的），理由必须进 `spec.json.updateHistory`，
+  并指明 `--update` 无 `--reason` 会被拒绝、以及"别为了 CI 变绿动锚点"。
+- 治理第 **19** 项 `check_golden_churn()`：报告数在 keep 内（超了就红，给出 `--apply --reason` 的确切命令）、
+  `pruned` 每条必须有 sha256、三个锚点目录各 ≥6 张 PNG 且目录数==3。**判据与脚本同源**（import 同一份 `plan()`）。
+  实测输出：`✓ 19 黄金证据 churn 策略：报告 16 份 ≤ keep=20、pruned 台账 0 条全部带哈希、锚点 {'15s': 6, '40s': 6, '5s': 6} 张/项目`。
+- 测试 5 条（`test_h5_golden_churn.py`，全程在 tmp 里跑，**真实报告目录一个字节没动**）：
+  排序方向（留 `run303..305`、裁 `run300..302`——反了就是销毁当期证据）、被裁文件确实落到 `.trash` 且哈希对得上、
+  幂等（未超 keep 时一份不动、`.trash` 不创建）、`--keep 0` 被拒、
+  锚点面保护（PNG ≥6 张/目录 + README 在场 + 裁剪面只含 `.json`），另有第 19 项接线的反射断言。
+
+**H7 台账可读性**：文件头新增**索引表**（轮 0→轮 16 · Wave/内容 · 提交哈希 · 关键证据一句话，
+复审方按这张表抽查而不用翻 700 行）；那个与真正"轮 1"同号的空占位标题改标 `轮 0c（占位）`；
+编号格式统一为 `轮 N · <Wave> <标题> · 日期`，`R几` 混用写法停止新增。
+
+实测（命令含 cwd）：
+- `cd server && uv run pytest tests -q` → **415 passed**（235.29s，0 skip / 0 xfail；collected 415 = unit 375 / integration 33 / BDD 7）
+- `uv run --project server python scripts/verify_p1_governance.py` → **19 项全 ✓**
+- `uv run --project server python scripts/check_docs_consistency.py` → **PASS**（先 FAIL 13 处：17→18→19 与 410→415 的现值，按实测回填）
+- `uv run --project server python scripts/lint_ratchet.py` → **194 / 244 / 240 全 ✓**
+  （本轮棘轮又咬住三次：`EXE001` 有 shebang 但文件不可执行（新脚本去 shebang，与 cleanup_projects 同口径）、
+  `RUF100` 无用的 `# noqa: E402`、`RUF059` 未用解包变量——全部修代码，基线没抬）
+- `uv run --project server python scripts/cleanup_golden_reports.py` → 报告模式：`报告总数 16 · 保留 16（keep=20）· 待裁 0`
+- `du -sh .git` → **69M**（本轮只加策略与 README，不产生图像 churn；下一次真实重锚时才轮到 keep=20 生效）
+
+没验的（诚实边界）：
+- **`--apply` 从未在真实报告目录上跑过**（现在 16 份 < 20，没有东西可裁）。它的行为在 tmp 里被完整演练过
+  （移动 + 哈希 + 幂等），但"真裁 20+1 份"那次要等下一次重锚自然发生；届时 `index.pruned` 会多出真实条目。
+- 第 19 项的 `pruned` 哈希校验目前跑在**空台账**上（0 条），断言的真实强度要等第一条被裁记录出现才算被验证过。
+- churn 策略**没有**去做 git 历史瘦身（LFS / filter-repo 都涉及改写历史或联网，老板未点头；`.git` 里已入的
+  旧锚批次仍在），本轮做的是"今后有上限"。
+- `ci-env` 的 Chrome 类用例仍不在覆盖内（runner 上没装 Chrome，那几条合法 skip）；渲染级 CI 需要先把
+  字体/风格库指纹参数化，是独立一批（ci.yml 顶部注释已写明）。

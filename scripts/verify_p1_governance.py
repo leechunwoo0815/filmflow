@@ -493,6 +493,34 @@ def check_disk_hygiene() -> None:
     ok("18 磁盘/库卫生棘轮", "孤儿目录 0 个、僵尸 draft 0 条（判据与 cleanup_projects 同源）")
 
 
+def check_golden_churn() -> None:
+    """19 黄金证据 churn 策略：报告在保留数内、被裁的都有哈希、锚点一张不少（H5）。
+
+    `.git` 从 63M 涨到 69M 是实测事实（B3 重锚一次就整批换 6 张 1080p 静帧）。
+    这一项不追求"库变小"（要变小得改写历史，那是另一回事），追求的是
+    **增长有上限、消失有哈希、锚点不许动**——三件事都能机检。
+    """
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from cleanup_golden_reports import DEFAULT_KEEP, INDEX, _load_index, plan
+
+    keep, doomed = plan(DEFAULT_KEEP)
+    assert not doomed, (f"golden 报告超过保留数 {DEFAULT_KEEP}：待裁 {len(doomed)} 份 "
+                        f"（跑 `scripts/cleanup_golden_reports.py --apply --reason \"…\"`）")
+    idx = _load_index() if INDEX.exists() else {"items": [], "pruned": []}
+    for e in idx.get("pruned", []):
+        assert e.get("sha256"), f"index.pruned 里 {e.get('reportFile')} 没有哈希——裁剪必须可追溯"
+
+    anchors = {}
+    for d in sorted((ROOT / "fixtures" / "golden").glob("*/baseline_original")):
+        n = len(list(d.glob("*.png")))
+        assert n >= 6, f"锚点目录 {d} 只剩 {n} 张原帧（应 ≥6）——回归基线被破坏了"
+        anchors[d.parent.name] = n
+    assert len(anchors) == 3, f"原帧锚目录应为 3 个（5s/15s/40s），实际 {sorted(anchors)}"
+    ok("19 黄金证据 churn 策略", f"报告 {len(keep)} 份 ≤ keep={DEFAULT_KEEP}、"
+                                f"pruned 台账 {len(idx.get('pruned', []))} 条全部带哈希、"
+                                f"锚点 {anchors} 张/项目")
+
+
 def main() -> int:
     with httpx.Client(base_url=BASE, headers=HEADERS, timeout=120, trust_env=False) as c:
         if c.get("/health").status_code != 200:
@@ -521,6 +549,7 @@ def main() -> int:
         check_script_teardown()
         check_no_demo_writes(c)      # 放在最后：.acceptance 残留检查要求前面的自建项目都已回收
         check_disk_hygiene()         # 同上：孤儿/僵尸计数只有在所有自建项目回收完以后才有意义
+        check_golden_churn()
     print("PASS: P1 治理复核全部通过（临时项目/模板/资产已自删）")
     return 0
 
