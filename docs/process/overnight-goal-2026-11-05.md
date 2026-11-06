@@ -262,4 +262,21 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 - 方案 2「纯 CI 纪律」：CI 只跑 `-m "not requires_ffmpeg and not requires_chrome and not requires_style_library"`，零安装，但必须在文档写明"CI 覆盖面不含任何环境依赖用例"；
 - 方案 3「双 job」：`ci-lean`（方案 2）+ `ci-env`（方案 1），信号最全，YAML 与时长翻倍。
 
-无论哪个：**CI 的红必须当场修到绿并留下 `gh run list` 的证据**，否则"CI 首版"依旧是死配置。
+**老板已选：方案 3「双 job」**（`ci-lean` 零安装必绿 + `ci-env` 真环境广覆盖）。
+**push 策略已确认：整夜每轮都推**（`git push origin master`，不需要逐次请示；每轮推完 `gh run list --limit 1` 看一眼，红了当场修，别攒）。
+
+### H9 的三个根因（审查方已用 CI 日志 + 本机代码定位，今晚照单做，别再自己摸）
+
+| # | 根因 | 证据 | 要做的动作 |
+|---|---|---|---|
+| H9-a | `server/tests/unit/test_audio_v2.py` 里 **3 个用例真调 ffmpeg 却没有任何标记**（该文件 0 个 `pytestmark`） | CI 日志 `FileNotFoundError: 'ffmpeg'` ×3；本机因为有 ffmpeg 永远看不见 | 加 `pytestmark = [pytest.mark.requires_ffmpeg]`（或逐条），并在 `ci-lean` 里被 deselect、在 `ci-env` 里真跑 |
+| H9-b | BDD 风格库场景在缺库时**按纪律硬失败**，而 341 风格库不入 git → CI 天生没有 | CI 日志 `E_ENV_MISSING: 风格库不存在 /home/runner/Documents/...` ×3 | `ci-env` 里造一个**最小合法风格库 fixture**（≥1 个可生产风格，目录结构齐）并把路径经 `FILMFLOW_STYLE_LIBRARY_ROOT` 注入；`ci-lean` 里 `-m "not requires_style_library"`。两种都要在 job summary 打印计数，别静默 |
+| H9-c | **两处静默 skip 违反自己的纪律**：`server/tests/unit/test_assets.py:104-106` 要 macOS 系统字体 `/System/Library/Fonts/Supplemental/Arial.ttf`、`:117-119` 要 `~/.filmflow/cache/fonts/NotoSansSC[wght].ttf`，缺了就 `pytest.skip` | CI 的 `3 skipped` 就是这类；本机字体都在 → 永不触发，所以从没人发现 | 改成 `requires_chrome`/新 `requires_font_<name>` 标记 + 缺环境时走 `E_ENV_MISSING` 硬失败（`--allow-missing-env` 才 skip）；**顺带全仓扫一遍其余裸 `pytest.skip`**（已知站点：`test_assets.py` ×2）并同样处理 |
+
+### H9 的完成判据（缺一即算没做完）
+
+1. `ci-lean` job：零安装、必绿，且在 `test_audio_v2` 漏标记的情况下**必须变红**——用一次故意的反向验证证明 deselect 真的在起作用（贴 `gh run` 链接）。
+2. `ci-env` job：`apt-get install -y ffmpeg`（+ 若跑渲染级则装 Chrome），风格库走最小 fixture；跑完在 job summary 写明「跑了多少 / skip 多少 / 为什么」。
+3. 新增一个**静态守卫**（治理第 19 项或单测）：用 `ast` 扫 `server/tests/**`，凡出现 `subprocess.run/exec` 且 argv 含 `ffmpeg|ffprobe|chrome` 的测试模块，必须声明对应 `requires_*` 标记；凡出现裸 `pytest.skip(...)`（conftest 的 `--allow-missing-env` 分支除外）即红。**这条是 H9 的长期防线，比修当前三处更值钱。**
+4. 本机对照：`cd server && uv run pytest tests -q` 仍 **396 passed / 0 skip / 0 xfail**（改标记不许把本机覆盖变薄）。
+5. 台账记 `gh run list --limit 3` 的输出（首绿的那一次）。
