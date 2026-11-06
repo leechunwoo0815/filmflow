@@ -493,11 +493,16 @@ def update_asset(session: Session, asset_id: int, payload: dict) -> Asset:
 
 
 def _inflight_jobs_using(session: Session, sha: str) -> list[int]:
-    """B5/P2-17：正在执行、且 payload 里引用该资产的作业 id。
+    """B5/P2-17 + H1：正在执行、且 payload 里引用该资产的作业 id。
 
-    判活口径同 project_cleanup：只看心跳/开始时间的 120s 窗口（僵尸行不锁删除）。
-    **retry_wait 不算在飞**——那是「等人工门」的正常态，可以停几天；恢复时本来
-    就会重新走 E_ASSET_MISSING 检查，不该阻止用户在等门期间整理资产。
+    三条判活口径，逐条都有理由：
+    - **queued 一律算在飞**，不看时间。排队等 Chrome/ffmpeg 锁可以远超 120s，
+      用 `created_at` 兜底判龄会把「马上要跑的作业」判成不在飞，于是资产能在
+      它即将执行的瞬间被删掉，Run 当场 `E_ASSET_MISSING`。
+    - **leased/running 只看心跳/开始时间的 120s 窗**（同 `project_cleanup._job_is_live`）：
+      僵尸行由启动恢复 `jobs.recover` 处理，不许永久锁住删除。
+    - **retry_wait 不算在飞**——那是「等人工门」的正常态，可以停几天；恢复时本来
+      就会重新走 E_ASSET_MISSING 检查，不该阻止用户在等门期间整理资产。
     """
     from datetime import UTC, datetime, timedelta
 
@@ -506,14 +511,17 @@ def _inflight_jobs_using(session: Session, sha: str) -> list[int]:
     live: list[int] = []
     for job in session.exec(select(Job).where(
             Job.status.in_(("queued", "leased", "running")))).all():  # type: ignore[attr-defined]
-        # 无心跳的僵尸行（生产库真实存在）：created_at 兜底判龄，老行不算在飞
-        stamp = job.heartbeat_at or job.started_at or job.created_at
-        if stamp is None:
-            live.append(int(job.id))
-            continue
-        if stamp.tzinfo is None:
-            stamp = stamp.replace(tzinfo=UTC)
-        if now - stamp > timedelta(seconds=120):
+        if job.status == "queued":
+            alive = True
+        else:
+            stamp = job.heartbeat_at or job.started_at
+            if stamp is None:
+                alive = True                      # 刚领用还没写心跳：按在飞处理
+            else:
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=UTC)
+                alive = now - stamp <= timedelta(seconds=120)
+        if not alive:
             continue
         payload_text = json.dumps(job.payload_json or {}, ensure_ascii=False)
         if sha in payload_text:

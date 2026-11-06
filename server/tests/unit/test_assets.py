@@ -397,6 +397,65 @@ def test_delete_asset_blocked_by_inflight_job(env):
     assert r["deleted"] == asset.id and r["inflightJobs"] == []
 
 
+def test_h1_queued_job_blocks_delete_even_when_old(env):
+    """H1/P2-17：queued 一律算在飞——排队等 Chrome 锁可以远超 120s。
+
+    旧实现用 created_at 兜底判龄，一条排了 10 分钟的 queued 作业被判"不在飞"，
+    于是资产能在它即将执行的瞬间被删掉，Run 当场 E_ASSET_MISSING。
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import Job
+
+    session, _proj, root = env
+    asset, _ = assets.import_asset(session, "project", root, "h1_queued.png", _png((201, 31, 41)),
+                                   name="排队图", license=LIC)
+    job = Job(kind="run", status="queued", payload_json={"assetSha": asset.sha256})
+    session.add(job)
+    session.commit()
+    # 把 created_at 推到 10 分钟前：判活不许因此翻脸
+    job.created_at = datetime.now(UTC) - timedelta(minutes=10)
+    session.add(job)
+    session.commit()
+    try:
+        with pytest.raises(ApiError, match="在飞作业") as e:
+            assets.delete_asset(session, asset.id)
+        assert e.value.detail["details"]["inflightJobs"] == [job.id]
+        assert assets._inflight_jobs_using(session, asset.sha256) == [job.id]
+    finally:
+        session.delete(job)
+        session.commit()
+
+
+def test_h1_retry_wait_and_zombie_rows_do_not_block_delete(env):
+    """H1/P2-17 反向：retry_wait（等人工门）与心跳过期的执行态行都不该锁住删除。
+
+    这一条同时钉住"别把正常等待态当在飞"——全量套件里 parked 作业心跳新鲜时
+    曾把删除挡死（R8 实测），收窄判据后必须仍然放行。
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import Job
+
+    session, _proj, root = env
+    asset, _ = assets.import_asset(session, "project", root, "h1_parked.png", _png((202, 32, 42)),
+                                   name="等门图", license=LIC)
+    parked = Job(kind="run", status="retry_wait", payload_json={"assetSha": asset.sha256},
+                 heartbeat_at=datetime.now(UTC))
+    zombie = Job(kind="run", status="running", payload_json={"assetSha": asset.sha256},
+                 heartbeat_at=datetime.now(UTC) - timedelta(seconds=600))
+    session.add_all([parked, zombie])
+    session.commit()
+    try:
+        assert assets._inflight_jobs_using(session, asset.sha256) == []
+        r = assets.delete_asset(session, asset.id)
+        assert r["deleted"] == asset.id and r["inflightJobs"] == []
+    finally:
+        for j in (parked, zombie):
+            session.delete(j)
+        session.commit()
+
+
 def test_corrupt_assets_import_graceful(env):
     """C5（专家 §7）：截断 PNG / 伪装 SVG / 0 字节 WAV / 非法 TTF——导入 4xx 优雅拒，不许 500。"""
     session, proj, root = env

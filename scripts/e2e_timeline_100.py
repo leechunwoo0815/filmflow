@@ -38,7 +38,7 @@ def wait_api(timeout: float = 60.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            if httpx.get(f"{BASE}/health", timeout=3).status_code == 200:
+            if httpx.get(f"{BASE}/health", timeout=3, trust_env=False).status_code == 200:
                 return
         except (httpx.HTTPError, OSError):     # 服务还没起来，继续等
             pass

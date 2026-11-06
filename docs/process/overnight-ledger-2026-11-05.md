@@ -532,3 +532,64 @@ VACUUM、ffmpeg 许可口径——全部 §8，等老板。
   若老板要 SPDX 级清单，那是独立一次 `pnpm licenses` 导出。
 
 提交：`dc89f2c`（feat: MIT + a11y 棘轮）与本轮 docs 提交（docs(decisions): 轮 11）。
+
+---
+
+### 轮 12 · Wave H 开工：H1 在飞判据 + H2 httpx 守卫（goal 模式第一轮）· 2026-11-06 05:1x
+
+**开工即撞出一个必须入账的库事实**：为 VACUUM 重启 dev 那次（12:40:29），`jobs.expire_parked` 依 72h 策略
+又收走了 **2 条** parked 作业（`app.log`：`expiredParked=[85, 86]`；同批 startup 还 `removedProfiles: 10`，属正常清理）。
+于是 **retry_wait 现值 7 → 5**（job 130/131/132/133 = rumor-39s 的 run 317–320，job 147 = run 335），
+文档里"现存 7 条 retry_wait 未动"两处按现值改写并注明成因。行为仍符合老板已认可的策略，**没有新越权**——
+但它动的是保护项目的行，所以照纪律入账。
+
+#### H1 · `_inflight_jobs_using` 的 queued 真空窗（真缺陷，不是口径偏好）
+
+旧实现 `stamp = heartbeat_at or started_at or created_at` + `now - stamp > 120 → 不在飞`：
+一条 **queued 排队等 Chrome 锁**超过 120s 的作业被判"不在飞"，于是资产可以在它**即将执行的瞬间**被删掉，
+Run 当场 `E_ASSET_MISSING`。这与 `project_cleanup._job_is_live` 也不一致（后者 stamp None 视为在飞）。
+
+新三条判据（每条都写进 docstring 的理由，不是"看起来对"）：
+- **queued 一律在飞**，不看时间；
+- **leased/running 只看心跳/开始时间的 120s 窗**（同 `_job_is_live`，僵尸行交给 `jobs.recover`）；
+- **retry_wait 不在飞**（等人工门可以停几天；恢复时本就要重走 E_ASSET_MISSING 检查）。
+
+测试 2 条（`server/tests/unit/test_assets.py`）：
+- `test_h1_queued_job_blocks_delete_even_when_old`：queued + `created_at` 推到 10 分钟前 → 仍 409，
+  `detail["details"]["inflightJobs"] == [job.id]`；
+- `test_h1_retry_wait_and_zombie_rows_do_not_block_delete`：retry_wait（心跳新鲜）+ running（心跳 600s 前）
+  → `_inflight_jobs_using == []` 且删除放行（钉住 R8 那次"parked 挡死删除"的教训不许回退）。
+
+**踩到并修的测试卫生问题**：`_png()` 是确定性字节 → 两个测试的资产 **sha 相同**，前一个测试留下的 queued 行
+被后一个测试看见（首跑就是靠这个假失败暴露的）。改成各测试不同像素色 + `finally` 清自己的 Job 行。
+
+**反向验证**：把 `alive = True` 换回 `created_at` 兜底 120s → `DID NOT RAISE ApiError`（测试红）；还原 → 20 passed。
+
+#### H2 · 本机 httpx 守卫补上"模块级便捷函数"这个洞
+
+F01 类缺陷（毒 `NO_PROXY` 带 IPv6 条目 → httpx 默认客户端解析即 `InvalidURL`）此前**没有任何静态防线**：
+`test_f01_http_env.py` 只测行为，不扫调用点，所以 `httpx.get(...)` 这种自己内部建 Client 的写法完全漏网。
+- 修 `scripts/e2e_timeline_100.py:41`：`httpx.get(f"{BASE}/health", timeout=3)` → 补 `trust_env=False`（实测全仓**只有这一处**漏网）。
+- 新守卫 `server/tests/unit/test_h2_http_trust_env_guard.py`（3 条，**用 `ast` 不是 grep**）：
+  扫 `scripts/**/*.py` + `server/app/**/*.py`，`httpx.{Client,AsyncClient}` 与 `httpx.{get,post,head,put,patch,delete,request,options}`
+  凡无 `trust_env` 关键字即点名；扫描面 `assert len(files) > 40` 防"扫描目录被误改空"式的假绿；
+  一条自证测试用合成样例证明**真调用会被抓到、带 trust_env 的放行、注释里的假调用不误报**。
+- **反向验证**：把那处 `trust_env=False` 删掉 → `test_no_httpx_call_without_explicit_trust_env` FAIL；还原 → PASS。
+
+实测（命令含 cwd）：
+- `cd server && uv run pytest tests -q` → **401 passed**（215.23s，**0 skip / 0 xfail**；396 → +5 = H1×2 + H2 守卫×3；
+  unit 361 / integration 33 / BDD 7 逐目录 collect 实测）
+- `uv run --project server python scripts/lint_ratchet.py` → **194 / 244 / 240 全 ✓**
+  （新代码首跑 +2/+2：两处 `RUF059` 未用解包变量——修代码不抬基线）
+- `uv run --project server python scripts/check_docs_consistency.py` → **PASS**（collected=401）
+- 文档现值同步 7 处（HANDOFF×4 + AGENTS×2 + 任务书 H9 判据×1），另加 retry_wait 现值 2 处。
+
+没验的（诚实边界）：
+- H1 的新语义**没有真渲染级验证**（不涉渲染路径，判据靠 2 条单测 + 反向验证）。
+- **两处判活面仍不是同一份实现，且 retry_wait 上故意不同**（本轮实测差异，写清免得以后误当 bug）：
+  `project_cleanup._ACTIVE_JOB_STATUSES` **含** `retry_wait`，再过 `_job_is_live` 的 120s 心跳窗 →
+  刚 park 下（心跳新鲜）的作业会**挡住项目删除**（可 `force=true`）；
+  `assets._inflight_jobs_using` 则**永不**把 retry_wait 算在飞（等门期间允许整理资产，恢复时重走 E_ASSET_MISSING）。
+  queued / leased / running 三条现在口径一致。收成公共函数是卫生工作，本轮没做，也没动 `project_cleanup`（它现在是对的）。
+- H2 守卫只扫 `httpx`；`urllib.request` / `aiohttp` 之类不在面内（实测全仓无 aiohttp，`urllib` 用于本地文件路径解析，不建连接）。
+
