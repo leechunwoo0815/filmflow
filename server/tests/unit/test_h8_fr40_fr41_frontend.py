@@ -151,7 +151,7 @@ def test_gate_precheck_reason_is_surfaced_instead_of_a_400_surprise() -> None:
     "全场景已看"、批准按钮可点，用户（和自动化）都被这个空真相骗。判据只有一份
     （`_gate_precheck`），所以由 pending 接口随门带出，页面只显示不判断。
     """
-    routes = _read(ROOT / "server" / "app" / "api" / "routes.py")
+    routes = _read(ROOT / "server" / "app" / "api" / "routes_runs.py")  # P3 #2 拆分后门审批在 runs 域
     assert 'item["precheck"] = _gate_precheck(session, run_id, gid)' in routes, \
         "批准前置没有随待办门一起给出，UI 就只能自己猜（判据分叉）"
     canvas = _read(WEB / "app" / "canvas" / "page.tsx")
@@ -179,6 +179,6 @@ def test_fr41_suggestion_panel_is_draft_layer() -> None:
                                   "否则第二次采纳会拿挂载时的旧 brief 把第一次的成果抹掉")
     wizard = _read(WEB / "app" / "wizard" / "page.tsx")
     assert "SuggestionPanel" in wizard, "建议面板必须挂在向导第 1 步（文案入口）"
-    routes = _read(ROOT / "server" / "app" / "api" / "routes.py")
+    routes = _read(ROOT / "server" / "app" / "api" / "routes_system.py")  # P3 #2 拆分后 FR-41 在 system 域
     assert '@router.post("/authoring/suggest")' in routes, "向导阶段没有项目 id，需要无项目入口"
     assert "SuggestIn" in routes, "新端点同样必须收 Pydantic 模型（51 端点口径不许破例）"

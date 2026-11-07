@@ -65,7 +65,8 @@ def _hash(content) -> str:
 # ---------- 1. take branch：Run 构造失败 → 文档倒序回滚 ----------
 
 def test_take_branch_rolls_back_docs_when_run_creation_fails(tmp_path: Path, monkeypatch):
-    from app.api import routes as routes_mod
+    from app.api import deps
+    from app.api import routes as routes_mod  # 直调名经聚合器再导出
 
     session, pid, root = _make_project(tmp_path, "branch-fail")
     try:
@@ -96,7 +97,7 @@ def test_take_branch_rolls_back_docs_when_run_creation_fails(tmp_path: Path, mon
             encoding="utf-8")
         before = {k: deepcopy(_row(pid, k).content_json) for k in ("script", "timeline")}
 
-        monkeypatch.setattr(routes_mod, "audit", lambda *a, **kw: None)
+        monkeypatch.setattr(deps, "audit", lambda *a, **kw: None)  # P3 #2 拆分后各域 handler 调 deps.audit，patch 打 deps 才生效
 
         class BoomOnAdd:
             '''代理 session：对 branch 新建的 Run（带 parent_run_id）在 add 时抛错。'''

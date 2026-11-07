@@ -63,7 +63,9 @@ def test_overlay_never_drops_user_layers():
 # ---------- P2-20：系列半途失败回滚已建项目 ----------
 
 async def test_series_rolls_back_created_projects_on_failure(monkeypatch):
-    from app.api import routes
+    from app.api import (
+        routes_projects as routes,  # P3 #2 拆分后 caller 在 projects 域，patch 要打它的命名空间
+    )
     from app.api.schemas import SeriesCreateIn
     from app.services import project_cleanup
 

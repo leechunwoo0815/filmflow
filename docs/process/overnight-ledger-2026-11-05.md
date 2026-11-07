@@ -34,6 +34,7 @@
 | 轮 18c | **交接包审计**（zcode 复核）＋ A05 悬问闭环 ＋ 证据指针更正 | 未提交 | §3 八条全对上；A05＝`_carry_a05_approval` 自动携带**属设计**（库证 approval #502/#447/#402/#394）；job#98 实为 11-03 演示项目 215 旧作业（18c 的「交付成功」结论被 18d 更正：交付真挂了，见轮 18d） |
 | 轮 18d | attempt 14/15/16：交付 QC 真相 ＋ A05 断言现场通过 ＋ 18c 更正 | 未提交 | attempt 14：43 步全绿（A05 现场钉死）但交付 `E_DELIVERY_QC: ['captions']`——3s 压缩 × 292 字 ⇒ cps 97 ≫ 9 必挂；深层死因＝UI 对齐段 text 为空 ⇒ SRT count=0；修法进脚本（去压缩/对齐回旁白真源/超时抬高），产品零改动 |
 | 轮 19 | **H8 收口**：attempt 17 PASS ＋ 446×2 ＋ 治理 19 ＋ 本批提交 | 本轮 | e2e 49 步全绿 exit 0（交付 6 产物、A05 现场钉死、零鼠标零外环回）；pytest 446 passed 两遍一致；治理/棘轮/a11y/tsc 全绿；守卫 PASS |
+| 轮 20 | **P3 #2 routes.py 拆分**（白日专批） | 本轮 | 2838 行 → deps+7 域+聚合器；147 路由 multiset 等价 + 0 重叠 + lint 逐码 20=20 + 446×2/治理/棘轮全绿；FastAPI 0.162 嵌套 include 不解析的坑与平铺修法在案 |
 
 > 说明（H7 要求的编号统一）：`轮 0b` 之后曾有一个空占位标题也叫"轮 1"，已改标 `轮 0c（占位）`；
 > 后续统一 **`轮 N · <Wave 编号> <标题> · 日期`** 一种格式，`R几` 这种混用写法不再新增。
@@ -1172,3 +1173,51 @@ push 是老板决策点——**老板本轮开工令已含「做完」，push �
 - 交付门禁 LUFS 真值的 ffprobe 原文没有单独贴（交付 QC 的 lufs/truePeak 检查在 attempt 17 第 45 步
   通过即判据；G07 的 QC json 随 cleanup 自删）。
 - routes.py 拆分（P3 #2 白日专批）在批 3，不在本轮。
+
+---
+
+### 轮 20 · P3 #2 routes.py 拆分（白日专批）：2838 行 → deps + 7 域 + 聚合器，147 路由逐条等价 · 2026-11-07
+
+老板令「整个项目全部开发完成」，P3 判定 #9 留给白天的最后一件工程债今天做掉。
+
+**拆分形态**（`server/app/api/`）：
+
+| 文件 | 行数（修完 lint 后约） | 内容 |
+|---|---|---|
+| `deps.py` | 170 | 跨域共享 helper：`audit` / `_project_or_404` / `_project_profile` / `_require_workspace_root` / `_require_creatable_project_root` / `_review_scene_ids` / `_review_viewed` / `_style_dto` |
+| `routes_styles.py` | 252 | 风格库 / 风格列表 / 详情 / 预览 / 相似 |
+| `routes_projects.py` | 887 | 项目 / 导入 / drafts / 新手模板 / 只读示例 / 系列克隆 |
+| `routes_runs.py` | 603 | workflow / runs / 预览 / 门审批 / 静帧查看 / 提升为当前 |
+| `routes_delivery.py` | 283 | 交付 / 渲染档位 / QA 修复建议 |
+| `routes_assets.py` | 462 | 资产库 / 音频工作台 |
+| `routes_docs.py` | 709 | FR-33 审片批注 / 任务卡编辑器 / 文档模型 |
+| `routes_system.py` | 353 | 环境 / 引擎 / 补标队列 / jobs·audit·事件 / FR-40 通知 / FR-41 建议 |
+| `routes.py` | 55 | 聚合器：**平铺** 7 域路由对象 + 既有测试导入面再导出 |
+
+**三道安全校验（全部实测通过后才收口）**：
+
+1. **路由集等价**：`git show afcd311:…routes.py` 抽取 147 条 (method, /api+path) 与新聚合器
+   逐条比对 → **multiset 完全一致、零增零减**；跨域 pattern 重叠检测 **0 对**（顺序不改变任何匹配）。
+2. **lint 逐码对账**：原 monolith 20 处违规（F841×3/RUF059×5/BLE001×9/S112×1/ASYNC221×1/PLW1510×1）
+   与拆分后 9 文件合计 **逐码 20=20**（搬家 1:1，棘轮基线一个不动）；F821=0
+   （`_review_scene_ids` 随 `_review_viewed` 进 deps——生成器第一版漏了这个引用，ruff F821 抓住）。
+3. **全量回归**：pytest **446 passed ×2**（187.6s/184.9s）、治理 19 项 exit 0、
+   棘轮三口径 exit 0（ciScope 233=233）、a11y PASS、tsc 0、`check_docs_consistency` PASS
+   （守卫的裸 dict 计数面已扩到 routes.py+deps.py+7 域文件）。
+
+**FastAPI 0.162 的坑（真金白银）**：`include_router` 是惰性 `_IncludedRouter`，且
+**app 层不解析嵌套**——聚合器 `router.include_router(子)` 后 `app.include_router(聚合器)`
+全部 404（实测）。修法：聚合器直接 `router.routes.extend(子.routes)` 平铺
+（子路由自带 `/api` 前缀，等价于拆分前单文件结构；TestClient 实测 health/projects 200）。
+
+**既有测试的迁移（断言本体零放宽）**：
+
+- `test_p2_batch3`：patch 目标从聚合器改到 `routes_projects`（caller 命名空间）；
+- `test_multi_step_writes`：`audit` 的 patch 改到 `deps`（各域 handler 运行期解析 `deps.audit`）；
+  `project_take_branch` 直调走聚合器再导出（在 routes_docs 域）；
+- `test_h8_fr40_fr41_frontend` 两处文本断言改读 `routes_runs.py` / `routes_system.py`（断言原文不变）；
+- `check_docs_consistency`：裸 dict 计数面扩到聚合器 + deps + 7 域（仍 = 0）。
+
+**没做的（诚实边界）**：
+- 聚合器 docstring 与 P3 判定文档里的"2764 行"是历史口径，正文没回写（判定文档是历史记录不改）。
+- 生成器脚本是一次性工具（/tmp），拆分结果以 9 个文件落库为准；复刻步骤已写进本轮。

@@ -81,8 +81,12 @@ def main() -> int:
     n_tests = collect_test_count()
     n_steps = governance_steps()
     n_projects = db_projects()
-    n_untyped = (ROOT / "server/app/api/routes.py").read_text(
-        encoding="utf-8").count("payload: dict")
+    # P3 #2 拆分后 API 面在 routes.py（聚合器）+ routes_<域>.py：全部纳入计数
+    n_untyped = sum((ROOT / "server/app/api" / name).read_text(encoding="utf-8")
+                    .count("payload: dict")
+                    for name in ["routes.py", "deps.py"]
+                    + [f"routes_{d}.py" for d in
+                       ("styles", "projects", "runs", "delivery", "assets", "docs", "system")])
     versions = sorted({m[0] for m in MIGRATIONS})
     print(f"现值：EXECUTOR={EXECUTOR_VERSION} · 迁移={versions} · "
           f"collected={n_tests} · governance={n_steps} 步 · DB={n_projects} 项目 · "
