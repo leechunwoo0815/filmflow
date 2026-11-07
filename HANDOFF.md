@@ -130,7 +130,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 > 含收敛判据、先证伪再建设的顺序、每轮循环协议、反作弊条款与收尾产物要求。
 
 ```bash
-cd server && uv run pytest tests -q                       # 446 passed（collected 446 = unit 406 + integration 33 + BDD 7；2026-11-07 晨实测两遍 187.0s/185.4s，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；上批 2026-11-06 晚是 428/388，+18 = H8 静态防线 13（test_h8_fr40_fr41_frontend 10 + test_h8_scratch_state_bodies 3）+ 既有文件 5，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；整夜 R2 时是 396/356，+32 = H1×2 + H2×3 + H3×6 + H9×3 + H5×5 + H10×13）
+cd server && uv run pytest tests -q                       # 447 passed（collected 447 = unit 407 + integration 33 + BDD 7；2026-11-07 午实测 190.5s（+1=音频默认对齐段测试），dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；上批 2026-11-06 晚是 428/388，+18 = H8 静态防线 13（test_h8_fr40_fr41_frontend 10 + test_h8_scratch_state_bodies 3）+ 既有文件 5，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；整夜 R2 时是 396/356，+32 = H1×2 + H2×3 + H3×6 + H9×3 + H5×5 + H10×13）
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -429,7 +429,7 @@ uv run --project server python scripts/verify_p1_governance.py
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **446 passed（collected 446 = unit 406 + integration 33 + BDD 7；2026-11-07 晨实测两遍 187.0s/185.4s，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；上批 2026-11-06 晚是 428/388，+18 = H8 静态防线 13（test_h8_fr40_fr41_frontend 10 + test_h8_scratch_state_bodies 3）+ 既有文件 5，dev 在跑也 0 skipped 0 xfailed；整夜 R2 时 396/356，+32 = H1×2 + H2×3 + H3×6 + H9×3 + H5×5 + H10×13）**；integration 已隔离（独立临时 uvicorn/HOME/workspace）。[test_p1_foundations.py:234](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L234) 的 8787 占用门控已按 A8 去除（改绑空闲端口，dev 在跑不再 skip） |
+| 测试 | **447 passed（collected 447 = unit 407 + integration 33 + BDD 7；2026-11-07 午实测 190.5s（+1=音频默认对齐段测试），dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；上批 2026-11-06 晚是 428/388，+18 = H8 静态防线 13（test_h8_fr40_fr41_frontend 10 + test_h8_scratch_state_bodies 3）+ 既有文件 5，dev 在跑也 0 skipped 0 xfailed；整夜 R2 时 396/356，+32 = H1×2 + H2×3 + H3×6 + H9×3 + H5×5 + H10×13）**；integration 已隔离（独立临时 uvicorn/HOME/workspace）。[test_p1_foundations.py:234](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L234) 的 8787 占用门控已按 A8 去除（改绑空闲端口，dev 在跑不再 skip） |
 | 本轮 P1 治理 | master `68627d1..9bc0f95`（9 提交）；**未打新 tag** |
 | 判官复核 + B1–B8 | `07f9487` 判官报告 → `7d5b6e4` B1 → `9dfdff9` B2 → `dbc208a` B3 → `fb15d58` B4 → `5c4c727` docs → `a324415` B5 → `63d37c0` B6 → `8ca3e01` golden → `74f85da` docs → `7b06432` #6 → `77c1ab5` #10 → `e896a78` #9 污染面 → `a8818b9` B7 → **`36411bf` B8（P1-23 收尾）**；全部已推 public；`044ff59..280cd7f` 是专家整夜 11 提交（结论被推翻） |
 | 公开仓库 | `git@github.com:leechunwoo0815/filmflow`（master 已同步；公钥已配） |
@@ -940,7 +940,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
 - [x] FR-28 16:9+9:16+SRT+封面+QC+zip；R2.5 5s 26.2s / 40s 190.0s（2.8.0 5s 24.1s）
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
-- [x] 102 tests（R2.5 收口时；**现值 446 passed（collected 446 = unit 406 + integration 33 + BDD 7；2026-11-07 晨实测两遍 187.0s/185.4s，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；上批 2026-11-06 晚是 428/388，+18 = H8 静态防线 13（test_h8_fr40_fr41_frontend 10 + test_h8_scratch_state_bodies 3）+ 既有文件 5，0 skipped 0 xfailed；整夜 R2 时 396/356）**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
+- [x] 102 tests（R2.5 收口时；**现值 447 passed（collected 447 = unit 407 + integration 33 + BDD 7；2026-11-07 午实测 190.5s（+1=音频默认对齐段测试），dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；上批 2026-11-06 晚是 428/388，+18 = H8 静态防线 13（test_h8_fr40_fr41_frontend 10 + test_h8_scratch_state_bodies 3）+ 既有文件 5，0 skipped 0 xfailed；整夜 R2 时 396/356）**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
@@ -1128,7 +1128,7 @@ curl -s http://127.0.0.1:7860/api/queue
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`（或按 §0.7 配方重启）；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **446 passed（collected 446 = unit 406 / integration 33 / BDD 7，实测 187.0s/185.4s 两遍一致，2026-11-07 晨）**；dev 在跑也 0 skipped（A8 已去除 `test_p1_foundations.py` 的 8787 门控；`check_docs_consistency.py` 按 `passed + skipped == collected` 校验）。
+- [ ] `cd server && uv run pytest tests -q` → **447 passed（collected 447 = unit 407 / integration 33 / BDD 7，实测 190.5s（2026-11-07 午，+1=音频默认对齐段测试））**；dev 在跑也 0 skipped（A8 已去除 `test_p1_foundations.py` 的 8787 门控；`check_docs_consistency.py` 按 `passed + skipped == collected` 校验）。
 - [ ] 连跑两次上面这条，`GET /api/projects` 计数不变（当前 11）——这是 P0-3 的核心验收。
 - [x] `uv run --project server python scripts/verify_p1_governance.py` → **16 项全 ✓**（3b 帧网格、9 删除面、10 文件响应策略、11 原子写、12 版本链、**14 验收零演示污染、15 写端点全部模型化**；见 §0.6.3）。
 - [ ] `uv run --project server python scripts/e2e_error_visibility.py` → 异步失败真的落到界面上（B5/P1-6 的唯一真机证据）。

@@ -205,6 +205,33 @@ async def assets_replace(asset_id: int, payload: AssetReplaceIn,
             "affectedScenes": sorted({s for p in changed_projects for s in p["scenes"]})}
 
 
+
+def _default_alignment_segments(session: Session, project_id: int) -> list[dict]:
+    """首次使用（尚无已存对齐）时给音频页的默认对齐段：[场景窗口] + [场景文本]。
+
+    为什么做成产品能力而不是让用户手填：对齐段 text 为空时交付字幕 QC 必挂
+    （SRT count=0，2026-11-07 attempt 14 实测、e2e 一直用脚本回填）；时间线场景的
+    last_text_at+read_seconds ≡ end（project_docs），段取 [start,end]=场景窗口即天然
+    满足 G06 音画同步（偏差 0）与字幕 cps（建议时长=字数/5.2）。落库仍是用户显式
+    动作——音频页「保存手动对齐」。
+    """
+    tl = docs_svc.get_doc(session, project_id, "timeline")
+    sc = docs_svc.get_doc(session, project_id, "script")
+    if tl is None or sc is None:
+        return []
+    scenes = (tl.content_json or {}).get("scenes") or []
+    sentences = (sc.content_json or {}).get("sentences") or []
+    out: list[dict] = []
+    for s in scenes:
+        span = s.get("source_span") or []
+        text = "".join(sentences[i].get("text", "") for i in span
+                       if isinstance(i, int) and i < len(sentences)).strip()
+        start, end = float(s.get("start") or 0.0), float(s.get("end") or 0.0)
+        if end <= start or not text:
+            continue
+        out.append({"text": text, "start": round(start, 3), "end": round(end, 3)})
+    return out
+
 # ---------- 音频工作台（FR-27） ----------
 
 
@@ -215,9 +242,15 @@ async def project_audio(project_id: int, session: Session = Depends(get_session)
     lic = audio_svc.load_license(proj.root)
     ok, why = audio_svc.license_ok(lic)
     primary = audio_svc.primary_take(proj.root)
+    alignment = audio_svc.load_alignment(proj.root)
+    if not alignment.get("segments"):
+        segs = _default_alignment_segments(session, project_id)
+        if segs:
+            alignment = {"schema": "filmflow.alignment/1", "source": "default",
+                         "author": "system", "segments": segs}
     return {"takes": manifest["takes"], "primary": primary,
             "scenePrimary": manifest.get("scenePrimary") or {},
-            "alignment": audio_svc.load_alignment(proj.root),
+            "alignment": alignment,
             "license": lic, "licenseOk": ok, "licenseReason": why,
             "mix": audio_svc.load_mix(proj.root),
             "markers": audio_svc.load_markers(proj.root),
