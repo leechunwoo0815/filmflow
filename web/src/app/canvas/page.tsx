@@ -91,9 +91,13 @@ function CanvasInner() {
       ),
     },
     style: {
-      background: "rgb(var(--panel))", border: `1px solid ${n.status === "running" ? "rgb(var(--amber))" : n.status === "failed" ? "rgb(var(--red))" : "rgb(var(--line))"}`,
-      borderRadius: 8, padding: 6, width: 190, color: "rgb(var(--txt))",
+      // 全用非简写属性：React 的 style 逐键 diff 遇到 border（简写）与 borderStyle
+      // 混用会在重渲染时报冲突警告（2026-11-07 老板首次 UI 实测的 Console Error）。
+      background: "rgb(var(--panel))",
+      borderWidth: 1,
       borderStyle: n.status === "blocked" ? "dashed" : "solid",
+      borderColor: n.status === "running" ? "rgb(var(--amber))" : n.status === "failed" ? "rgb(var(--red))" : "rgb(var(--line))",
+      borderRadius: 8, padding: 6, width: 190, color: "rgb(var(--txt))",
     },
   })), [graph]);
 
