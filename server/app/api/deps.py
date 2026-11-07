@@ -20,6 +20,7 @@ from ..models import (
     Style,
     Workflow,
 )
+from ..services import engines as engines_svc
 from ..services import project_docs as docs_svc
 
 
@@ -32,6 +33,7 @@ def audit(session: Session, action: str, target: str, before=None, after=None):
 
 def _style_dto(r: Style) -> dict:
     return {"id": r.id, "name": r.name, "collection": r.collection, "family": r.family,
+            "engine_v2_ok": r.family in engines_svc.contract2_families(),
             "sub_families": r.sub_families_json, "tokens_status": r.tokens_status,
             "preview_status": r.preview_status, "engine_status": r.engine_status,
             "has_cover": r.has_cover, "available": r.available, "labeled": r.labeled,

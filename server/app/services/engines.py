@@ -87,6 +87,20 @@ def list_engines() -> list[dict]:
     return out
 
 
+def contract2_families() -> set[str]:
+    """Contract 2.x 引擎覆盖的语义族——R2.0 新项目只能从这些族里挑版式。
+
+    为什么单独存在：engine_for_family 只回答"有没有引擎"，不回答"契约几代"。
+    code-video/ink 是 1.0，只服务历史导入项目；新项目用它们会在 C01 得到
+    E_ENGINE_API_UNSUPPORTED（2026-11-07 老板首次 UI 实测踩中）。
+    """
+    out: set[str] = set()
+    for c in list_engines():
+        if str(c.get("version", "1.0")).startswith("2"):
+            out |= set(c.get("families") or [])
+    return out
+
+
 def engine_for_family(family: str) -> dict | None:
     """族 → 引擎（规格 §3.3：同一引擎可服务多个族，必须声明）。"""
     for c in list_engines():

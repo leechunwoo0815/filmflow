@@ -10,6 +10,7 @@ import jieba.analyse
 from sqlmodel import Session, select
 
 from ..models import Style, StylePick
+from . import engines as engines_svc
 
 
 def _keyword_overlap(script: str, search_text: str) -> float:
@@ -59,6 +60,10 @@ def recommend(session: Session, script: str, brief: dict | None = None,
         select(Style).where(Style.tokens_status == "complete", Style.engine_status == "available",
                             Style.available == True)
     ).all()
+    # Contract 1.0 的族（code-video/ink）对 R2.0 新项目不可用——推荐流同样排除，
+    # 否则第一张推荐卡就是点了必炸的版式（2026-11-07 老板首次 UI 实测踩中）。
+    ok_families = engines_svc.contract2_families()
+    candidates = [st for st in candidates if st.family in ok_families]
     if not candidates:
         return []
     scored = []

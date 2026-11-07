@@ -49,6 +49,7 @@ export function describeApiError(err: any): string {
 
 export type StyleDTO = {
   id: string; name: string; collection: string; family: string;
+  engine_v2_ok: boolean;
   sub_families: string[]; tokens_status: string; preview_status: string;
   engine_status: string; has_cover: boolean; available: boolean; labeled: boolean;
   missing_fields: string[]; tokens: any; sha256: string; path: string;

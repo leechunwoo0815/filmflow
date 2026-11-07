@@ -53,7 +53,11 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
       if (collection) params.set("collection", collection);
       if (chips.size) params.set("chips", [...chips].join(","));
       const r = await api(`/styles?${params}`);
-      setItems(r.items); setTotal(r.total); setRecommendMode(false);
+      // Contract 1.0（code-video/ink）与未接入引擎的族对 R2.0 新项目不可用——
+      // 以前全量摆出来，第一张卡点了就在 C01 炸（E_ENGINE_API_UNSUPPORTED，
+      // 2026-11-07 老板首次 UI 实测踩中）。这里与推荐流同口径过滤。
+      const ok = r.items.filter((x: any) => x.engine_v2_ok !== false);
+      setItems(ok); setTotal(ok.length); setRecommendMode(false);
     } finally { setLoading(false); }
   }, [debounced, chips, family, collection]);
 
@@ -63,6 +67,7 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
   }, [debounced, chips, family, collection, loadRecommend, loadSearch]);
 
   const setPrimaryStyle = async (s: StyleDTO) => {
+    if (s.engine_v2_ok === false) { alert(`该版式属于 Contract 1.0 旧引擎（${s.collection}），R2.0 新项目不可用；请选「H_现成版式」等 2.x 家族`); return; }
     if (s.engine_status === "unavailable") { alert(`E_ENGINE_UNAVAILABLE：${s.family} 族暂无引擎，可登记需求`); return; }
     if (s.tokens_status !== "complete") { alert(`该风格元数据不完整（缺 ${s.missing_fields.join("/")}），不可主选；可加入补标队列`); return; }
     setPrimary(s.id);
@@ -150,6 +155,7 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
           ))}
           <span className="text-dim text-xs ml-auto self-center">
             {loading ? "加载中…" : `${items.length} / ${total} 条`}{recommendMode && " · 推荐（按文案匹配度）"}
+            <span className="text-dim">· 新项目仅限 Contract 2.x 版式（其余 1.0 旧引擎/未接入家族不适用）</span>
           </span>
         </div>
         <div ref={gridRef} className="grid grid-cols-3 gap-2 overflow-y-auto pr-1 flex-1"
