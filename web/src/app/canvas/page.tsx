@@ -1,6 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ReactFlow, Background, Controls, MarkerType } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { api } from "@/lib/api";
@@ -21,12 +21,32 @@ function CanvasInner() {
   const params = useSearchParams();
   const projectId = Number(params.get("project"));
   const runId = Number(params.get("run"));
+  const router = useRouter();
+  const [activeRunId, setActiveRunId] = useState<number>(runId);
+  const [noRun, setNoRun] = useState(false);
   const [graph, setGraph] = useState<any>(null);
   const [selected, setSelected] = useState<any>(null);
   const [pendingGates, setPendingGates] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
   const esRef = useRef<EventSource | null>(null);
+
+  // 首页项目卡只带 project 进来（?project=N 没有 run）——以前页面假装 Run 0，
+  // 点 ▶ Run 得到 E_NOT_FOUND /runs/0/start（2026-11-07 老板首次 UI 实测）。
+  // 这里自动接上该项目最新一次 Run；一个 Run 都没有就明说，不再摆假的 Run 0。
+  useEffect(() => {
+    if (!projectId || runId) return;
+    (async () => {
+      try {
+        const rs = await api(`/projects/${projectId}/runs`);
+        const items: any[] = rs.items || [];
+        if (!items.length) { setNoRun(true); return; }
+        const latest = Math.max(...items.map((r: any) => r.id));
+        setActiveRunId(latest);
+        router.replace(`/canvas?project=${projectId}&run=${latest}`);
+      } catch (e: any) { setMsg(String(e)); }
+    })();
+  }, [projectId, runId, router]);
 
   const guideParam = params.get("guide");
   useEffect(() => {
@@ -41,17 +61,17 @@ function CanvasInner() {
   };
 
   const load = useCallback(async () => {
-    if (!runId) return;
-    setGraph(await api(`/runs/${runId}/graph`));
-    setPendingGates((await api(`/gates/${runId}/pending`)).items);
-  }, [runId]);
+    if (!activeRunId) return;
+    setGraph(await api(`/runs/${activeRunId}/graph`));
+    setPendingGates((await api(`/gates/${activeRunId}/pending`)).items);
+  }, [activeRunId]);
 
   useEffect(() => { load().catch((e) => setMsg(String(e))); }, [load]);
 
   // SSE 实时通道（规格 §9.1 唯一实时通道）
   useEffect(() => {
-    if (!runId) return;
-    const es = new EventSource(`/api/runs/${runId}/events`);
+    if (!activeRunId) return;
+    const es = new EventSource(`/api/runs/${activeRunId}/events`);
     esRef.current = es;
     es.onmessage = (ev) => {
       try {
@@ -64,9 +84,10 @@ function CanvasInner() {
     // SSE 断线不会走 api() 的失败通道，必须自己说一声，否则画布只是"停止刷新"
     es.onerror = () => setMsg("实时通道断开：节点状态可能不是最新，刷新页面可重连");
     return () => { es.close(); };
-  }, [runId, load]);
+  }, [activeRunId, load]);
 
   const act = async (path: string) => {
+    if (!activeRunId) { setMsg("该项目还没有 Run——从向导「生成项目」会自动创建第一次 Run"); return; }
     try { await api(path, { method: "POST", body: "{}" }); await load(); } catch (e: any) { setMsg(e.message); }
   };
 
@@ -108,7 +129,17 @@ function CanvasInner() {
     markerEnd: { type: MarkerType.ArrowClosed, color: ty === "trigger" ? "rgb(var(--purple))" : "rgb(var(--dim))" },
   })), [graph]);
 
-  if (!projectId) return <main className="p-8">缺 project 参数</main>;
+  if (!projectId) return (
+    <main className="p-8 max-w-xl mx-auto mt-24 text-center space-y-4">
+      <h1 className="text-xl font-bold">画布需要一个项目</h1>
+      <p className="text-dim text-sm">画布展示的是某个项目某次 Run 的流水线。
+        你现在没有从任何项目进来——先走向导建一个，或回到项目列表挑一个。</p>
+      <div className="flex gap-3 justify-center">
+        <a className="btn-primary" href="/wizard" data-testid="canvas-empty-wizard">新建项目（走向导）</a>
+        <a className="btn" href="/">回到项目列表</a>
+      </div>
+    </main>
+  );
 
   return (
     <main className="h-screen flex flex-col">
@@ -120,26 +151,26 @@ function CanvasInner() {
       )}
       <header className="flex flex-wrap items-center gap-2 p-3 border-b border-line">
         <a className="btn" href="/">{t("nav.back")}</a>
-        <span className="font-semibold shrink-0">Run {runId}</span><span className="shrink-0"><LangToggle /></span><span className="shrink-0"><ThemeToggle /></span>
+        <span className="font-semibold shrink-0">Run {activeRunId || (noRun ? "（该项目还没有 Run）" : "…")}</span><span className="shrink-0"><LangToggle /></span><span className="shrink-0"><ThemeToggle /></span>
         {graph && <span className={`text-sm ${STATUS_CLS[graph.run.status]}`}>{graph.run.status}</span>}
         {graph && <span className="text-dim text-xs">caps: {graph.caps.join("/")}</span>}
         <div className="ml-auto flex gap-2">
           <a className="btn" href={`/editor?project=${projectId}`}>{t("nav.editor")}</a>
-          <a className="btn" href={`/timeline?project=${projectId}&run=${runId}`}>时间轴</a>
+          <a className="btn" href={`/timeline?project=${projectId}&run=${activeRunId}`}>时间轴</a>
           <a className="btn" href={`/assets?project=${projectId}`}>资产库</a>
           <a className="btn" href={`/templates?project=${projectId}`}>模板库</a>
-          <a className="btn" href={`/qa?project=${projectId}&run=${runId}`}>QA 建议</a>
-          <a className="btn" href={`/review?project=${projectId}&run=${runId}`}>静帧审阅</a>
-          <a className="btn" href={`/player?project=${projectId}&run=${runId}`}>审片</a>
+          <a className="btn" href={`/qa?project=${projectId}&run=${activeRunId}`}>QA 建议</a>
+          <a className="btn" href={`/review?project=${projectId}&run=${activeRunId}`}>静帧审阅</a>
+          <a className="btn" href={`/player?project=${projectId}&run=${activeRunId}`}>审片</a>
           <a className="btn" href={`/takes?project=${projectId}`}>Take 对比</a>
           <a className="btn" href={`/audio?project=${projectId}`}>音频</a>
-          <a className="btn" href={`/delivery?project=${projectId}&run=${runId}`}>交付</a>
+          <a className="btn" href={`/delivery?project=${projectId}&run=${activeRunId}`}>交付</a>
           <button className="btn" data-testid="studio-guide-btn" onClick={() => setGuideOpen((v) => !v)}>引导</button>
-          <button className="btn" data-testid="step-btn" onClick={() => act(`/runs/${runId}/step`)}>{t("cv.step")}</button>
-          <button className="btn-amber" data-testid="run-btn" onClick={() => act(`/runs/${runId}/start`)}>{t("cv.run")}</button>
-          <button className="btn" onClick={() => act(`/runs/${runId}/cancel`)}>{t("cv.cancel")}</button>
-          <button className="btn" onClick={() => act(`/runs/${runId}/resume`)}>{t("cv.resume")}</button>
-          <button className="btn" onClick={() => act(`/runs/${runId}/retry`)}>{t("cv.retry")}</button>
+          <button className="btn" data-testid="step-btn" onClick={() => act(`/runs/${activeRunId}/step`)}>{t("cv.step")}</button>
+          <button className="btn-amber" data-testid="run-btn" onClick={() => act(`/runs/${activeRunId}/start`)}>{t("cv.run")}</button>
+          <button className="btn" onClick={() => act(`/runs/${activeRunId}/cancel`)}>{t("cv.cancel")}</button>
+          <button className="btn" onClick={() => act(`/runs/${activeRunId}/resume`)}>{t("cv.resume")}</button>
+          <button className="btn" onClick={() => act(`/runs/${activeRunId}/retry`)}>{t("cv.retry")}</button>
         </div>
       </header>
       {msg && <div className="bg-panel border-b border-red/40 text-red text-sm px-3 py-1.5">{msg}</div>}
@@ -175,14 +206,14 @@ function CanvasInner() {
                 <button className="btn-primary" data-testid={`gate-approve-${g.gate}`}
                   disabled={!!g.precheck}
                   aria-label={`批准 ${g.gate} 门`}
-                  onClick={async () => { await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: runId, decision: "approved", author: "local", note: "", checklist: [] }) }); load(); }}>{t("cv.approve")}</button>
+                  onClick={async () => { await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: activeRunId, decision: "approved", author: "local", note: "", checklist: [] }) }); load(); }}>{t("cv.approve")}</button>
                 <button className="btn" data-testid={`gate-reject-${g.gate}`}
                   aria-label={`驳回 ${g.gate} 门`} onClick={async () => {
                   // 注意：这里用 window.prompt 收驳回理由，headless 浏览器会自动 dismiss，
                   // 所以自动化验收走"批准"这条路径；改成页面内输入框是 a11y/自动化的待办项。
                   const note = prompt(t("cv.rejectPrompt"));
                   if (note === null) return;
-                  await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: runId, decision: "rejected", author: "local", note }) });
+                  await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: activeRunId, decision: "rejected", author: "local", note }) });
                   load();
                 }}>{t("cv.reject")}</button>
               </div>
@@ -218,10 +249,10 @@ function CanvasInner() {
           </div>
           <ol className="space-y-1.5">
             <li><a className="text-blue" href={`/editor?project=${projectId}`}>1. 场景列表</a><span className="text-dim"> · 看每句文案对应哪一场</span></li>
-            <li><a className="text-blue" href={`/review?project=${projectId}&run=${runId}`}>2. 单帧预览</a><span className="text-dim"> · 逐场看静帧</span></li>
+            <li><a className="text-blue" href={`/review?project=${projectId}&run=${activeRunId}`}>2. 单帧预览</a><span className="text-dim"> · 逐场看静帧</span></li>
             <li><a className="text-blue" href={`/editor?project=${projectId}`}>3. 改一句</a><span className="text-dim"> · 自动保存并标脏</span></li>
-            <li><a className="text-blue" href={`/review?project=${projectId}&run=${runId}`}>4. 看 diff</a><span className="text-dim"> · 只对比变化的场景</span></li>
-            <li><a className="text-blue" href={`/delivery?project=${projectId}&run=${runId}`}>5. 出 draft</a><span className="text-dim"> · 预览或交付</span></li>
+            <li><a className="text-blue" href={`/review?project=${projectId}&run=${activeRunId}`}>4. 看 diff</a><span className="text-dim"> · 只对比变化的场景</span></li>
+            <li><a className="text-blue" href={`/delivery?project=${projectId}&run=${activeRunId}`}>5. 出 draft</a><span className="text-dim"> · 预览或交付</span></li>
           </ol>
           <p className="text-dim text-xs mt-2">可跳过；随时用顶部「引导」重看。</p>
         </div>
