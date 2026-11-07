@@ -136,8 +136,11 @@ def test_run_dependent_pages_are_reached_with_context_resolved() -> None:
     src = _read(WEB / "lib" / "commands.ts")
     review = _read(WEB / "app" / "review" / "page.tsx")
     canvas = _read(WEB / "app" / "canvas" / "page.tsx")
-    assert "if (!runId)" in review and "if (!runId) return" in canvas, \
-        "这两个页面对 run 的前置要求变了，这条守卫要跟着改"
+    assert "if (!runId)" in review, "review 页对 run 的前置要求变了，这条守卫要跟着改"
+    # canvas 2026-11-07 升级：无 run 参数时自动接上项目最新 Run（不再空白早退、
+    # 不再假装 Run 0——老板首次 UI 实测点出 E_NOT_FOUND /runs/0/start）。
+    assert 'api(`/projects/${projectId}/runs`)' in canvas and "setActiveRunId" in canvas, \
+        "canvas 必须自动解析项目最新 Run（守卫跟新契约走，比旧的空白早退更强）"
     for nav_id in ("nav.review", "nav.canvas"):
         body = src[src.index(f'id: "{nav_id}"'):]
         assert 'goWithRun("' in body[:260], f"{nav_id} 仍然把用户送进一个没有 Run 的空页"
