@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useLang, LangToggle } from "@/lib/i18n";
 import { ThemeToggle } from "@/lib/theme";
+import { SuggestionPanel } from "@/components/SuggestionPanel";
 import StylePicker from "@/components/StylePicker";
 
 const STEPS = ["wiz.step1", "wiz.step2", "wiz.step3", "wiz.step4", "wiz.step5"];
@@ -77,7 +78,8 @@ export default function Wizard() {
 
   return (
     <main className="max-w-7xl mx-auto p-6">
-      <div className="flex items-center justify-between"><h1 className="text-xl font-bold mb-1">{t("wiz.title")}</h1><div className="flex items-center gap-2"><LangToggle /><ThemeToggle /></div></div>
+      <div data-testid="wizard-root" data-draft-id={draftId ?? ""}
+        className="flex items-center justify-between"><h1 className="text-xl font-bold mb-1">{t("wiz.title")}</h1><div className="flex items-center gap-2"><LangToggle /><ThemeToggle /></div></div>
       <p className="text-dim text-sm mb-4">{t("wiz.disclaimer")}</p>
       <ol className="flex gap-2 mb-5 text-sm">
         {STEPS.map((key, i) => (
@@ -99,7 +101,8 @@ export default function Wizard() {
             <span>{t("wiz.sentences")} {sentences}</span>
             <span>{t("wiz.estDuration")} {estSeconds}s</span>
           </div>
-          <div className="mt-3 text-right"><button className="btn-primary" disabled={!copy.trim()} onClick={next}>{t("wiz.next")}</button></div>
+          <SuggestionPanel copy={copy} draftId={draftId} brief={{ title }} />
+          <div className="mt-3 text-right"><button className="btn-primary" disabled={!copy.trim()} onClick={next} data-testid="wizard-next-1">{t("wiz.next")}</button></div>
         </section>
       )}
 
@@ -115,7 +118,7 @@ export default function Wizard() {
           <p className="text-dim text-sm mt-2">{t("wiz.framesCalc")} <span className="text-txt font-mono">{frames}</span></p>
           <div className="mt-3 flex justify-between">
             <button className="btn" onClick={() => setStep(1)}>{t("wiz.prev")}</button>
-            <button className="btn-primary" onClick={next}>{t("wiz.next")}</button>
+            <button className="btn-primary" onClick={next} data-testid="wizard-next-2">{t("wiz.next")}</button>
           </div>
         </section>
       )}
@@ -166,7 +169,7 @@ export default function Wizard() {
           ))}
           <div className="mt-3 flex justify-between">
             <button className="btn" onClick={() => setStep(3)}>{t("wiz.prev")}</button>
-            <button className="btn-primary" onClick={next}>{t("wiz.next")}</button>
+            <button className="btn-primary" onClick={next} data-testid="wizard-next-4">{t("wiz.next")}</button>
           </div>
         </section>
       )}

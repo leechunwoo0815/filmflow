@@ -99,7 +99,7 @@
    - **运维债（判官条目之外）**：① **僵尸 `draft` 行**——`/drafts/{id}/materialize` 不删草稿，所以**每跑一次向导验收就在库里多一枚指向已删目录的 draft**。今晚清点（实测）：**146 条 draft → 88 条 root 已不存在**（今晚再跑一遍是 **150 → 91**）（47 条是历史集成测试 `it-engine-*`/`it-wizard-*`、其余是各 verify 脚本）、37 条 root 还没填（向导没走到第 5 步）、只有 21 条还指着活目录。`_acceptance.destroy()` 现在删除项目时顺带回收自己那几条（实测 `verify_r3_templates` 一次回收 4 条），但**历史 88 条僵尸仍待清理**（那是独立一次库写决定，要老板点头）（要老板点头，属破坏性库写）。② **`retry_wait` 僵尸作业**（今晚清点峰值 **13 条**，全部 `E_RUN_BLOCKED`、`attempts=0/max 3`、`lease_until=NULL`，对应 Run 都是 `blocked`；删掉超时残留项目后回落到 **11 条**）仍无回收策略。已排除一个猜测：启动恢复（`jobs.recover`）对 `retry_wait` 只刷 `updated_at`、**不重新排队**，所以不是无限 churn；真正的伤害是删除闸门把它们算「在飞」（心跳 120s 窗口），今晚 `verify_r3_audio_v2` 超时后项目 249/250 就是因此留在库里——已按 `DELETE /projects/{id}?confirm_name=r3-audio-v2` 回收（`dirRemoved=true`）。②b **新发现的口径缺口**：`verify_r3_audio_v2.py`/`verify_r2_profiles.py` 这类自建项目**没有 `finally` teardown**（成功只删帧目录、失败整个项目留在库里），与 B7 申报的「不留半截自建项目」不一致；第 14 项守卫目前只查 `.acceptance` 残留，查不到这种。要么给这些脚本补 teardown，要么把守卫扩到「verify 脚本自建项目必须回收」。③ CI（P1-20）与干净机器 fresh-clone（P1-21）仍未做——原帧锚已入 git，fresh-clone 现在缺的是风格库/rumor/Chrome/ffmpeg 的 bootstrap 脚本。
 2. **老板已点头并执行完的**：审计残留清理（11 行 it-*／root 已不存在的行 + 7 个孤儿目录 + 4 个今晚的 golden 验证项目，释放 11.6GB；备份 `~/filmflow-backup-20261104-pre-cleanup.db`）、越权 template id 3 清除、15s/40s 原帧 golden 实跑（结果见上表）。
 
-**我停在哪一句**：判官 §六 与 **P1-23 都已完成**（B8 = `36411bf`）。剩下的工程债按此顺序：**交付门禁残余**（`render.profile.json`/`caps_json`/`params_snapshot`/`_alignment`）→ **僵尸回收策略**（13 条 `retry_wait` + 88 条僵尸 `draft` + verify 脚本缺 teardown）→ **CI/fresh-clone bootstrap**；再之后才是你已点头的 **FR-40 命令面板与通知**。**下一个接手点**：`verify_r3_audio_v2.py` 与 `verify_r3.py` 需要在这台机器**空载**时各重跑一次拿 PASS（今晚它们失败的直接原因都是我并行跑了 pytest/守卫脚本抢 Chrome，不是端点改造引入——Take/模板/资产三条已在新代码上跑通）。压缩后接手时按这条问一句，不要自己猜。
+**我停在哪一句（2026-11-06 深夜更新，覆盖此前的 B8 口径）**：Wave H 的 **H1–H7、H9、H10 全部已提交并推送**（H9 CI 双 job 首绿、H10 环境漂移诊断恒 exit 0），**只剩 H8**：FR-40/FR-41 前端**代码与守卫全部写完、整批未提交**。纯键盘验收 `scripts/e2e_fr40_keyboard.py` 已跑到历史最远——**42 步全绿、7 道人工门键盘签完、Run `succeeded`、交付作业 #98 在库里 `succeeded`**；没打 PASS 的唯一原因是脚本自己读错了返回键名（`errorCode` vs 列名 `error_code`，见 `docs/reports/h8-fr40-keyboard-e2e.md` 文末）。**接任者（zcode）请整份照读 `docs/process/handoff-prompt-h8.md`**：§2 是 6 条本轮踩出来的环境硬约束（`dev.sh` 无 `--reload`、trap 连坐杀进程、Chrome 让位、sqlite 表名单数、返回体是列名），§5 是那一条 bug 的精确修法，§6–§8 是收口→文档同步→git add 的逐步顺序，§9 是 9 个坑，§10 是停止条件。**老板 2026-11-06 晚明确「先停，我回家后再做」，goal 已置 blocked——未获"继续"之前不要复跑那条 12–18 分钟的渲染链，也不要 push。** 另有一条仍待空载复跑的历史项：`verify_r3_audio_v2.py` 与 `verify_r3.py` 需在这台机器空载时各跑一次拿 PASS（此前失败的直接原因是与 pytest 并行抢 Chrome，不是端点改造引入）。压缩后接手时按本段问一句，不要自己猜。
 
 ---
 
@@ -130,7 +130,7 @@ API 文档：`http://127.0.0.1:7860/api/docs`。
 > 含收敛判据、先证伪再建设的顺序、每轮循环协议、反作弊条款与收尾产物要求。
 
 ```bash
-cd server && uv run pytest tests -q                       # 428 passed（collected 428 = unit 388 + integration 33 + BDD 7；2026-11-06 晚，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；整夜 R2 时是 396/356，+32 = H1×2 + H2×3 + H3×6 + H9×3 + H5×5 + H10×13）
+cd server && uv run pytest tests -q                       # 446 passed（collected 446 = unit 406 + integration 33 + BDD 7；2026-11-07 晨实测两遍 187.0s/185.4s，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；上批 2026-11-06 晚是 428/388，+18 = H8 静态防线 13（test_h8_fr40_fr41_frontend 10 + test_h8_scratch_state_bodies 3）+ 既有文件 5，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；整夜 R2 时是 396/356，+32 = H1×2 + H2×3 + H3×6 + H9×3 + H5×5 + H10×13）
 cd .. && uv run --project server python scripts/e2e_ui.py  # UI 8 场景 ~16s
 uv run --project server python scripts/e2e_onboarding.py   # FR-31 UI 冒烟
 uv run --project server python scripts/smoke_m1.py         # 46 / 93
@@ -429,7 +429,7 @@ uv run --project server python scripts/verify_p1_governance.py
 | R2.0 档位 | `r2-profiles` → `426aa20` |
 | R2.0 Job/恢复 | `r2-jobs` → `f5d5de1` |
 | R2.0 黄金 | `r2-golden` → `371ea4b` |
-| 测试 | **428 passed（collected 428 = unit 388 + integration 33 + BDD 7；2026-11-06 晚，dev 在跑也 0 skipped 0 xfailed；整夜 R2 时 396/356，+32 = H1×2 + H2×3 + H3×6 + H9×3 + H5×5 + H10×13）**；integration 已隔离（独立临时 uvicorn/HOME/workspace）。[test_p1_foundations.py:234](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L234) 的 8787 占用门控已按 A8 去除（改绑空闲端口，dev 在跑不再 skip） |
+| 测试 | **446 passed（collected 446 = unit 406 + integration 33 + BDD 7；2026-11-07 晨实测两遍 187.0s/185.4s，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；上批 2026-11-06 晚是 428/388，+18 = H8 静态防线 13（test_h8_fr40_fr41_frontend 10 + test_h8_scratch_state_bodies 3）+ 既有文件 5，dev 在跑也 0 skipped 0 xfailed；整夜 R2 时 396/356，+32 = H1×2 + H2×3 + H3×6 + H9×3 + H5×5 + H10×13）**；integration 已隔离（独立临时 uvicorn/HOME/workspace）。[test_p1_foundations.py:234](file:///Users/litianyu/cc-projects/ai-v/filmflow/server/tests/unit/test_p1_foundations.py#L234) 的 8787 占用门控已按 A8 去除（改绑空闲端口，dev 在跑不再 skip） |
 | 本轮 P1 治理 | master `68627d1..9bc0f95`（9 提交）；**未打新 tag** |
 | 判官复核 + B1–B8 | `07f9487` 判官报告 → `7d5b6e4` B1 → `9dfdff9` B2 → `dbc208a` B3 → `fb15d58` B4 → `5c4c727` docs → `a324415` B5 → `63d37c0` B6 → `8ca3e01` golden → `74f85da` docs → `7b06432` #6 → `77c1ab5` #10 → `e896a78` #9 污染面 → `a8818b9` B7 → **`36411bf` B8（P1-23 收尾）**；全部已推 public；`044ff59..280cd7f` 是专家整夜 11 提交（结论被推翻） |
 | 公开仓库 | `git@github.com:leechunwoo0815/filmflow`（master 已同步；公钥已配） |
@@ -661,6 +661,8 @@ PASS: R2.5 FR-28 40s 交付验收通过（run 305.4s / delivery 190.0s）
 100 场景已用重写后的 `e2e_timeline_100.py` **有效实测**两次（正向播放 + ops/autosave 真路径 + 时钟比诊断）：首屏 951/1640ms、rAF 50.6 次/秒、ops p95 13.3–19.3ms、autosave 758–775ms → 两次都判暂不虚拟化（headless rAF ≠ 用户帧率，详见 §9-16）；
 FR-38 没有音频波形对齐/帧差图，只做视频同步 + difference 叠加；FR-35 SFX 已随 FR-36 完成；
 FR-37 模板/系列 v1 已完成；**FR-39（R3.5 QA）已交付**（`3bb81a0` / tag `r3.5-qa`），FR-40/41 未开始。
+> **2026-11-06 更新（此句已过期）**：FR-40/41 **后端已交付并提交**；**前端（H8）代码与守卫已写完、整批未提交**，
+> 纯键盘验收跑到 42 步全绿但未 PASS。当前口径见 §0「我停在哪一句」与 `docs/process/handoff-prompt-h8.md`。
 
 ### 3.6 FR-36 资产库 v1（2026-11-03）
 
@@ -938,7 +940,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
 - [x] FR-27 音频 Take/波形/对齐/许可/Stems/G06（DONE）
 - [x] FR-28 16:9+9:16+SRT+封面+QC+zip；R2.5 5s 26.2s / 40s 190.0s（2.8.0 5s 24.1s）
 - [x] FR-31 模板音频占位/标题预演/只读示例/Studio 引导（DONE）
-- [x] 102 tests（R2.5 收口时；**现值 428 passed（collected 428 = unit 388 + integration 33 + BDD 7；2026-11-06 晚，0 skipped 0 xfailed；整夜 R2 时 396/356）**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
+- [x] 102 tests（R2.5 收口时；**现值 446 passed（collected 446 = unit 406 + integration 33 + BDD 7；2026-11-07 晨实测两遍 187.0s/185.4s，dev 在跑也 0 skipped 0 xfailed——A8 已去除 8787 门控；上批 2026-11-06 晚是 428/388，+18 = H8 静态防线 13（test_h8_fr40_fr41_frontend 10 + test_h8_scratch_state_bodies 3）+ 既有文件 5，0 skipped 0 xfailed；整夜 R2 时 396/356）**）、E2E、干净 rumor 46/46 回归（run 222，90.6s；口径为 20 succeeded + 26 cached）
 - [x] 交付与 G07 关系有明确记录（ADR-0007；G07 master QC + Delivery 显式作业）
 - [x] R2.5 DoD 全绿；R3.0 v1 已开始且未回退 R2
 
@@ -957,7 +959,7 @@ docs → Run 快照 → A01 → B02/B06/B07 → C01/C02/C03/C04/C05
    3. ~~#10 / 文档一致性守卫~~ ✅ [scripts/check_docs_consistency.py](file:///Users/litianyu/cc-projects/ai-v/filmflow/scripts/check_docs_consistency.py)：机检 `EXECUTOR_VERSION`、迁移登记、pytest collected 用例数、生产库项目数、一键复核步数，外加一批「已经反了」的作废说法黑名单（`foreign_keys 仍关闭`、`没有 DELETE /projects 端点`、旧测试数）。**它已经抓出我自己文档里的 9 处漂移**（含 2 处 2.11.0 残留、2 处历史跑分写成 `N passed`）。约定随之确立：`N passed` 只指当前实测，历史值写中文。
    4. ~~**P1-23**：剩余 31 处裸 dict 请求体 + 已模型化端点缺 happy-path~~ ✅ **B8 已闭合**：`grep -c "payload: dict" server/app/api/routes.py` 现在是 **0**，51 个写端点全部收 Pydantic 模型（反射守卫 = 一键复核第 15 项 + `test_request_models_batch3.py`）；happy-path 由 14 条真 uvicorn 集成测试补齐（模板/系列/克隆、音频 8 端点全链、审片、Take、QA extend_scene→撤销、资产、编排、导入）。实测：`verify_r3_audio_v2` PASS（run 334 wall 77.6s、G01/G05/G06/G07 全绿、-13.8 LUFS）、`verify_r3_takes` PASS（project 251、run 335/336、分支 337、采纳逐字节比对）。
    5. **运维/工程债**：`retry_wait` 僵尸作业（现 **11 条**，全 `E_RUN_BLOCKED`）过期回收；**僵尸 `draft`（88 条 root 已不存在）**——`_acceptance.destroy()` 已止血（回收自己的），历史残留待一次独立清理决定；**P1-20** CI（pytest + ruff + 一键复核）；**P1-21** fresh-clone bootstrap（原帧锚已入 git，缺风格库/rumor-39s/Chrome/ffmpeg 的接线脚本）。
-4. 之后 **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**——老板已点头，但我按上面顺序做完再开；未开始不虚报。
+4. ~~之后 **FR-40 命令面板与通知** / **FR-41 本地规则式创作辅助**~~ —— 老板已点头，Wave H（H1–H7/H9/H10）先做完并已提交；**现在正做 H8 前端**：代码与守卫写完、整批未提交，唯一未闭项与收口步骤在 `docs/process/handoff-prompt-h8.md` §5–§8。**没到 PASS + 没提交之前，这条不算完成。**
 4. FR-36/37/39 v1 已完成（§3.6–§3.8、ADR-0010/0011/0012）；其边界见 §9。
 5. **不要提前做 R4**（批量 CSV/多规格矩阵/平台发布/photo 引擎）。
 
@@ -1069,7 +1071,7 @@ curl -s http://127.0.0.1:7860/api/queue
     残留的 `it-*` 历史行是修复前产生的（其中 8 行 root 已不存在，见 §7.4），删除需老板点头。
 12. **F02 固定 9222**：端口被占会启动失败；排查 `lsof -i :9222`。
 13. **UI i18n**：新页面中文优先；不要破坏既有 zh/en 切换。
-14. **R3.5 未含**：FR-40/41 与 R4；不要把未开始项写成已完成。FR-36/37/39 v1 已做。
+14. **R3.5 含**：FR-39 已交付；FR-40/41 后端已交付，前端（H8）代码写完但**整批未提交、键盘验收未 PASS** → 在提交前仍按"未收口"对待，不要把 `git status` 里的未跟踪文件当成已完成项。FR-36/37/39 v1 已做。
 15. **时间轴撤销**：UI 历史 50 步；30 步只验证了文档版本恢复；长链 UI 连点未自动化。
 16. **时间轴性能**：100 场景 ops 服务端 <0.2s；**浏览器 60fps 从未有效实测**——`scripts/e2e_timeline_100.py` 按的是 `j`（反向播放，播放头立刻归零停 rAF），还绕开 ops 走 `PUT /docs/timeline`，断言里有 `or longTaskCount >= 0` 恒真项。**任何"因此不需要虚拟化"的结论都不成立**（判官 P1-5，见 §6.5 B6-2）。
 17. **审片批注**：项目级 review.json（不按 Run 分桶）；Take 对比已做，但无音频波形对齐与帧差图。
@@ -1126,7 +1128,7 @@ curl -s http://127.0.0.1:7860/api/queue
 ## 10. 接手检查表（第一小时）
 
 - [ ] `./dev.sh`（或按 §0.7 配方重启）；`/api/health`、`:3000` 正常。
-- [ ] `cd server && uv run pytest tests -q` → **428 passed（collected 428 = unit 388 / integration 33 / BDD 7，实测 198.2s）**；dev 在跑也 0 skipped（A8 已去除 `test_p1_foundations.py` 的 8787 门控；`check_docs_consistency.py` 按 `passed + skipped == collected` 校验）。
+- [ ] `cd server && uv run pytest tests -q` → **446 passed（collected 446 = unit 406 / integration 33 / BDD 7，实测 187.0s/185.4s 两遍一致，2026-11-07 晨）**；dev 在跑也 0 skipped（A8 已去除 `test_p1_foundations.py` 的 8787 门控；`check_docs_consistency.py` 按 `passed + skipped == collected` 校验）。
 - [ ] 连跑两次上面这条，`GET /api/projects` 计数不变（当前 11）——这是 P0-3 的核心验收。
 - [x] `uv run --project server python scripts/verify_p1_governance.py` → **16 项全 ✓**（3b 帧网格、9 删除面、10 文件响应策略、11 原子写、12 版本链、**14 验收零演示污染、15 写端点全部模型化**；见 §0.6.3）。
 - [ ] `uv run --project server python scripts/e2e_error_visibility.py` → 异步失败真的落到界面上（B5/P1-6 的唯一真机证据）。

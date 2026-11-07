@@ -157,8 +157,13 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
           {items.map((s) => {
             const cb = cornerBadge(s);
             return (
-              <div key={s.id} data-testid={`style-card-${s.id}`}
-                className={`card cursor-pointer hover:border-dim relative ${primary === s.id ? "border-gold ring-1 ring-gold" : ""} ${tray.some((t) => t.id === s.id) ? "border-cyan" : ""}`}
+              // 键盘可达（H8 实测缺口）：这里原来是 <div onClick>，Tab 走不到、Enter 也不响应，
+              // 于是"选主风格"这一步对视障用户完全不可操作——e2e_fr40_keyboard 第一次纯键盘跑就卡在这。
+              // 改成真 <button>：Enter/Space 由浏览器原生处理，语义与状态都能被读屏播报。
+              <button type="button" key={s.id} data-testid={`style-card-${s.id}`}
+                aria-pressed={primary === s.id}
+                aria-label={`风格 ${s.id} ${s.name}`}
+                className={`card cursor-pointer text-left hover:border-dim relative ${primary === s.id ? "border-gold ring-1 ring-gold" : ""} ${tray.some((t) => t.id === s.id) ? "border-cyan" : ""}`}
                 onClick={() => setDetail(s)}>
                 <div className="aspect-video bg-panel2 relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -173,7 +178,7 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
                     {badges3(s).map((b) => <span key={b} className="badge border-line text-dim">{b}</span>)}
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -199,9 +204,9 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
               {detail.missing_fields?.length > 0 && <Row k="缺失字段" v={detail.missing_fields.join("、") + "（estimated）"} />}
             </dl>
             <div className="flex flex-col gap-2 mt-4">
-              <button className="btn" onClick={() => toggleTray(detail)}>加入对比（托盘 {tray.length}/4）</button>
-              <button className="btn" onClick={() => similar(detail)}>相似风格</button>
-              <button className="btn-amber" onClick={() => setPrimaryStyle(detail)}>设为主风格</button>
+              <button className="btn" data-testid="style-tray-add" onClick={() => toggleTray(detail)}>加入对比（托盘 {tray.length}/4）</button>
+              <button className="btn" data-testid="style-similar" onClick={() => similar(detail)}>相似风格</button>
+              <button className="btn-amber" data-testid="style-set-primary" onClick={() => setPrimaryStyle(detail)}>设为主风格</button>
               {detail.tokens_status !== "complete" && (
                 <a className="btn text-center" href="/labeling">加入补标队列 →</a>
               )}

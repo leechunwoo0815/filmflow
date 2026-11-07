@@ -108,6 +108,12 @@ function CanvasInner() {
 
   return (
     <main className="h-screen flex flex-col">
+      {!!pendingGates.length && (
+        <a href="#gate-panel" data-testid="skip-to-gates"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 btn">
+          跳到待办门（{pendingGates.length}）
+        </a>
+      )}
       <header className="flex flex-wrap items-center gap-2 p-3 border-b border-line">
         <a className="btn" href="/">{t("nav.back")}</a>
         <span className="font-semibold shrink-0">Run {runId}</span><span className="shrink-0"><LangToggle /></span><span className="shrink-0"><ThemeToggle /></span>
@@ -136,12 +142,13 @@ function CanvasInner() {
       <div className="flex-1 flex min-h-0">
         <div className="flex-1" data-testid="node-canvas">
           <ReactFlow nodes={rfNodes} edges={rfEdges} fitView proOptions={{ hideAttribution: true }}
+            edgesFocusable={false}
             onNodeClick={(_, n) => setSelected(graph.nodes.find((x: any) => x.id === n.id))}>
             <Background color="rgb(var(--line))" gap={18} />
             <Controls />
           </ReactFlow>
         </div>
-        <aside className="w-80 border-l border-line p-3 overflow-y-auto text-sm">
+        <aside id="gate-panel" tabIndex={-1} className="w-80 border-l border-line p-3 overflow-y-auto text-sm">
           {/* 待批准门 */}
           <h3 className="font-semibold mb-2">{t("cv.pendingGates")}{pendingGates.length}）</h3>
           {pendingGates.map((g) => (
@@ -153,9 +160,22 @@ function CanvasInner() {
               {g.comments && (
                 <div className="text-xs text-gold mt-1">批注：未解决 {g.comments.open} / 共 {g.comments.total}</div>
               )}
+              {/* 前置条件由后端算好随门带出（_gate_precheck 同一条判据）：
+                  按钮 disabled + 一句"还差什么"，比让用户点下去收一条 400 诚实。 */}
+              {g.precheck && (
+                <p className="text-xs text-red mt-1" data-testid={`gate-precheck-${g.gate}`}>
+                  批准前置未满足：{g.precheck}
+                </p>
+              )}
               <div className="flex gap-2 mt-2">
-                <button className="btn-primary" onClick={async () => { await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: runId, decision: "approved", author: "local", note: "", checklist: [] }) }); load(); }}>{t("cv.approve")}</button>
-                <button className="btn" onClick={async () => {
+                <button className="btn-primary" data-testid={`gate-approve-${g.gate}`}
+                  disabled={!!g.precheck}
+                  aria-label={`批准 ${g.gate} 门`}
+                  onClick={async () => { await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: runId, decision: "approved", author: "local", note: "", checklist: [] }) }); load(); }}>{t("cv.approve")}</button>
+                <button className="btn" data-testid={`gate-reject-${g.gate}`}
+                  aria-label={`驳回 ${g.gate} 门`} onClick={async () => {
+                  // 注意：这里用 window.prompt 收驳回理由，headless 浏览器会自动 dismiss，
+                  // 所以自动化验收走"批准"这条路径；改成页面内输入框是 a11y/自动化的待办项。
                   const note = prompt(t("cv.rejectPrompt"));
                   if (note === null) return;
                   await api(`/gates/${g.gate}/decide`, { method: "POST", body: JSON.stringify({ run_id: runId, decision: "rejected", author: "local", note }) });

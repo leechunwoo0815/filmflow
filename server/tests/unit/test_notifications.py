@@ -44,11 +44,28 @@ def test_mark_read_and_read_all(iso_home):
 
 
 def test_failed_notification_carries_repair_entry(iso_home):
-    """PRD 验收③：失败通知带修复入口。"""
-    x = svc.run_finished(9, "测试片", ok=False, detail="失败节点：F03")
+    """PRD 验收③：失败通知带修复入口，而且**链接真的能打开画布**。"""
+    x = svc.run_finished(9, "测试片", ok=False, detail="失败节点：F03", project_id=4)
     assert x is not None
-    assert x["action"] == {"kind": "open_canvas", "runId": 9}, "失败通知必须带修复动作"
+    assert x["action"] == {"kind": "open_canvas", "runId": 9, "projectId": 4}, "失败通知必须带修复动作"
     assert x["link"], "失败通知必须带跳转"
+    # 链接口径回归（FR-40 前端接线时实测发现的）：页面读 ?project=/?run=，
+    # 旧写法 `?projectId=&runId=` 点进去正好落在 canvas 的「缺 project 参数」白屏上。
+    assert x["link"] == "/canvas?project=4&run=9", x["link"]
+
+
+def test_gate_notification_link_carries_project(iso_home):
+    """待门通知的入口同理：project 与 run 都要在链接里，否则"打开画布签门"是句空话。"""
+    x = svc.gate_pending(11, "B08", "测试片", project_id=7)
+    assert x["link"] == "/canvas?project=7&run=11", x["link"]
+    assert x["action"]["gate"] == "B08"
+
+
+def test_link_degrades_to_run_only_when_project_missing(iso_home):
+    """取不到项目 id 时链接仍要可用（只带 run），不能拼出 `project=` 空值那种假链接。"""
+    x = svc.run_finished(12, "测试片", ok=False, project_id=None)
+    assert x["link"] == "/canvas?run=12", x["link"]
+    assert "project=" not in x["link"]
 
 
 def test_trim_keeps_unread_never_dropped(iso_home):

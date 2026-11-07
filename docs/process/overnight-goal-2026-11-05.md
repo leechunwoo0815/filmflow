@@ -150,14 +150,17 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 - 进度中心：所有 job 的进度/ETA/取消；后台运行不阻塞编辑。
 - 离线可用；无推送、无邮件。
 - **验收（原文三条，必须有证据）**：① 20 个核心命令可在面板搜到并执行；② **全流程纯键盘**（建项目→改→预览→跑→批门→导出）；③ 通知不重复/可已读/失败带修复入口。
+  ✅ **已交付（2026-11-07，H8 批）**：① 24 条命令注册表（`web/src/lib/commands.ts`）逐条面板打字命中（attempt 17 第 9 步）；② `scripts/e2e_fr40_keyboard.py` **attempt 17 PASS：49 步全绿、exit 0**——纯键盘建项目→改→预览→跑→批 7 门（+A05 自动携带）→交付 6 产物（含 captions.zh.srt）；③ 通知去重/已读 6 条单测 + 修复入口链接口径 3 条单测 + e2e 第 4-6 步铃铛键盘路径。
 - **证据形式**：新增 `scripts/e2e_fr40_keyboard.py`（系统 Chrome + **键盘输入**，React 19 的 `fill()` 不触发 onChange），
   真跑并贴逐步输出；命令清单与快捷键表落 `web/src/lib/commands.ts`（或等价）并可被测试枚举；
   通知去重/已读要既有单测也有 e2e 断言。后端若新增端点：**必须 Pydantic 请求模型**（反射守卫会拦裸 dict）。
+  ✅ 逐步输出落档 [`docs/reports/h8-fr40-keyboard-e2e.md`](../reports/h8-fr40-keyboard-e2e.md)（attempt 17 全文）；静态防线 10 条 `test_h8_fr40_fr41_frontend.py`；零鼠标 48 步、浏览器 389 请求非环回 0、API 进程外呼 0（第 47/48 步）。
 
 ### FR-41 本地规则式创作辅助（P1 / R3.5）
 - 断句 / 场景建议（4–6 场，给理由）/ 组件建议（关键词→组件，给匹配词）/ 镜头建议（2–3 预设，不自动应用）/ 读时校验（建议时长 + 最短可读）/ 规则表可导出 / 建议以**草稿层**呈现，接受才写入、拒绝不留痕。
 - **不生成内容、不联网、不写文案**；建议必须可解释、可拒绝。
 - **验收（原文四条）**：① 粘贴 300 字 → **1s 内**给 4–6 场景建议 + 每场理由（要有计时证据）；② 每条可接受/拒绝/编辑，接受后只影响对应场景；③ 断网可用、进程无外部请求（给证据：单测断言无 socket / `lsof -i` 快照 / 代码审计三选一并说明）；④ 建议不改原文、只改结构（给 diff 证据）。
+  ✅ **已交付（2026-11-07，H8 批）**：① 292 字 → 6 场带理由、链路 27ms（attempt 17 第 10-11 步；单测计时断言 <1s）；② 草稿层 S01 拒不留痕 + S03 改 4.5s + 单场采纳 S05=6.0 共存共 5 场（第 13-15 步 + 库侧回读逐键比对）；③ 单测审计零网络 import + e2e 第 47/48 步实测浏览器 0 非环回、API 进程 0 外呼；④ brief 外逐键相等（第 13 步）+ 断句重组逐字等于原文（第 12 步）。
 - **落点建议**：`server/app/services/authoring.py`（新）+ `/projects/{id}/suggest/*` 端点（Pydantic 模型）+ `web/src/app/editor` 或新页；规则表导出到项目 `card/authoring-rules.json`（走 `write_atomic`）。
 - **口径纪律**：读时/语速必须复用 `timeline_ops.READ_CPS=5.2` 与 `engine/fpscalc`，**不许另立口径**；场景建议要能直接喂给 `build_timeline_doc` 而不产生 `E_SCENE_READ_OVERFLOW`。
 
@@ -232,6 +235,7 @@ uv run --project server python scripts/check_docs_consistency.py  # 基线：PAS
 | H6 | **小** | **BLE001 只钉不降**：棘轮基线 65/75/77 只保证不涨，没有下降目标；`except Exception` 面广，出问题时最难定位（P2-30 的同类） | `docs/reports/lint-baseline.json` | 给"每批 −5"的下降目标（写进基线 JSON 的 `target` 字段 + 治理断言 `<= target`），首批挑 5 处最有价值的（渲染链与交付门禁里的盲捕）收窄成具体异常类型 |
 | H7 | **小** | **台账可读性**：`轮 1 ·（开发模型从这里开始写）` 空占位与真正的轮 1 同号；轮 0b 之后编号跳 R1…R10 与"轮 N"混用 | `docs/process/overnight-ledger-2026-11-05.md:44` | 删空占位或改标 `轮 1（占位）`；后续统一"轮 N · <Wave 编号> <标题>"；在文件头加一张 R1–R10 → Wave → 提交哈希的索引表（明天我按这张表抽查） |
 | H8 | **结构性缺口（最大的一块）** | **FR-40/FR-41 只有后端纵切**：`scripts/e2e_fr40_keyboard.py` 不存在；命令面板/快捷键表/`?` 帮助/铃铛面板/进度中心/通知 UI 全无；FR-41 草稿层 UI 全无；**a11y 现值仍是 1 处 aria/role**（这三条你们自己已在"诚实边界"里写明，我确认属实） | `web/src/lib/commands.ts`（待建）、`web/src/components/`（面板/快捷键/通知）、`server/app/services/{notifications,authoring}.py`（已就绪） | 今晚做 **FR-40 前端纵切优先**：①20 个命令注册表 + `Cmd/Ctrl+K` 面板（可搜、可执行、键盘可达、`role`/`aria`）；②快捷键表 + 冲突检测 + `?` 视图；③通知中心面板（去重展示、已读、失败通知带"修复入口"跳 QA/delivery）；④进度中心（job 进度/ETA/取消，不阻塞编辑）；⑤`scripts/e2e_fr40_keyboard.py` 真跑**全流程纯键盘**（建项目→改→预览→跑→批门→导出），每步贴输出；⑥a11y 现值从 1 涨到"关键路径全覆盖"并给前后计数。FR-41 前端（草稿层 UI + 接受/拒绝/编辑）次优先，PRD 四条判据里"断网抓包证据"用 `lsof -p <pid>` 快照代替并说明 |
+| **H8 ✅ 已交付** | — | ①-⑥ 全部完成（2026-11-07） | 见 `docs/process/handoff-prompt-h8.md` + `docs/reports/h8-fr40-keyboard-e2e.md` | attempt 17 **PASS（49 步全绿 exit 0）**：24 命令注册表/⌘K 面板/快捷键表+冲突检测/通知中心/进度中心/FR-41 草稿层 UI 全部键盘可达；**a11y aria/role 计数 1→55**；交付出 6 产物含 captions.zh.srt（对齐段一比一回任务场景，G06 偏差=0、max cps=7.47）；A05 自动携带断言现场通过（键盘 7+自动 1=8/8 门）；attempt 13→17 的死因链（键名驼峰/3s 压缩/空文本段/假时刻）全部落档台账轮 18b-19 |
 
 **Wave H 之后仍然悬着的老板决策点（6 个，别自己拍）**：push（现 38 个提交未推）、LICENSE 类型、VACUUM、`?tok=`→header 已完成无需决策、devDependency（a11y lint）、**以及新出现的一个**：`expire_parked` 的 72h 策略在 11-05 22:56 的 dev 重启时**自动收走了 5 条 parked 作业**（4 条 rumor-39s + 1 条演示 188，`app.log` 可查 `expiredParked=[13,48,49,72,80]`，DB 里 `status=canceled/E_JOB_EXPIRED`）。行为符合设计、Run 未受影响（仍 blocked，签门时会重建作业），但**它动的是保护项目的行**——需要老板明确认可"策略可以自动改写保护项目的作业状态"，否则把阈值改成"只收非保护项目"并加守卫。
 

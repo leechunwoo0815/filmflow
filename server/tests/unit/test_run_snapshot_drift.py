@@ -98,6 +98,23 @@ def test_run_retry_refuses_stale_snapshot(tmp_path):
         _cleanup(pid, root)
 
 
+def test_gates_pending_404_for_unknown_run():
+    """H8 期间实测发现的同类漏网：`GET /gates/{未知 run}/pending` 原来 AttributeError → 500。
+
+    画布/通知链接在 Run 被删之后仍会打这个接口，500 让用户以为系统坏了，
+    而真相只是"这个 Run 不在了"。与 test_run_retry_404_for_unknown_run 同一口径（直接调路由函数）。
+    """
+    import asyncio
+
+    from app.errors import ApiError
+    from app.api import routes as routes_mod
+
+    with Session(engine) as s:
+        with pytest.raises(ApiError) as ei:
+            asyncio.run(routes_mod.gates_pending(999999, session=s))
+        assert ei.value.status_code == 404
+
+
 def test_run_retry_404_for_unknown_run():
     with Session(engine) as s:
         with pytest.raises(ApiError) as ei:

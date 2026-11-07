@@ -91,6 +91,61 @@ def test_zombie_draft_counted_and_named(ws):
             s.commit()
 
 
+def test_cleanup_track_draft_reclaims_step_one_drafts(ws):
+    """H8 实测缺口：向导第 1 步建的草稿 payload 里还没有 root，`destroy()` 的 root 判据永远收不到它。
+
+    `Cleanup.track_draft()` 补的就是这一格——登记过的 id 在退出时必须消失，
+    没登记的不能顺手动（那是用户真的想留的 resumable 草稿）。
+    """
+    sys.path.insert(0, str(SERVER.parent / "scripts"))
+    from _acceptance import Cleanup
+
+    with Session(engine) as s:
+        mine = Draft(name="脚本自建草稿", payload_json={})
+        theirs = Draft(name="用户留着的草稿", payload_json={})
+        s.add_all([mine, theirs])
+        s.commit()
+        ids = (int(mine.id), int(theirs.id))
+    try:
+        with Cleanup(client=None, keep=False) as clean:
+            clean.track_draft(ids[0])
+        with Session(engine) as s:
+            assert s.get(Draft, ids[0]) is None, "登记过的草稿必须被回收"
+            assert s.get(Draft, ids[1]) is not None, "没登记的草稿不许被顺手删掉"
+    finally:
+        with Session(engine) as s:
+            for did in ids:
+                d = s.get(Draft, did)
+                if d is not None:
+                    s.delete(d)
+            s.commit()
+
+
+def test_cleanup_keep_flag_preserves_drafts(ws, capsys):
+    """--keep 是"留现场"的语义：草稿也必须留下，不能一边打印保留一边删掉。"""
+    sys.path.insert(0, str(SERVER.parent / "scripts"))
+    from _acceptance import Cleanup
+
+    with Session(engine) as s:
+        d = Draft(name="keep 现场草稿", payload_json={})
+        s.add(d)
+        s.commit()
+        did = int(d.id)
+    try:
+        with Cleanup(client=None, keep=True) as clean:
+            clean.track_draft(did)
+        out = capsys.readouterr().out
+        assert str(did) in out, out
+        with Session(engine) as s:
+            assert s.get(Draft, did) is not None, "--keep 却删了草稿就是自相矛盾"
+    finally:
+        with Session(engine) as s:
+            row = s.get(Draft, did)
+            if row is not None:
+                s.delete(row)
+            s.commit()
+
+
 def test_draft_points_at_covers_nested_and_listed_paths(tmp_path):
     """H3 的回收条件：路径出现在任意深度/任意键都要认出来（防向导以后挪键名）。"""
     root = tmp_path / "scratch-1"

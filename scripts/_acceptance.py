@@ -148,6 +148,17 @@ class Cleanup:
         self.client = client
         self.keep = keep
         self.tracked: list[tuple[int, Path]] = []
+        self.drafts: list[int] = []
+
+    def track_draft(self, draft_id: int) -> int:
+        """登记脚本自己造出来的向导草稿。
+
+        为什么单列：`destroy()` 的回收判据是"payload 里的 root 指向本项目根"，
+        而向导**第 1 步就建草稿**、那时还没有 root——这类草稿永远匹配不上，
+        于是每跑一次 UI 验收就在库里多一枚（实测 e2e_fr40_keyboard 连跑 3 次积了 5 枚）。
+        """
+        self.drafts.append(int(draft_id))
+        return int(draft_id)
 
     def track(self, pid: int, root) -> int:
         self.tracked.append((int(pid), Path(root)))
@@ -156,10 +167,40 @@ class Cleanup:
     def __enter__(self) -> Self:
         return self
 
+    def _drop_drafts(self) -> None:
+        if not self.drafts:
+            return
+        from app.db import engine
+        from app.models import Draft
+        from sqlmodel import Session
+
+        with Session(engine) as session:
+            dropped = []
+            for did in self.drafts:
+                d = session.get(Draft, did)
+                if d is None:
+                    continue
+                # `stylepick.draft_id` 是指向草稿的外键：向导第 3 步的风格选择就挂在这上面。
+                # 不先解除引用会撞 FOREIGN KEY constraint failed，而那条错误不会告诉你是谁在引用。
+                from app.models import StylePick
+                from sqlmodel import select as _select
+
+                for sp in session.exec(_select(StylePick).where(StylePick.draft_id == did)).all():
+                    sp.draft_id = None
+                    session.add(sp)
+                session.delete(d)
+                dropped.append(did)
+            session.commit()
+        if dropped:
+            print(f"  回收脚本自建草稿 {len(dropped)} 条：{dropped}", flush=True)
+        self.drafts = []
+
     def __exit__(self, exc_type, exc, tb) -> bool:
         if self.keep:
             for pid, root in self.tracked:
                 print(f"  --keep：保留项目 {pid}（{root}）", flush=True)
+            if self.drafts:
+                print(f"  --keep：保留草稿 {self.drafts}", flush=True)
             return False
         for pid, root in reversed(self.tracked):
             try:
@@ -169,6 +210,7 @@ class Cleanup:
             except Exception as e:  # noqa: BLE001 —— 清理失败绝不能盖掉原始异常
                 print(f"  清理失败 project={pid}: {type(e).__name__}: {e}", flush=True)
         self.tracked.clear()
+        self._drop_drafts()
         return False
 
 

@@ -579,6 +579,18 @@ async def _heartbeat_job(job_id: int, owner: str) -> None:
             _log.debug("swallowed exception in _heartbeat_job (except Exception:)", exc_info=True)
 
 
+def _project_ref(session, wf) -> tuple[int | None, str]:
+    """通知要的是**能点开的链接**，所以项目 id 与名字一起取（id 缺就退化成只带 run）。"""
+    try:
+        from ..models import Project
+        if not wf:
+            return None, "-"
+        proj = session.get(Project, wf.project_id)
+        return int(wf.project_id), (proj.name if proj and proj.name else f"project {wf.project_id}")
+    except Exception:   # noqa: BLE001 -- 通知上下文取不到就把链接退化成只带 run，不许拖垮 Run
+        return None, "-"
+
+
 def _project_name_of(session, wf) -> str:
     try:
         from ..models import Project
@@ -640,7 +652,8 @@ async def _run_loop(run_id: int) -> None:
                         _job_finish(job_id, "succeeded", result={"runStatus": "succeeded"})
                         try:
                             from ..services import notifications as notify_svc
-                            notify_svc.run_finished(run_id, _project_name_of(session, wf), True)
+                            _pid, _pname = _project_ref(session, wf)
+                            notify_svc.run_finished(run_id, _pname, True, project_id=_pid)
                         except Exception:   # noqa: BLE001 -- 通知尽力而为，失败只记日志
                             _log.debug("notify run_finished failed", exc_info=True)
                     elif run.status == "failed":
@@ -650,8 +663,9 @@ async def _run_loop(run_id: int) -> None:
                         try:
                             from ..services import notifications as notify_svc
                             fails = ",".join(n for n in N if states[n].status == "failed")
-                            notify_svc.run_finished(run_id, _project_name_of(session, wf), False,
-                                                    detail=f"失败节点：{fails}")
+                            _pid, _pname = _project_ref(session, wf)
+                            notify_svc.run_finished(run_id, _pname, False,
+                                                    detail=f"失败节点：{fails}", project_id=_pid)
                         except Exception:   # noqa: BLE001 -- 通知尽力而为，失败只记日志
                             _log.debug("notify run_finished failed", exc_info=True)
                     else:
@@ -662,9 +676,9 @@ async def _run_loop(run_id: int) -> None:
                         # FR-40：人工门待批通知（同 (run,gate) 未读期间去重）
                         try:
                             from ..services import notifications as notify_svc
-                            pname = _project_name_of(session, wf)
+                            _pid, pname = _project_ref(session, wf)
                             for gate in blocked:
-                                notify_svc.gate_pending(run_id, gate, pname)
+                                notify_svc.gate_pending(run_id, gate, pname, project_id=_pid)
                         except Exception:   # noqa: BLE001 -- 通知尽力而为，失败只记日志
                             _log.debug("notify gate_pending failed", exc_info=True)
                     emit("run.finished", run_id, status=run.status)

@@ -1570,7 +1570,12 @@ def _gate_precheck(session: Session, run_id: int, gate_id: str) -> str | None:
 async def gates_pending(run_id: int, session: Session = Depends(get_session)):
     """当前等待批准的门 + 其 checklist。"""
     run = session.get(Run, run_id)
+    if not run:
+        # 未知 Run 是 404 而不是 AttributeError 冒到 500：与 /runs/{id}/report、/runs/{id}/retry 同一口径
+        raise not_found("run")
     wf = session.get(Workflow, run.workflow_id)
+    if not wf:
+        raise not_found("workflow")
     states = {r.node_id: r for r in session.exec(select(NodeRun).where(NodeRun.run_id == run_id)).all()}
     proj_root = re_mod._project_root(session, run)
     graph = wf.graph_json or {}
@@ -1629,6 +1634,9 @@ async def gates_pending(run_id: int, session: Session = Depends(get_session)):
                         except Exception:
                             diff = {}
                 item["review"].update({"stills": stills, "contactSheet": contact, "diff": diff})
+        # 批准前置与 decide 用**同一个函数**算出来再随门给出：UI 只负责显示，
+        # 不另写一套判据（否则判据分叉，用户点下去只收到一句 400）。
+        item["precheck"] = _gate_precheck(session, run_id, gid)
         out.append(item)
     return {"items": out}
 
@@ -2802,6 +2810,18 @@ async def suggest_scenes(project_id: int, payload: SuggestIn):
     """粘贴文案 → 断句 + 4–6 场建议（每场带理由/组件/镜头/读时校验）。草稿层：不改原文。"""
     from ..services import authoring
     _ = project_id          # 建议只依赖文本；挂在项目下是为了落草稿层与权限口径
+    return authoring.suggest(payload.text)
+
+
+@router.post("/authoring/suggest")
+async def suggest_scenes_free(payload: SuggestIn):
+    """同一份建议引擎的**无项目**入口（FR-41 前端要它）。
+
+    为什么要有第二个入口：向导第 1 步用户还没有项目——`/projects/{id}/suggest` 在这里没有 id 可给。
+    与其让前端骗一个 id 过去，或让建议引擎分叉成两份实现，不如两个路由指向同一个
+    `authoring.suggest()`：规则表、断句口径、读时校验只有一份真源。
+    """
+    from ..services import authoring
     return authoring.suggest(payload.text)
 
 

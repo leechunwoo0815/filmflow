@@ -21,9 +21,9 @@
   "F821": 0
  },
  "a11y": {
-  "warn": 60,
+  "warn": 58,
   "error": 0,
-  "note": "2026-11-06 建立；P2-15 棘轮，只许降不许涨；降了要 --update 写回"
+  "note": "2026-11-06 建立于 60；H8 把 StylePicker 风格卡从 <div onClick> 改成真 <button>（键盘可达）→ 60→58，用 --update 钉住；只许降不许涨，降了要 --update 写回"
  },
  "BLE001target": {
   "serverCwd": 54,

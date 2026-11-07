@@ -113,21 +113,37 @@ def mark_all_read() -> int:
         return n
 
 
-def run_finished(run_id: int, project_name: str, ok: bool, detail: str = "") -> dict | None:
+def _canvas_link(project_id: int | None, run_id: int) -> str:
+    """FR-40"修复入口"的链接口径。
+
+    所有页面读的是 `?project=` / `?run=`（canvas · player · review · qa · delivery 一致），
+    早先这里写的是 `?projectId=&runId=` 而且 projectId 干脆留空——通知**能看不能用**，
+    点进去正好落在 canvas 的「缺 project 参数」白屏上。链接格式属于产品契约，钉在这里。
+    """
+    if not project_id:
+        return f"/canvas?run={run_id}"
+    return f"/canvas?project={int(project_id)}&run={run_id}"
+
+
+def run_finished(run_id: int, project_name: str, ok: bool, detail: str = "",
+                 project_id: int | None = None) -> dict | None:
     """Run 终态通知（runengine 终态时调用）：成功/失败各一条，失败带修复入口。"""
     return notify(
         "run_failed" if not ok else "run_succeeded",
         f"run:{run_id}",
         f"「{project_name}」Run {run_id} {'失败' if not ok else '完成'}",
         detail or ("" if ok else "打开画布查看失败节点"),
-        link=f"/canvas?projectId=&runId={run_id}" if not ok else f"/canvas?projectId=&runId={run_id}",
-        action=None if ok else {"kind": "open_canvas", "runId": run_id},
+        link=_canvas_link(project_id, run_id),
+        action=None if ok else {"kind": "open_canvas", "runId": run_id,
+                               "projectId": project_id},
     )
 
 
-def gate_pending(run_id: int, gate: str, project_name: str) -> dict | None:
+def gate_pending(run_id: int, gate: str, project_name: str,
+                 project_id: int | None = None) -> dict | None:
     """人工门待批通知：同 (run, gate) 未读期间去重。"""
     return notify("gate_pending", f"gate:{run_id}:{gate}",
                   f"「{project_name}」{gate} 待批",
-                  detail="打开画布签门", link=f"/canvas?projectId=&runId={run_id}",
-                  action={"kind": "open_gate", "runId": run_id, "gate": gate})
+                  detail="打开画布签门", link=_canvas_link(project_id, run_id),
+                  action={"kind": "open_gate", "runId": run_id, "gate": gate,
+                          "projectId": project_id})

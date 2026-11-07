@@ -8,7 +8,10 @@ type Artifact = {
   meta_json?: Record<string, any>;
 };
 type Still = { scene: string; t: number; url: string; sha256: string; artifact: number };
-type Gate = { gate: string; title: string; stale?: boolean; checklist?: string[]; review?: any };
+type Gate = {
+  gate: string; title: string; stale?: boolean; checklist?: string[]; review?: any;
+  precheck?: string | null;          // 后端 _gate_precheck 算好的批准前置（页面不另写判据）
+};
 
 function ReviewInner() {
   const params = useSearchParams();
@@ -24,6 +27,10 @@ function ReviewInner() {
   const [compare, setCompare] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  // "已看全"必须是**查过之后**的结论。缺了这一位，页面在 pending/产物还没回来时
+  // missing 是空数组 → 页头直接绿灯"全场景已看"、批准按钮可点，点下去后端回 400
+  // （e2e 第一次纯键盘跑 D03 时实测到的就是这个假象）。
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     if (!runId) return;
@@ -43,6 +50,7 @@ function ReviewInner() {
       setViewed(v.scenes || []);
       setMissing(v.missing || []);
     }
+    setLoaded(true);
   }, [runId, projectId]);
 
   useEffect(() => { load().catch((e) => setMsg(String(e))); }, [load]);
@@ -78,8 +86,15 @@ function ReviewInner() {
     if (!current || !projectId) return;
     api(`/projects/${projectId}/stills/viewed`, {
       method: "POST", body: JSON.stringify({ scene: current.scene, time: current.t }),
-    }).then((r: any) => { setViewed(r.scenes || []); setMissing(r.missing || []); })
-      .catch(() => {});
+    }).then(async (r: any) => {
+      setViewed(r.scenes || []); setMissing(r.missing || []);
+      // 看完一场之后把"门"也重取一次：页头的已看/未看来自 /stills/viewed，
+      // 批准按钮的状态来自 pending 里的 precheck。两处不同步时屏幕上会同时出现
+      // "全场景已看"和"批准前置未满足：未查看场景 S01…"（实测到的自相矛盾）。
+      const p = await api<{ items: Gate[] }>(`/gates/${runId}/pending`);
+      setPending(p.items);
+    })
+      .catch(() => { /* 失败由 api() 的全局横幅播报 */ });
   }, [current, projectId]);
 
   useEffect(() => {
@@ -114,17 +129,30 @@ function ReviewInner() {
         <a className="btn" href={`/canvas?project=${projectId}&run=${runId}`}>← 画布</a>
         <h1 className="text-xl font-semibold">静帧审阅 · Run {runId}</h1>
         <span className="text-dim text-sm">{stills.length} 张 / {new Set(stills.map(s => s.scene)).size} 场景</span>
-        <span className={missing.length ? "text-red" : "text-green"}>
-          {missing.length ? `未看：${missing.join(", ")}` : "全场景已看"}
+        <span data-testid="review-view-state" className={
+          !loaded ? "text-dim" : missing.length ? "text-red" : "text-green"}>
+          {!loaded ? "审阅状态载入中…"
+            : missing.length ? `未看：${missing.join(", ")}` : "全场景已看"}
         </span>
-        <span className="ml-auto flex gap-2">
-          {pending.find((g) => g.gate === "D03") && (
-            <button className="btn" disabled={busy || missing.length > 0} onClick={() => decide("D03")}>
-              批准 D03
-            </button>
-          )}
+        <span className="ml-auto flex items-center gap-2">
+          {(() => {
+            const d03 = pending.find((g) => g.gate === "D03");
+            if (!d03) return null;
+            return (
+              <>
+                {!!d03.precheck && (
+                  <span className="text-xs text-red" data-testid="review-precheck">
+                    批准前置未满足：{d03.precheck}
+                  </span>
+                )}
+                <button className="btn" disabled={busy || !!d03.precheck}
+                  onClick={() => decide("D03")}>批准 D03</button>
+              </>
+            );
+          })()}
           {reviewGate && (
-            <button className="btn" disabled={busy || missing.length > 0} onClick={() => decide("D05")}>
+            <button className="btn" disabled={busy || !!reviewGate.precheck}
+              onClick={() => decide("D05")}>
               批准 D05
             </button>
           )}

@@ -228,16 +228,26 @@ def wav_b64(freq: int, seconds: float = 2.0) -> str:
     return base64.b64encode(p.read_bytes()).decode()
 
 
+def audio_upload_body(kind: str, scene_id: str, i: int, data_b64: str) -> dict[str, Any]:
+    """音频上传的请求体单独成一个函数，是为了能被 Pydantic 模型**直接校验**。
+
+    B8 之后 `sceneId` 是 `str`（默认 ""），而这里的老写法给非 voice 传 None → 422。
+    这种"前置态构造器与请求模型分叉"只有真跑到才会暴露（本批 e2e 实测抓到），
+    所以把形状抽出来交给单测钉住，而不是等下一次整夜。
+    """
+    return {"filename": f"{kind}-{i}.wav", "data": data_b64, "kind": kind,
+            "sceneId": scene_id or "", "name": f"{scene_id or 'music'} take {i}"}
+
+
 def build_audio_state(c, pid: int, *, kinds: tuple[str, ...] = ("voice", "voice", "music")) -> dict[str, Any]:
     """/audio 页冒烟的前置态：≥2 条口播 Take，其中一条已处理。"""
     content, _v = timeline(c, pid)
     scenes = content["scenes"]
     take_ids: list[int] = []
     for i, kind in enumerate(kinds):
-        scene_id = scenes[i % len(scenes)]["id"] if kind == "voice" else None
-        body = req(c, "POST", f"/projects/{pid}/audio/upload", {
-            "filename": f"{kind}-{i}.wav", "data": wav_b64(220 + 110 * i),
-            "kind": kind, "sceneId": scene_id, "name": f"{scene_id or 'music'} take {i}"})
+        scene_id = scenes[i % len(scenes)]["id"] if kind == "voice" else ""
+        body = req(c, "POST", f"/projects/{pid}/audio/upload",
+                   audio_upload_body(kind, scene_id, i, wav_b64(220 + 110 * i)))
         take_ids.append(body["take"]["id"])
         if scene_id:
             req(c, "POST", f"/projects/{pid}/audio/scene-primary",

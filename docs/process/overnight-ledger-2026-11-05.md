@@ -28,6 +28,12 @@
 | 轮 14 | H9 CI 双 job + ast 标记守卫 | `4766e27` | 本机复刻 CI：367 passed + 10 deselected（无 ffmpeg 环境） |
 | 轮 15 | H9 CI 首绿 + H4 bootstrap 双口径 | `ba6bac3` | **run 42170418486 ci-lean = success**；bootstrap 四种退出码实测 |
 | 轮 16 | H5 黄金证据 churn（治理第 19 项）+ H7 本索引表 | 本轮 | keep=20 只裁报告不碰锚；被裁必留 sha256 |
+| 轮 17 | H6 BLE001 下降目标 + 回填基线自身失真 | `17d5550` | 基线原写 65/75/77、HEAD 实测 60/70/70——**数字与事实分叉**才是真问题；收窄后 54/64/64 |
+| 轮 18 | H10 环境漂移诊断 + 重锚理由互证（含两处自错勘误） | `ae2548c` | 恒 exit 0（老板明令不许锁死整夜循环）；说不出差异的"环境变了"不算理由 |
+| 轮 18b | **H8 被打断处的交接**（zcode 接手包 + 键盘验收实测落档） | 未提交 | attempt 13：42 步全绿 / 7 道人工门键盘签完 / Run `succeeded`；唯一未闭＝脚本读错返回键名（#98 证据口径见 18c 更正） |
+| 轮 18c | **交接包审计**（zcode 复核）＋ A05 悬问闭环 ＋ 证据指针更正 | 未提交 | §3 八条全对上；A05＝`_carry_a05_approval` 自动携带**属设计**（库证 approval #502/#447/#402/#394）；job#98 实为 11-03 演示项目 215 旧作业（18c 的「交付成功」结论被 18d 更正：交付真挂了，见轮 18d） |
+| 轮 18d | attempt 14/15/16：交付 QC 真相 ＋ A05 断言现场通过 ＋ 18c 更正 | 未提交 | attempt 14：43 步全绿（A05 现场钉死）但交付 `E_DELIVERY_QC: ['captions']`——3s 压缩 × 292 字 ⇒ cps 97 ≫ 9 必挂；深层死因＝UI 对齐段 text 为空 ⇒ SRT count=0；修法进脚本（去压缩/对齐回旁白真源/超时抬高），产品零改动 |
+| 轮 19 | **H8 收口**：attempt 17 PASS ＋ 446×2 ＋ 治理 19 ＋ 本批提交 | 本轮 | e2e 49 步全绿 exit 0（交付 6 产物、A05 现场钉死、零鼠标零外环回）；pytest 446 passed 两遍一致；治理/棘轮/a11y/tsc 全绿；守卫 PASS |
 
 > 说明（H7 要求的编号统一）：`轮 0b` 之后曾有一个空占位标题也叫"轮 1"，已改标 `轮 0c（占位）`；
 > 后续统一 **`轮 N · <Wave 编号> <标题> · 日期`** 一种格式，`R几` 这种混用写法不再新增。
@@ -955,3 +961,214 @@ push `4766e27` 触发 run **42170418486** →
   本轮没做（避免"顺手改一片"把不相关的渲染路径卷进来）。
 - `BLE001target` 与 `BLE001` 基线现在是同一个数（54/64/64），**目标尚未低于现值**；
   "每批 −5"真正生效要到下一批收窄之后。这里没有把它写成"已经在下降"。
+
+---
+
+### 轮 18b · H8 被打断处的交接（zcode 接手包 + 键盘验收实测落档）· 2026-11-06 深夜
+
+**这一轮不是新功能，是把"做到一半"变成"可接任"。** 老板 2026-11-06 晚说了
+`先停，我回家后再做`，goal 已置 **blocked**（恢复要他一句 `/goal resume`）。
+所以本轮只做只读核验与文档，没有再起渲染、没有提交、没有 push。
+
+**为什么必须写交接包**：H8 的代码与守卫已经写完，但**整批未提交**，
+键盘验收跑到历史最远却没打 PASS——这种状态如果被上下文压缩打断，下一个接手者最容易做的事
+就是"看到 42 步全绿就以为交付也绿了"。交接包存在的意义就是把**差的那一步**写在最显眼处。
+
+产出两份：
+
+| 文件 | 内容 |
+|---|---|
+| `docs/process/handoff-prompt-h8.md` | 给 zcode 的完整接手 prompt：角色/硬约束（含本轮踩出的 6 条**环境类**约束）/第一小时只读核验/已做逐条带 file:line/**唯一未闭项的精确修法**/收口顺序/文档同步清单/git add 清单/9 个坑/汇报格式/停止条件/真源索引 |
+| `docs/reports/h8-fr40-keyboard-e2e.md` | attempt 13 的逐步输出 + 库侧独立证据表 + 那条未闭合断言的根因（含"修法不许动产品"） |
+
+发现并补上的**台账自身缺口**：索引表停在轮 16——轮 17（H6）与轮 18（H10）的**正文在、索引行漏了**。
+已补 17/18/18b 三行。这正是 H7 建索引表时要防的那类漂移，只不过漂在索引表自己身上。
+
+本轮另外**实测出来的两个数**（不是推算）：
+
+- `uv run pytest tests --collect-only` → **collected 446**（`unit 406 / integration 33 / BDD 7`，分目录逐个量过）。
+  比上批全量实测的 428 多 **18** = 本批新文件 13（`test_h8_fr40_fr41_frontend.py` 10 + `test_h8_scratch_state_bodies.py` 3）
+  + 既有文件 5（gates_pending 404 一条、通知链接两条、草稿回收两条）。
+  **passed 未复跑**，不许写 446 passed。因此 `check_docs_consistency.py` 现在必然红——
+  文档里 6 处还写着 `428 passed`（`HANDOFF.md:133/432/943/1131`、`AGENTS.md:8/75`）。
+  这恰恰说明守卫在干活：它把"加了测试却没重测"这件事变成了门禁，而不是靠我记得。
+- `GET /jobs/{id}` 返回的是 `table_dict(Job)` → **列名** `error_code`/`error_msg`/`result_json`
+  （`server/app/models.py:287`）。库里 `delivery` 最新作业 **#98 = succeeded**，
+  而键盘 e2e 用驼峰 `errorCode` 与 `result` 去读，于是把一个成功的交付读成了"失败且没有原因（None None）"。
+
+**本轮我自己犯的、值得留在台账里的错**（都是"靠猜不靠量"的同一家族）：
+
+1. 断言写成 `page.wait_for_selector('[data-testid^="toast-"]')` —— toast 容器常驻 DOM，任何一条历史提示都能让它过；
+   这就是 attempt 5 那次"命令一个请求都没发却报绿"的机制。修法是看**文字内容** + 要有**第二个独立信号**（队列计数）。
+2. `lsof` 不带 `-a -p` 去测"进程无外部请求"——测的是整台机器，得到与 FilmFlow 无关的 False。
+3. 猜 `takeId` 是数据库自增 int，还给这条猜写了单测。真形状是 `uuid4().hex[:12]` 字符串
+   （`audio.py:98`，`_take()` 用 `t.get("id") == take_id` 比对）——**是测量把单测纠正的**，
+   最后那条测试改成"传 int 必须被拒 + 为什么拒了也没用"。
+4. `_queue_summary` 的 `counts` 是 `{status: 条数}`，我先写成 `sum(sum(v) for v in counts.values())`——
+   `sum(int)` 当场 TypeError。读代码要读到值的类型，不是读到键名就动手。
+5. 只 kill API 进程想让 uvicorn 重载，`dev.sh` 的 `trap ... EXIT` **连坐杀了 :3000**，
+   下一次 e2e 开局就 `ERR_CONNECTION_REFUSED`。已写进交接包 §2 E1/E2。
+6. 改 `HANDOFF.md` 时我把历史提交哈希 `3bb81a0` 误敲成 `3bb91a0`——
+   这是交接文档里最不该犯的一类错（**证据指针被我说错了**）。同一次编辑里就改了回来，
+   并在台账留这一条：动别人的证据指针时要逐字对，不要用记忆重写。
+
+**没做的（诚实边界，别当成已完成）**：
+
+- 全量 pytest / 19 项治理 / lint 棘轮 / `check_docs_consistency` **本批未复跑**（键盘 e2e 独占 Chrome+ffmpeg，
+  并行跑就是历史上那次"根因是我自己抢资源"的重演）。
+- 键盘 e2e **未 PASS**（差 §5 那条键名）。
+- 人工门只签出 **7 道**（B08/D03/D05/E07/G03/F06/G07），而 `edges.HUMAN_GATES` 实测是 **8 道**
+  （`A05 B08 D03 D05 E07 F06 G03 G07`，本轮用 `uv run python -c` 量过）——**缺的那道是 A05**，
+  它在 attempt 13 里从未进入 `/gates/{run}/pending`。两个候选解释都没验：
+  ① A05 的 `data/trigger` 上游在向导建出来的工作流里从未同时满足（于是"永远不 ready"，也永远不问用户）；
+  ② `policy=inherit` + `content_hash` 跨 Run 复用（`runengine._gate_valid`）把它判成了"已批过"。
+  验法（需要活 Run，接手后一条命令能定）：新建一个 scratch 项目，跑起来之前先
+  `GET /gates/{run}/pending` 与 `GET /runs/{run}/graph` 看 A05 的 `ready/reason` 与 `Approval` 行是否存在。
+  **这不属于"H8 未闭项"，但它是 8+8 门不变量的真实疑问**；接任者若为让它出现而改门表或放宽 e2e 断言，
+  属于**造假绑定**（ADR-0014），必须停下来报告老板。
+  （→ **2026-11-07 轮 18c 已验**：是设计——`_carry_a05_approval` 自动携带，见下。）
+- `next dev` 到 npm registry 的版本检查外呼仍在（`telemetry.enabled=false` +
+  `NEXT_TELEMETRY_DISABLED=1` 没关干净）。产品侧两条判据（浏览器非环回请求 0、API 进程外呼 0）是绿的，
+  工具侧这条只打印不判绿——已如实写进实测报告文末。
+
+---
+
+### 轮 18c · 交接包审计（zcode 复核）＋ A05 悬问闭环 ＋ 一处证据指针更正 · 2026-11-07 晨
+
+**这一轮是审计，不是开发**：老板 morning 后接手包落地，本轮按交接文档 §3 逐条只读复核，
+再顺着 §5b 的悬问往下挖。没有起渲染、没有改产品代码、没有提交、没有 push（老板"先停"仍生效）。
+
+**§3 只读核验逐条对上（全部实测，非转抄）**：
+
+- `git status --porcelain` → **21 M + 10 ?? = 31**；HEAD = `ae2548c`（h10）✓
+- dev 双服务：本轮发现**已随 dev.sh 包装进程退出**（背景任务 exit 1 连坐），已用带毒 NO_PROXY
+  环境重启，`/api/health` = `{"ok":true}`，:7860(Python)+:3000(node) 均监听，web/api 均 200 ✓
+  （这本身又印证了 §2 E2「trap 连坐」：dev.sh 的包装 shell 一死，两个服务一起没）
+- `sqlite3 -readonly` → project **11**；`job where kind='delivery'` 最新 = **98|succeeded** ✓（但见下面更正）
+- `--collect-only` → **446**（unit 406 / integration 33 / BDD 7，分目录逐个量）✓
+- `check_docs_consistency.py` → **FAIL: 文档漂移 4 处**，恰好 `HANDOFF.md:133/432/943 + AGENTS.md:75`，
+  与交接包预告逐字一致 ✓（守卫在干活）
+- 静态防线 `test_h8_fr40_fr41_frontend.py + test_h8_scratch_state_bodies.py` → **13 passed** ✓
+- 两份新文件在案（319 + 75 行）；台账轮 18b + 索引表 17/18/18b 三行 ✓
+
+**§5b A05 悬问闭环（8+8 门不变量疑问解除）**——两个候选解释都没全中，真机制是第三条：
+
+- `runengine.py:510` `_carry_a05_approval`：A04 完成后，若 `meta.style_decision` 非空
+  （向导第 3 步用户亲手选过）或项目是导入，就**在本 Run 内**直接种子
+  `Approval(gate_id="A05", decision="approved", policy="inherit", author="local", note="导入继承原风格")`
+  并 emit `gate.decided … auto=True`（`:524-529`）。不是跨 Run 复用旧 Approval（候选②的
+  `_gate_valid` inherit 通道是另一条真实存在但不相干的路）。
+- 库证：approval **#502**（run 335）/ **#447**（317）/ **#402**（275）/ **#394**（273）
+  全是 A05+inherit+local+「导入继承原风格」。attempt 13 第 18 步键盘走完风格选择 →
+  style_decision 必在 meta → A05 自动携带、从不进 pending → **7 道正是期望行为，设计而非漏签**。
+- 边界如实说：run 336/project 228 库行已被 e2e 登记的 cleanup 删掉，run 级复核只能靠机制+旁证；
+  交接文档 §5 修法里已加两条 A05 断言（`/runs/{run_id}/report` 的 approvals，列名键），下次真跑钉死。
+- 门表 8 道不动（`edges.py:168` 实测不变）、零断言放宽——新增的两条是**加强**。
+  结论报老板裁定：**设计**（风格选择不该在 Run 里二次打断）。
+
+**一处证据指针更正（交接包自己立过规矩：指针错一个字符都不行，这轮轮到审计方犯）**：
+
+- 交接文档 §5 与实测报告证据表原先引「job#98 = succeeded」当 attempt 13 的交付证据——**错了**：
+  #98 属于受保护演示项目 **215（r2_5-delivery）在 2026-11-03 的 run 270**，比 e2e 早三天。
+  e2e 自己那条交付作业已被脚本登记的 cleanup 删除（`project_cleanup.py` 的 `_delete_plan`
+  显式含 `Job`；job 表无外键，是显式删不是级联；实测 11-06 当天 delivery 存活数 = **0**，
+  max(run.id)=335 也证明 run 336 行已不在）。
+  交付成功的**真证据**是运行中 API 回包（断言里 `status` 变量本身就是 `"succeeded"`）。
+  （→ **18d 更正：这句也错了**——回包的 status 是 `failed`，attempt 13 的交付根本没成功，
+  见轮 18d。）
+  已改：交接文档 §3 注释/§5 段落/§7 轮 19 清单 + 实测报告证据表两行 + 本轮在 18b 的 A05 段补了「已验」指针。
+
+**没做的（诚实边界）**：
+
+- 交接包 §5 的键名修法与两条 A05 断言**只写进了文档，没有改 `e2e_fr40_keyboard.py`**（改脚本属于收口动作，
+  且复跑要独占 Chrome/ffmpeg 12–18 分钟——按"先停"留给接手轮）。
+- 全量 pytest passed 仍未复跑（同 18b 理由：e2e 复跑前不抢资源）；446 只是 collected。
+
+---
+
+### 轮 18d · attempt 14/15：交付 QC 真相（3s 压缩必挂字幕判据）＋ A05 断言现场通过 ＋ 18c 结论更正 · 2026-11-07 晨
+
+老板开工令下（"根据当前进度排好开发计划！然后开工！一直到整个项目全部开发完成！"），
+按交接包 §5→§6 顺序收口 H8。本轮全是实测-driven 的修正，产品代码零改动。
+
+**attempt 14（键名修好后的第一次复跑）**：
+
+- ✓ 1–42 步全绿；**第 43 步（新加的两条 A05 断言）现场通过**：
+  `policy=inherit author=local note=对比后选定 · H_现成版式（键盘签 7 + 自动 1 = 8 道门全覆盖）`
+  ——轮 18c 的 A05 结论从"机制+旁证"升级为"活 Run 现场钉死"。
+- ✗ 交付：`E_DELIVERY_FAILED E_DELIVERY_QC: ['captions']`（作业 #158）。
+  **两个先前结论被推翻**：① attempt 13 的「交付成功」是断言语义读反——
+  `assert status=="succeeded"` 挂掉时渲染的正是驼峰键 `None None`，当时 status 就是 `failed`；
+  ② 轮 18c 写的「交付成功的真证据是运行中 API 回包」同样错——回包就是 failed。
+  已在 18c 正文与索引行打上更正指针。
+- **根因（数学，不是运气）**：本批加的「3s 压缩」× 292 字旁白 ⇒ 字幕 cps ≈ 97 ≫
+  `delivery.MAX_CAPTION_CPS=9`，`E_DELIVERY_QC: ['captions']` **必挂**；自然时长 39.5s ≈ 7.4 cps
+  在判据内。attempt 13/14 的交付从来没成功过，被不透明断言藏了两天。
+- 边界如实记：attempt 14 失败后 cleanup 仍把 project/run/作业连库行删了，qc.json 没保住；
+  诊断靠断言里新加的 body 头部 200 字（这正是修键名的价值）。
+
+**修法（全部进 e2e 脚本，产品代码零改动；attempt 15 起生效）**：
+
+1. 去掉 3s 压缩，保留自然时长（292 字 ÷ 9 cps ⇒ 片长须 ≥33s；`pipeline._mix_filter` 的
+   `apad=whole_dur` + 音乐床铺满全片 ⇒ 长片 LUFS 无忧；39.5s/948 帧是 `pipeline.py:289` 的已知档位）；
+2. 键盘保存手动对齐后，把每段 start/end 按 ≤8 字/秒重排（UI 默认槽位按场次均分，
+   字多的场必超 cps；292 字 ⇒ ~36.5s ≤ 39.5s）——**测试数据修进产品判据，不是放宽判据**；
+3. 三处等待按 948 帧口径抬高（240→900、420→900/1500，含交付 9:16 变体 948 帧重渲染）；
+4. A05 两条断言（18c 写的修法，attempt 14 已验证有效）。
+
+**attempt 15（自然时长版）实测：全链新证据 + G06 当场抓住假对齐**：
+
+- ✓ 自然时长链路本身全通：948 帧 F04、16 张静帧（D03 前置翻 15 次）、G05/G06 音频、
+  6/7 道门键盘签完、A05 断言再过（`键盘签 6 + 自动 1 = 8 道门全覆盖`）、
+  零鼠标 46 步、浏览器 371 请求非环回 0、API 进程 ESTABLISHED 0——e2e 诚实 PARTIAL（exit 2）。
+- ✗ Run 终态=failed：`node failed run=336 node=G06: 音画同步偏差 34.700s > 0.15s
+  （alignment.segment.end vs scene.last_text_at+read_seconds）`——**G06 音画同步门按设计工作**，
+  抓住了归一化方案的错：我把段重排到 ≤8 cps 的自造时刻（总长 4.8s），与 39.5s 视觉文本时间线
+  差 34.7s。测试数据又错了一次，被产品门抓住——这正是门存在的意义。
+- **更深的死因链（三层，逐层试错试出来的）**：
+  ① UI 默认对齐段 `text` 为空（向导第 4 步无口播文本，G02 手动管线原样透传）⇒ SRT count=0
+  ⇒ 字幕 QC 挂「count>0」（attempt 14 的死因，当时只见 captions 不知是哪条）；
+  ② 3s 压缩 ⇒ 就算有文本 cps≈97 ≫ 9 也挂（attempt 14 的第二层）；
+  ③ 对齐段时刻必须匹配场景文本时刻，自造均匀时刻被 G06 抓（attempt 15 的死因）。
+- **最终修法（attempt 16）**：对齐段一比一回任务场景——`[scene.start, scene.end]` +
+  场景文本。恒等式 `last_text_at + read_seconds ≡ scene.end`（`project_docs.py:88`）⇒
+  **G06 偏差=0**；建议时长=字数/5.2 ⇒ cps≈5.2 ≤ 9；SRT 拿到真文本。脚本内先本地断言
+  （段全有文本、max cps ≤ 9）再 POST，失败快照说人话。
+
+**没做的（诚实边界）**：全量 pytest/治理/棘轮仍压着（e2e 独占 Chrome+ffmpeg，不许并行）；
+文档同步（§7 清单）等 attempt 15 结果与全量回归数字一起做。
+
+---
+
+### 轮 19 · H8 收口：attempt 17 PASS（49 步全绿）＋ 全量回归 446×2 ＋ 19 项治理 ＋ 本批提交 · 2026-11-07 晨
+
+老板开工令（「根据当前进度排好开发计划！然后开工！一直到整个项目全部开发完成！」）。
+按交接包 §6 顺序收口，四层迭代见轮 18d。**产品代码零改动，全部修正都在验收脚本与文档。**
+
+**① 键盘 e2e 终于 PASS**：`scripts/e2e_fr40_keyboard.py` attempt 17 →
+**`PASS: e2e_fr40_keyboard（49 步全绿，判据①②③与 FR-41 ①②③④ 均现场覆盖）`，exit 0**。
+纯键盘建项目→改→预览→跑→批 7 门→交付 6 产物（master×2 + captions.zh.srt + cover×2 + rights.json）；
+A05 自动携带断言现场通过（`键盘签 7 + 自动 1 = 8 道门全覆盖`，note=对比后选定 · H_现成版式）；
+零鼠标 48 步、浏览器 389 请求非环回 0、API 进程 ESTABLISHED 0。
+逐步输出落档 `docs/reports/h8-fr40-keyboard-e2e.md`。
+
+**② 全量回归（DoD §0-1，连跑两次一致）**：`cd server && uv run pytest tests -q` →
+**446 passed**（187.02s）/ **446 passed**（185.40s），0 skipped 0 xfailed；
+生产库计数跑前跑后 11 项目恒定（conftest 守卫自动判）。
+
+**③ 治理与棘轮**：`verify_p1_governance.py` → **19 项全 ✓**；
+`lint_ratchet.py` → 三口径在基线内（serverCwd/repoRootCwd/ciScope=233/233），BLE001 达下降目标；
+`lint_a11y.py` → **PASS（warn 58 / error 0，aria/role 计数 1→55）**；`tsc --noEmit` → 0。
+
+**④ 文档同步（§7 清单逐句）**：HANDOFF 133/432/943/1131 + AGENTS 75 的 `428 passed` 全部改为
+实测 446（历史值写中文口径）；AGENTS:8 进度句尾部改到 attempt 17 PASS；
+任务书 §7 FR-40 三条/FR-41 四条逐条打勾附证据；§11 H8 行标 ✅ 已交付；
+`check_docs_consistency.py` → **PASS**（守卫把 4 处漂移清零）。
+
+**⑤ 提交**：31 个文件（21 M + 10 ??）按交接包 §8 清单一次收口，commit 见 git log。
+push 是老板决策点——**老板本轮开工令已含「做完」，push 在批 2 执行并盯 CI**。
+
+**没做的（诚实边界）**：
+- 交付门禁 LUFS 真值的 ffprobe 原文没有单独贴（交付 QC 的 lufs/truePeak 检查在 attempt 17 第 45 步
+  通过即判据；G07 的 QC json 随 cleanup 自删）。
+- routes.py 拆分（P3 #2 白日专批）在批 3，不在本轮。

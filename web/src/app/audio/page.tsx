@@ -302,7 +302,8 @@ function AudioInner() {
               ))}
             </tbody>
           </table>
-          <button className="btn mt-3" onClick={saveAlignment}>保存手动对齐</button>
+          <button className="btn mt-3" onClick={saveAlignment}
+            data-testid="audio-save-alignment">保存手动对齐</button>
         </div>
       </section>
 
