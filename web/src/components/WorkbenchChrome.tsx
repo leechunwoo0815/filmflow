@@ -14,6 +14,7 @@ import { COMMANDS, type AppCommand, dispatchAppEvent, matchKey, onAppEvent } fro
 export function WorkbenchChrome() {
   const router = useRouter();
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
+  const [chromeOpen, setChromeOpen] = useState(false);
   const seq = useRef(0);
   const isMac = useRef(false);
 
@@ -49,12 +50,19 @@ export function WorkbenchChrome() {
   return (
     <>
       <div className="fixed bottom-4 right-3 z-30 flex items-center gap-2" data-testid="workbench-chrome">
-        <button className="btn px-2" data-testid="palette-trigger"
-          aria-label="打开命令面板（⌘K 或 Ctrl+K）"
-          onClick={() => dispatchAppEvent("palette:open")}>⌘K 命令</button>
-        <NotificationsBell onToast={notify} />
-        <button className="btn px-2" data-testid="shortcuts-trigger" aria-label="查看快捷键表"
-          onClick={() => dispatchAppEvent("shortcuts:open")}>?</button>
+        {/* 老板实测：整排常驻盖住页面右下角的按钮。默认收起成一枚小圆钮，展开才是三件套。 */}
+        {chromeOpen && (<>
+          <button className="btn px-2" data-testid="palette-trigger"
+            aria-label="打开命令面板（⌘K 或 Ctrl+K）"
+            onClick={() => dispatchAppEvent("palette:open")}>⌘K 命令</button>
+          <NotificationsBell onToast={notify} />
+          <button className="btn px-2" data-testid="shortcuts-trigger" aria-label="查看快捷键表"
+            onClick={() => dispatchAppEvent("shortcuts:open")}>?</button>
+        </>)}
+        <button className="btn px-2 rounded-full w-9 h-9 leading-none" data-testid="chrome-toggle"
+          aria-label={chromeOpen ? "收起命令/通知/快捷键" : "展开命令/通知/快捷键"}
+          title="命令 · 通知 · 快捷键"
+          onClick={() => setChromeOpen((v) => !v)}>{chromeOpen ? "✕" : "☰"}</button>
       </div>
       <CommandPalette onToast={notify} />
       <ShortcutsSheet />

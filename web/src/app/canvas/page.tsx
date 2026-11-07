@@ -83,8 +83,10 @@ function CanvasInner() {
       } catch {}
     };
     // SSE 断线不会走 api() 的失败通道，必须自己说一声，否则画布只是"停止刷新"
-    es.onerror = () => setMsg("实时通道断开：节点状态可能不是最新，刷新页面可重连");
-    return () => { es.close(); };
+    es.onerror = () => setMsg("实时通道断开：正在自动重连，状态可能有短暂延迟");
+    es.onopen = () => { setMsg(""); load(); };   // 重连成功立刻补拉（服务重启/断线期间的事件不补发）
+    const poll = setInterval(load, 15000);        // 兜底轮询：SSE 漏了也不许页面冻结
+    return () => { es.close(); clearInterval(poll); };
   }, [activeRunId, load]);
 
   const act = async (path: string) => {
@@ -104,7 +106,9 @@ function CanvasInner() {
             <span className="text-dim">{n.title}</span>
           </div>
           <div className={STATUS_CLS[n.status] || "text-dim"}>
-            {n.status}{n.status === "running" ? ` ${(n.progress * 100).toFixed(0)}%` : ""}
+            {n.status}{n.status === "running"
+              ? (n.progress > 0 ? ` ${(n.progress * 100).toFixed(0)}%` : " · 运行中（此节点无百分比进度）")
+              : ""}
             {n.message ? ` · ${n.message.slice(0, 40)}` : ""}
           </div>
           {n.gate === "human" && <span className="text-purple">🔒 {t("cv.humanGate")}</span>}
@@ -202,6 +206,12 @@ function CanvasInner() {
                 <p className="text-xs text-red mt-1" data-testid={`gate-precheck-${g.gate}`}>
                   批准前置未满足：{g.precheck}
                 </p>
+              )}
+              {g.precheck && g.gate.startsWith("D") && (
+                <a className="btn w-full mt-1 text-center" data-testid={`gate-goto-${g.gate}`}
+                   href={`/review?project=${projectId}&run=${activeRunId}`}>
+                  去查看静帧 →
+                </a>
               )}
               <div className="flex gap-2 mt-2">
                 <button className="btn-primary" data-testid={`gate-approve-${g.gate}`}
