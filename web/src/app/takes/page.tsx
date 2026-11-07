@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -122,7 +123,7 @@ function TakesInner() {
   return (
     <main className="min-h-screen bg-bg text-txt p-4">
       <header className="flex items-center gap-2 mb-3">
-        <a className="btn" href={`/canvas?project=${projectId}`}>← 画布</a>
+        <Link className="btn" href={`/canvas?project=${projectId}`}>← 画布</Link>
         <b>Take 对比</b>
         <span className="text-dim text-xs">当前 #{currentRun ?? "—"} · {takes.length} 个 Take</span>
         <label className="ml-3 text-xs flex items-center gap-1"><input type="checkbox" checked={diff} onChange={(e) => setDiff(e.target.checked)} data-testid="take-diff" />差异叠加</label>

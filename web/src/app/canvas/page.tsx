@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ReactFlow, Background, Controls, MarkerType } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -135,8 +136,8 @@ function CanvasInner() {
       <p className="text-dim text-sm">画布展示的是某个项目某次 Run 的流水线。
         你现在没有从任何项目进来——先走向导建一个，或回到项目列表挑一个。</p>
       <div className="flex gap-3 justify-center">
-        <a className="btn-primary" href="/wizard" data-testid="canvas-empty-wizard">新建项目（走向导）</a>
-        <a className="btn" href="/">回到项目列表</a>
+        <Link className="btn-primary" href="/wizard" data-testid="canvas-empty-wizard">新建项目（走向导）</Link>
+        <Link className="btn" href="/">回到项目列表</Link>
       </div>
     </main>
   );
@@ -150,21 +151,21 @@ function CanvasInner() {
         </a>
       )}
       <header className="flex flex-wrap items-center gap-2 p-3 border-b border-line">
-        <a className="btn" href="/">{t("nav.back")}</a>
+        <Link className="btn" href="/">{t("nav.back")}</Link>
         <span className="font-semibold shrink-0">Run {activeRunId || (noRun ? "（该项目还没有 Run）" : "…")}</span><span className="shrink-0"><LangToggle /></span><span className="shrink-0"><ThemeToggle /></span>
         {graph && <span className={`text-sm ${STATUS_CLS[graph.run.status]}`}>{graph.run.status}</span>}
         {graph && <span className="text-dim text-xs">caps: {graph.caps.join("/")}</span>}
         <div className="ml-auto flex gap-2">
-          <a className="btn" href={`/editor?project=${projectId}`}>{t("nav.editor")}</a>
-          <a className="btn" href={`/timeline?project=${projectId}&run=${activeRunId}`}>时间轴</a>
-          <a className="btn" href={`/assets?project=${projectId}`}>资产库</a>
-          <a className="btn" href={`/templates?project=${projectId}`}>模板库</a>
-          <a className="btn" href={`/qa?project=${projectId}&run=${activeRunId}`}>QA 建议</a>
-          <a className="btn" href={`/review?project=${projectId}&run=${activeRunId}`}>静帧审阅</a>
-          <a className="btn" href={`/player?project=${projectId}&run=${activeRunId}`}>审片</a>
-          <a className="btn" href={`/takes?project=${projectId}`}>Take 对比</a>
-          <a className="btn" href={`/audio?project=${projectId}`}>音频</a>
-          <a className="btn" href={`/delivery?project=${projectId}&run=${activeRunId}`}>交付</a>
+          <Link className="btn" href={`/editor?project=${projectId}`}>{t("nav.editor")}</Link>
+          <Link className="btn" href={`/timeline?project=${projectId}&run=${activeRunId}`}>时间轴</Link>
+          <Link className="btn" href={`/assets?project=${projectId}`}>资产库</Link>
+          <Link className="btn" href={`/templates?project=${projectId}`}>模板库</Link>
+          <Link className="btn" href={`/qa?project=${projectId}&run=${activeRunId}`}>QA 建议</Link>
+          <Link className="btn" href={`/review?project=${projectId}&run=${activeRunId}`}>静帧审阅</Link>
+          <Link className="btn" href={`/player?project=${projectId}&run=${activeRunId}`}>审片</Link>
+          <Link className="btn" href={`/takes?project=${projectId}`}>Take 对比</Link>
+          <Link className="btn" href={`/audio?project=${projectId}`}>音频</Link>
+          <Link className="btn" href={`/delivery?project=${projectId}&run=${activeRunId}`}>交付</Link>
           <button className="btn" data-testid="studio-guide-btn" onClick={() => setGuideOpen((v) => !v)}>引导</button>
           <button className="btn" data-testid="step-btn" onClick={() => act(`/runs/${activeRunId}/step`)}>{t("cv.step")}</button>
           <button className="btn-amber" data-testid="run-btn" onClick={() => act(`/runs/${activeRunId}/start`)}>{t("cv.run")}</button>
@@ -248,11 +249,11 @@ function CanvasInner() {
             <button className="btn" onClick={dismissGuide} data-testid="studio-guide-close">知道了</button>
           </div>
           <ol className="space-y-1.5">
-            <li><a className="text-blue" href={`/editor?project=${projectId}`}>1. 场景列表</a><span className="text-dim"> · 看每句文案对应哪一场</span></li>
-            <li><a className="text-blue" href={`/review?project=${projectId}&run=${activeRunId}`}>2. 单帧预览</a><span className="text-dim"> · 逐场看静帧</span></li>
-            <li><a className="text-blue" href={`/editor?project=${projectId}`}>3. 改一句</a><span className="text-dim"> · 自动保存并标脏</span></li>
-            <li><a className="text-blue" href={`/review?project=${projectId}&run=${activeRunId}`}>4. 看 diff</a><span className="text-dim"> · 只对比变化的场景</span></li>
-            <li><a className="text-blue" href={`/delivery?project=${projectId}&run=${activeRunId}`}>5. 出 draft</a><span className="text-dim"> · 预览或交付</span></li>
+            <li><Link className="text-blue" href={`/editor?project=${projectId}`}>1. 场景列表</Link><span className="text-dim"> · 看每句文案对应哪一场</span></li>
+            <li><Link className="text-blue" href={`/review?project=${projectId}&run=${activeRunId}`}>2. 单帧预览</Link><span className="text-dim"> · 逐场看静帧</span></li>
+            <li><Link className="text-blue" href={`/editor?project=${projectId}`}>3. 改一句</Link><span className="text-dim"> · 自动保存并标脏</span></li>
+            <li><Link className="text-blue" href={`/review?project=${projectId}&run=${activeRunId}`}>4. 看 diff</Link><span className="text-dim"> · 只对比变化的场景</span></li>
+            <li><Link className="text-blue" href={`/delivery?project=${projectId}&run=${activeRunId}`}>5. 出 draft</Link><span className="text-dim"> · 预览或交付</span></li>
           </ol>
           <p className="text-dim text-xs mt-2">可跳过；随时用顶部「引导」重看。</p>
         </div>

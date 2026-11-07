@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -118,7 +119,7 @@ function AssetCard({ asset, all, onChanged, projectId }: {
             <div key={i} className="text-dim">
               {u.projectName} · {u.sceneId} · {u.layerId || u.field} · {u.layerType}
               {u.source !== "timeline" && <span className="ml-1">（{SOURCE_LABEL[u.source] || u.source}）</span>}
-              {projectId === u.projectId && <a className="text-blue ml-1" href={`/timeline?project=${u.projectId}`}>打开</a>}
+              {projectId === u.projectId && <Link className="text-blue ml-1" href={`/timeline?project=${u.projectId}`}>打开</Link>}
             </div>
           )) : <div className="text-dim">未被任何文档/模板/Run 快照引用</div>}
           <div className="flex gap-1 mt-1">
@@ -222,8 +223,8 @@ function AssetsInner() {
         <button className={`btn ${scope === "project" ? "border-gold" : ""}`} onClick={() => switchScope("project")}>项目库</button>
         <button className={`btn ${scope === "global" ? "border-gold" : ""}`} onClick={() => switchScope("global")}>全局库</button>
         <div className="ml-auto flex gap-2">
-          {projectId && <a className="btn" href={`/timeline?project=${projectId}`}>时间轴</a>}
-          <a className="btn" href="/help">帮助</a>
+          {projectId && <Link className="btn" href={`/timeline?project=${projectId}`}>时间轴</Link>}
+          <Link className="btn" href="/help">帮助</Link>
         </div>
       </header>
       {msg && <div className="px-3 py-1 text-xs text-gold border-b border-line">{msg}</div>}

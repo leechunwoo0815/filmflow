@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -148,12 +149,12 @@ function TemplatesInner() {
   return (
     <main className="min-h-screen max-w-6xl mx-auto p-6 bg-bg text-txt">
       <header className="flex items-center gap-2 mb-5">
-        <a className="btn" href="/">← 首页</a>
+        <Link className="btn" href="/">← 首页</Link>
         <h1 className="text-xl font-bold">模板库</h1>
         <span className="text-dim text-xs">项目模板 / 场景模板 / 小系列</span>
         <div className="ml-auto flex gap-2">
-          <a className="btn" href="/help">帮助</a>
-          <a className="btn" href="/wizard">新建项目</a>
+          <Link className="btn" href="/help">帮助</Link>
+          <Link className="btn" href="/wizard">新建项目</Link>
         </div>
       </header>
       {msg && <div className="card border-gold/40 p-2 text-sm text-gold mb-3">{msg}</div>}
@@ -210,7 +211,7 @@ function TemplatesInner() {
                   <div className="text-xs space-y-1" data-testid="series-result">
                     {seriesResult.items.map((x: any) => (
                       <div key={x.index} className={x.ok ? "text-green" : "text-red"}>
-                        {x.name}: {x.ok ? <a className="text-blue" href={`/canvas?project=${x.project.id}&run=${x.run_id}`}>项目 #{x.project.id}</a> : x.error}
+                        {x.name}: {x.ok ? <Link className="text-blue" href={`/canvas?project=${x.project.id}&run=${x.run_id}`}>项目 #{x.project.id}</Link> : x.error}
                       </div>
                     ))}
                   </div>

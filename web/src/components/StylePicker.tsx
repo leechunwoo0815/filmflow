@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { api, StyleDTO, FAMILY_LABELS, cornerBadge, badges3, visualOneLine } from "@/lib/api";
 
 const CHIPS = ["可生产", "中文友好", "低饱和", "高密度", "动态强", "可印刷", "≤3版"];
@@ -214,7 +215,7 @@ export default function StylePicker({ script, onPrimary }: { script: string; onP
               <button className="btn" data-testid="style-similar" onClick={() => similar(detail)}>相似风格</button>
               <button className="btn-amber" data-testid="style-set-primary" onClick={() => setPrimaryStyle(detail)}>设为主风格</button>
               {detail.tokens_status !== "complete" && (
-                <a className="btn text-center" href="/labeling">加入补标队列 →</a>
+                <Link className="btn text-center" href="/labeling">加入补标队列 →</Link>
               )}
             </div>
           </>

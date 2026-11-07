@@ -1,5 +1,6 @@
 "use client";
 import type { KeyboardEvent } from "react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
@@ -183,7 +184,7 @@ export default function DocsEditor({ projectId }: { projectId: number }) {
   return (
     <main className="max-w-7xl mx-auto p-6">
       <header className="flex items-center gap-2 mb-4">
-        <a className="btn" href={`/canvas?project=${projectId}`}>← Canvas</a>
+        <Link className="btn" href={`/canvas?project=${projectId}`}>← Canvas</Link>
         <h1 className="text-xl font-bold">文档编辑</h1>
         <span className="text-dim text-sm">FR-25 · 自动保存 / 撤销 / 版本 / 冲突检测</span>
         <div className="ml-auto flex gap-2">

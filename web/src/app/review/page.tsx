@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -126,7 +127,7 @@ function ReviewInner() {
   return (
     <main className="min-h-screen bg-bg text-txt p-6">
       <header className="flex items-center gap-3 mb-4">
-        <a className="btn" href={`/canvas?project=${projectId}&run=${runId}`}>← 画布</a>
+        <Link className="btn" href={`/canvas?project=${projectId}&run=${runId}`}>← 画布</Link>
         <h1 className="text-xl font-semibold">静帧审阅 · Run {runId}</h1>
         <span className="text-dim text-sm">{stills.length} 张 / {new Set(stills.map(s => s.scene)).size} 场景</span>
         <span data-testid="review-view-state" className={

@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -50,7 +51,7 @@ function DeliveryInner() {
   return (
     <main className="min-h-screen bg-bg text-txt p-6">
       <header className="flex items-center gap-3 mb-4">
-        <a className="btn" href={`/canvas?project=${projectId}&run=${runId || ""}`}>← 画布</a>
+        <Link className="btn" href={`/canvas?project=${projectId}&run=${runId || ""}`}>← 画布</Link>
         <h1 className="text-xl font-semibold">交付 v1 · 项目 {projectId}</h1>
         <button className="btn-amber" disabled={busy} onClick={create}>
           {busy ? "生成中…" : "生成交付包"}

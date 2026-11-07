@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -84,12 +85,12 @@ function QaInner() {
   return (
     <main className="min-h-screen max-w-5xl mx-auto p-6 bg-bg text-txt">
       <header className="flex items-center gap-2 mb-4">
-        <a className="btn" href={`/canvas?project=${projectId}${runId ? `&run=${runId}` : ""}`}>← 画布</a>
+        <Link className="btn" href={`/canvas?project=${projectId}${runId ? `&run=${runId}` : ""}`}>← 画布</Link>
         <h1 className="text-xl font-bold">QA 修复建议</h1>
         <span className="text-dim text-xs">项目 {projectId}{qa?.runId ? ` · Run ${qa.runId}` : ""}</span>
         <div className="ml-auto flex gap-2">
-          <a className="btn" href={`/timeline?project=${projectId}`}>时间轴</a>
-          <a className="btn" href={`/audio?project=${projectId}`}>音频</a>
+          <Link className="btn" href={`/timeline?project=${projectId}`}>时间轴</Link>
+          <Link className="btn" href={`/audio?project=${projectId}`}>音频</Link>
           <button className="btn" onClick={() => load()}>刷新</button>
         </div>
       </header>

@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -193,8 +194,8 @@ function PlayerInner() {
   return (
     <main className="min-h-screen bg-bg text-txt p-4">
       <header className="flex items-center gap-2 mb-3">
-        <a className="btn" href={`/timeline?project=${projectId}&run=${params.get("run") || ""}`}>← 时间轴</a>
-        <a className="btn" href={`/takes?project=${projectId}`}>Take 对比</a>
+        <Link className="btn" href={`/timeline?project=${projectId}&run=${params.get("run") || ""}`}>← 时间轴</Link>
+        <Link className="btn" href={`/takes?project=${projectId}`}>Take 对比</Link>
         <b>审片 · 项目 {projectId}</b>
         <span className="text-dim text-xs">未解决 {openCount} / {comments.length}</span>
         {review.videos?.length ? (
@@ -203,8 +204,8 @@ function PlayerInner() {
           </select>
         ) : <span className="text-red text-xs">没有 MP4，先跑 F04/E05</span>}
         <div className="ml-auto flex gap-2 items-center">
-          <a className="btn" href={`/api/projects/${projectId}/review/export?format=json`}>导出 JSON</a>
-          <a className="btn" href={`/api/projects/${projectId}/review/export?format=csv`}>CSV</a>
+          <Link className="btn" href={`/api/projects/${projectId}/review/export?format=json`}>导出 JSON</Link>
+          <Link className="btn" href={`/api/projects/${projectId}/review/export?format=csv`}>CSV</Link>
           <button className="btn" onClick={() => fileRef.current?.click()}>导入 JSON</button>
           <input ref={fileRef} type="file" accept="application/json" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); }} />

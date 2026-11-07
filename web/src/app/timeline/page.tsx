@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -417,7 +418,7 @@ function TimelineInner() {
   return (
     <main className="h-screen flex flex-col bg-bg text-txt">
       <header className="flex items-center gap-2 px-3 py-2 border-b border-line">
-        <a className="btn" href={`/canvas?project=${projectId}${runId ? `&run=${runId}` : ""}`}>← 画布</a>
+        <Link className="btn" href={`/canvas?project=${projectId}${runId ? `&run=${runId}` : ""}`}>← 画布</Link>
         <b>时间轴</b><span className="text-dim text-xs">项目 {projectId} · v{version}</span>
         <span className={`text-xs ${saving ? "text-gold" : "text-dim"}`}>{saving ? "保存中…" : "已保存"}</span>
         <button className="btn" onClick={undo} disabled={!history.length} data-testid="timeline-undo">撤销</button>
@@ -430,10 +431,10 @@ function TimelineInner() {
         <div className="ml-auto flex items-center gap-2">
           <span className="font-mono text-sm" data-testid="playhead-tc">{fmtTC(playhead, fps)} <span className="text-dim">/ {fmtTC(duration, fps)}</span></span>
           <button className="btn" onClick={() => setPlaying((p) => p ? 0 : 1)}>{playing ? "暂停" : "播放"}</button>
-          <a className="btn" href={`/player?project=${projectId}${runId ? `&run=${runId}` : ""}`}>审片</a>
-          <a className="btn" href={`/takes?project=${projectId}`}>Take 对比</a>
-          <a className="btn" href={`/assets?project=${projectId}`}>资产库</a>
-          <a className="btn" href="/help">帮助</a>
+          <Link className="btn" href={`/player?project=${projectId}${runId ? `&run=${runId}` : ""}`}>审片</Link>
+          <Link className="btn" href={`/takes?project=${projectId}`}>Take 对比</Link>
+          <Link className="btn" href={`/assets?project=${projectId}`}>资产库</Link>
+          <Link className="btn" href="/help">帮助</Link>
         </div>
       </header>
       {conflict && (
@@ -601,7 +602,7 @@ function TimelineInner() {
                 <button className="btn" onClick={() => opRef.current?.("duplicate", { sceneId: selected.id })}>复制</button>
               </div>
               <h3 className="font-semibold mt-4 mb-1 flex items-center gap-2">资产
-                <a className="text-blue text-xs font-normal" href={`/assets?project=${projectId}`}>管理/导入</a>
+                <Link className="text-blue text-xs font-normal" href={`/assets?project=${projectId}`}>管理/导入</Link>
               </h3>
               <div className="text-xs space-y-2">
                 <div>

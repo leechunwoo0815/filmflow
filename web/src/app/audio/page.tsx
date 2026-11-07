@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -228,8 +229,8 @@ function AudioInner() {
   return (
     <main className="min-h-screen bg-bg text-txt p-6">
       <header className="flex items-center gap-3 mb-4 flex-wrap">
-        <a className="btn" href={`/editor?project=${projectId}`}>← 编辑器</a>
-        <a className="btn" href={`/timeline?project=${projectId}`}>时间轴</a>
+        <Link className="btn" href={`/editor?project=${projectId}`}>← 编辑器</Link>
+        <Link className="btn" href={`/timeline?project=${projectId}`}>时间轴</Link>
         <h1 className="text-xl font-semibold">音频工作台 v2 · 项目 {projectId}</h1>
         <span className={data?.licenseOk ? "text-green" : "text-red"}>
           音乐许可：{data?.licenseOk ? "OK" : data?.licenseReason || "未填写"}

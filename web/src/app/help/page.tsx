@@ -1,7 +1,8 @@
+import Link from "next/link";
 export default function HelpPage() {
   return (
     <main className="max-w-4xl mx-auto p-8 text-txt">
-      <a className="btn" href="/">← 首页</a>
+      <Link className="btn" href="/">← 首页</Link>
       <h1 className="text-2xl font-bold mt-4 mb-4">帮助 · FilmFlow</h1>
       <section className="card p-4 mb-4">
         <h2 className="font-semibold mb-2">快捷键</h2>
@@ -17,12 +18,12 @@ export default function HelpPage() {
       <section className="card p-4 mb-4">
         <h2 className="font-semibold mb-2">R3 新页面</h2>
         <ul className="text-sm space-y-1">
-          <li><a className="text-blue" href="/timeline">/timeline</a>：场景块拖拽/改时长/ripple、分割合并、文本、相机关键帧、转场、250ms 静帧预览。</li>
-          <li><a className="text-blue" href="/player">/player</a>：审片播放器、帧锚定批注、resolve、场景/整片决议、JSON/CSV、审片包。</li>
-          <li><a className="text-blue" href="/takes">/takes</a>：A/B Take 同步播放、差异叠加、评分/当前、场景采纳、分支与软删除保护。</li>
-          <li><a className="text-blue" href="/assets">/assets</a>：全局/项目资产库、sha 去重、引用数与使用处、许可、替换/删除保护、字体缺字检查。</li>
-          <li><a className="text-blue" href="/templates">/templates</a>：项目另存模板、场景模板插入、变量替换、小系列（CSV/队列属 R4）。</li>
-          <li><a className="text-blue" href="/qa">/qa</a>：QA 失败分类/定位/建议、扩场景/字号/换行/LUFS 许可一键修复与撤销。</li>
+          <li><Link className="text-blue" href="/timeline">/timeline</Link>：场景块拖拽/改时长/ripple、分割合并、文本、相机关键帧、转场、250ms 静帧预览。</li>
+          <li><Link className="text-blue" href="/player">/player</Link>：审片播放器、帧锚定批注、resolve、场景/整片决议、JSON/CSV、审片包。</li>
+          <li><Link className="text-blue" href="/takes">/takes</Link>：A/B Take 同步播放、差异叠加、评分/当前、场景采纳、分支与软删除保护。</li>
+          <li><Link className="text-blue" href="/assets">/assets</Link>：全局/项目资产库、sha 去重、引用数与使用处、许可、替换/删除保护、字体缺字检查。</li>
+          <li><Link className="text-blue" href="/templates">/templates</Link>：项目另存模板、场景模板插入、变量替换、小系列（CSV/队列属 R4）。</li>
+          <li><Link className="text-blue" href="/qa">/qa</Link>：QA 失败分类/定位/建议、扩场景/字号/换行/LUFS 许可一键修复与撤销。</li>
         </ul>
       </section>
       <section className="card p-4 mb-4">

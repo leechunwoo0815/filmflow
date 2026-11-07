@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useLang, LangToggle } from "@/lib/i18n";
@@ -57,10 +58,10 @@ export default function Home() {
           <p className="text-dim text-sm mt-1">{t("app.tagline")}</p>
         </div>
         <div className="flex gap-2 items-center">
-          <a className="btn" href="/templates">模板库</a>
-          <a className="btn" href="/help">帮助</a>
-          <a className="btn" href="/labeling">{t("nav.labeling")}{lib ? ` (${lib.matrix?.label_queue ?? 0})` : ""}</a>
-          <a className="btn-primary" href="/wizard">{t("nav.newProject")}</a>
+          <Link className="btn" href="/templates">模板库</Link>
+          <Link className="btn" href="/help">帮助</Link>
+          <Link className="btn" href="/labeling">{t("nav.labeling")}{lib ? ` (${lib.matrix?.label_queue ?? 0})` : ""}</Link>
+          <Link className="btn-primary" href="/wizard">{t("nav.newProject")}</Link>
           <LangToggle /><ThemeToggle />
         </div>
       </header>
@@ -143,10 +144,10 @@ export default function Home() {
         {projects.length === 0 && <p className="text-dim text-sm">{t("home.noProjects")}</p>}
         <div className="grid grid-cols-2 gap-3">
           {projects.map((p) => (
-            <a key={p.id} href={`/canvas?project=${p.id}`} className="card p-3 hover:border-blue/50">
+            <Link key={p.id} href={`/canvas?project=${p.id}`} className="card p-3 hover:border-blue/50">
               <div className="font-medium">{p.name}</div>
               <div className="text-dim text-xs font-mono mt-1 truncate">{p.root}</div>
-            </a>
+            </Link>
           ))}
         </div>
       </section>
